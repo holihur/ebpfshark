@@ -172,7 +172,8 @@ LimitMEMLOCK=infinity
 
 ```bash
 cd /root/ebpf
-make web && make go-build
+make web && make go-build   # core：常用协议
+# 或 make web && make go-build-full   # full：全部协议
 cp bin/ebpfshark /srv/ebpfshark/ebpfshark-linux-amd64
 SHA=$(sha256sum /srv/ebpfshark/ebpfshark-linux-amd64 | awk '{print $1}')
 cat > /srv/ebpfshark/manifest.json <<EOF

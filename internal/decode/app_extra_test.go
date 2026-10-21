@@ -1,16 +1,12 @@
+//go:build full
+
 package decode
 
 import (
 	"encoding/binary"
 	"strings"
 	"testing"
-
-	"ebpfshark/internal/packet"
 )
-
-func appCtx(b []byte) *ctx {
-	return &ctx{data: b, m: packet.Meta{}}
-}
 
 func ber(tag byte, v []byte) []byte {
 	out := []byte{tag, byte(len(v))}
@@ -243,24 +239,6 @@ func TestGRE(t *testing.T) {
 	if c.proto != "gre" || c.m.SrcPort != 5555 {
 		t.Fatalf("proto=%q srcport=%d info=%q", c.proto, c.m.SrcPort, c.appInfo)
 	}
-}
-
-func fieldLabels(fields []*Field) []string {
-	var out []string
-	for _, f := range fields {
-		out = append(out, f.Label)
-		out = append(out, fieldLabels(f.Children)...)
-	}
-	return out
-}
-
-func containsLabel(labels []string, needle string) bool {
-	for _, l := range labels {
-		if strings.Contains(l, needle) {
-			return true
-		}
-	}
-	return false
 }
 
 func TestDHCPFullOptions(t *testing.T) {

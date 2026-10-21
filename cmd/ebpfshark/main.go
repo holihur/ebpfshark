@@ -20,6 +20,7 @@ import (
 
 	"ebpfshark/internal/auth"
 	"ebpfshark/internal/capture"
+	"ebpfshark/internal/decode"
 	"ebpfshark/internal/mcpserver"
 	"ebpfshark/internal/server"
 	"ebpfshark/internal/store"
@@ -51,6 +52,7 @@ func main() {
 	secureCookie := flag.Bool("secure-cookie", false, "set Secure on the session cookie (use behind HTTPS)")
 	noAuth := flag.Bool("no-auth", false, "disable authentication (NOT recommended)")
 	mcpToken := flag.String("mcp-token", env("EBPFSHARK_MCP_TOKEN", ""), "bearer token for the HTTP MCP endpoint (empty = generate)")
+	tlsKeylog := flag.String("tls-keylog", env("EBPFSHARK_TLS_KEYLOG", env("SSLKEYLOGFILE", "")), "NSS SSLKEYLOGFILE for TLS 1.2/1.3 decryption")
 	noMCP := flag.Bool("no-mcp", false, "disable the HTTP MCP endpoint")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
@@ -59,6 +61,13 @@ func main() {
 	if *showVersion {
 		fmt.Printf("ebpfshark %s\n", server.Version)
 		return
+	}
+	if *tlsKeylog != "" {
+		if err := decode.LoadKeyLog(*tlsKeylog); err != nil {
+			log.Warn("load TLS keylog failed", "path", *tlsKeylog, "err", err)
+		} else {
+			log.Info("loaded TLS keylog", "path", *tlsKeylog)
+		}
 	}
 
 	var webFS fs.FS

@@ -1,6 +1,7 @@
 package decode
 
 import (
+	"crypto/x509"
 	"fmt"
 	"net/netip"
 	"strconv"
@@ -12,102 +13,6 @@ import (
 var httpPorts = map[uint16]bool{80: true, 81: true, 591: true, 3000: true, 3128: true, 8000: true, 8008: true, 8080: true, 8081: true, 8888: true}
 var tlsPorts = map[uint16]bool{443: true, 465: true, 636: true, 853: true, 993: true, 995: true, 8443: true, 9443: true, 10443: true}
 var dnsPorts = map[uint16]bool{53: true, 5353: true, 5355: true}
-
-func (c *ctx) dissectUDPPayload(b []byte, base int, sport, dport uint16) bool {
-	if len(b) == 0 {
-		return true
-	}
-	if dnsPorts[sport] || dnsPorts[dport] {
-		if c.dissectDNS(b, base, false) {
-			return true
-		}
-	}
-	if isDHCP(sport, dport) {
-		if c.dissectDHCP(b, base) {
-			return true
-		}
-	}
-	switch {
-	case sport == 123 || dport == 123:
-		return c.dissectNTP(b, base)
-	case sport == 161 || dport == 161 || sport == 162 || dport == 162:
-		return c.dissectSNMP(b, base)
-	case sport == 514 || dport == 514:
-		return c.dissectSyslog(b, base)
-	case sport == 3478 || dport == 3478 || sport == 3479 || dport == 3479:
-		return c.dissectSTUN(b, base)
-	case sport == 4789 || dport == 4789 || sport == 8472 || dport == 8472:
-		return c.dissectVXLAN(b, base)
-	case sport == 51820 || dport == 51820:
-		return c.dissectWireGuard(b, base)
-	case sport == 1900 || dport == 1900:
-		return c.dissectSSDP(b, base)
-	case sport == 5060 || dport == 5060:
-		return c.dissectSIP(b, base)
-	case (sport == 443 || dport == 443) && looksLikeQUIC(b):
-		return c.dissectQUIC(b, base)
-	}
-	return false
-}
-
-func (c *ctx) dissectTCPPayload(b []byte, base int, sport, dport uint16) {
-	if len(b) == 0 {
-		return
-	}
-	if dnsPorts[sport] || dnsPorts[dport] {
-		if c.dissectDNS(b, base, true) {
-			return
-		}
-	}
-	if looksLikeHTTP2(b) && c.dissectHTTP2(b, base) {
-		return
-	}
-	if looksLikeSSHBanner(b) && c.dissectSSH(b, base) {
-		return
-	}
-	switch {
-	case sport == 6379 || dport == 6379:
-		if c.dissectRedis(b, base) {
-			return
-		}
-	case sport == 5432 || dport == 5432:
-		if c.dissectPostgreSQL(b, base) {
-			return
-		}
-	case sport == 1883 || dport == 1883:
-		if c.dissectMQTT(b, base) {
-			return
-		}
-	case sport == 179 || dport == 179:
-		if c.dissectBGP(b, base) {
-			return
-		}
-	case sport == 22 || dport == 22:
-		if c.dissectSSH(b, base) {
-			return
-		}
-	case sport == 5060 || dport == 5060:
-		if c.dissectSIP(b, base) {
-			return
-		}
-	case sport == 514 || dport == 514:
-		if c.dissectSyslog(b, base) {
-			return
-		}
-	}
-	if httpPorts[sport] || httpPorts[dport] || looksLikeHTTP(b) {
-		if c.dissectHTTP(b, base) {
-			return
-		}
-	}
-	if tlsPorts[sport] || tlsPorts[dport] || looksLikeTLS(b) {
-		if c.dissectTLS(b, base) {
-			return
-		}
-	}
-	c.addLayer("data")
-	c.addRoot(newField(fmt.Sprintf("TCP payload (%d bytes)", len(b)), hexPreview(b, 64), base, len(b)))
-}
 
 // ---------------------------------------------------------------------- DNS
 
@@ -759,6 +664,7 @@ func (c *ctx) dissectTLS(b []byte, base int) bool {
 	if recLen == 0 || 5+recLen > len(b) {
 		recLen = len(b) - 5
 	}
+	flow := tlsFlowFor(c)
 	c.addLayer("tls")
 	c.proto = "tls"
 
@@ -774,35 +680,54 @@ func (c *ctx) dissectTLS(b []byte, base int) bool {
 	c.appInfo = tlsContentTypeName(ct)
 
 	if ct == 22 && len(body) >= 4 {
-		ht := body[0]
-		hl := int(body[1])<<16 | int(body[2])<<8 | int(body[3])
-		c.m.TLSHandshake = ht
-		hsNode := newNode(fmt.Sprintf("%s (length %d)", tlsHandshakeName(ht), hl), base+5, min(hl+4, len(body)))
-		end := 4 + hl
-		if end > len(body) {
-			end = len(body)
+		off := 0
+		for off+4 <= len(body) {
+			ht := body[off]
+			hl := int(body[off+1])<<16 | int(body[off+2])<<8 | int(body[off+3])
+			end := off + 4 + hl
+			if end > len(body) {
+				end = len(body)
+			}
+			c.parseTLSHandshakeMessage(ht, body[off+4:end], base+5+off+4, root, flow)
+			off = end
 		}
-		switch ht {
-		case 1:
-			c.parseClientHello(body[4:end], base+9, hsNode)
-		case 2:
-			c.parseServerHello(body[4:end], base+9, hsNode)
-		case 11:
-			if len(body) >= 7 {
-				certLen := int(body[4])<<16 | int(body[5])<<8 | int(body[6])
-				hsNode.add(newField(fmt.Sprintf("Certificates Length: %d", certLen), "", base+9, 3))
+		if len(root.Children) > 0 {
+			c.appInfo = tlsHandshakeName(body[0])
+			if c.m.TLSSNI != "" {
+				c.appInfo += " (SNI=" + c.m.TLSSNI + ")"
 			}
 		}
-		root.add(hsNode)
-		c.appInfo = tlsHandshakeName(ht)
-		if c.m.TLSSNI != "" {
-			c.appInfo += " (SNI=" + c.m.TLSSNI + ")"
-		}
 	} else if ct == 23 {
-		if len(body) > 0 {
-			root.add(newField(fmt.Sprintf("Application Data (%d bytes)", len(body)), hexPreview(body, 32), base+5, len(body)))
+		root.add(newField(fmt.Sprintf("Encrypted Application Data (%d bytes)", len(body)), hexPreview(body, 32), base+5, len(body)))
+		if pt, inner, label, ok := flow.decryptRecord(c, b[:5], body); ok {
+			dn := newNode(fmt.Sprintf("Decrypted TLS Record (%s)", tlsContentTypeName(inner)), base+5, recLen)
+			dn.add(newField("Key Log Label: "+label, "", 0, 0))
+			dn.add(newField(fmt.Sprintf("Inner Content Type: %s (%d)", tlsContentTypeName(inner), inner), "", 0, 0))
+			switch inner {
+			case 22:
+				off := 0
+				for off+4 <= len(pt) {
+					ht := pt[off]
+					hl := int(pt[off+1])<<16 | int(pt[off+2])<<8 | int(pt[off+3])
+					end := off + 4 + hl
+					if end > len(pt) {
+						end = len(pt)
+					}
+					c.parseTLSHandshakeMessage(ht, pt[off+4:end], base+5, dn, flow)
+					off = end
+				}
+			case 23:
+				dn.add(newField(fmt.Sprintf("Decrypted Application Data (%d bytes)", len(pt)), printablePreview(pt, 300), 0, len(pt)))
+				c.m.Payload = pt
+				c.dissectDecryptedApp(pt, base+5)
+				c.appInfo = fmt.Sprintf("Decrypted Application Data (%d bytes)", len(pt))
+			case 21:
+				if len(pt) >= 2 {
+					dn.add(newField(fmt.Sprintf("Alert Level: %d, Description: %d", pt[0], pt[1]), "", 0, 2))
+				}
+			}
+			root.add(dn)
 		}
-		c.appInfo = fmt.Sprintf("Application Data (%d bytes)", len(body))
 	} else if ct == 21 && len(body) >= 2 {
 		root.add(newField(fmt.Sprintf("Alert Level: %d, Description: %d", body[0], body[1]), "", base+5, 2))
 		c.appInfo = fmt.Sprintf("Alert (level %d, description %d)", body[0], body[1])
@@ -812,28 +737,124 @@ func (c *ctx) dissectTLS(b []byte, base int) bool {
 	return true
 }
 
-func (c *ctx) parseClientHello(b []byte, base int, node *Field) {
+func bytesHasPrefixFold(b []byte, s string) bool {
+	return len(b) >= len(s) && strings.EqualFold(string(b[:len(s)]), s)
+}
+
+func printablePreview(b []byte, n int) string {
+	if len(b) > n {
+		b = b[:n]
+	}
+	out := make([]rune, 0, len(b))
+	for _, r := range string(b) {
+		if r == '\r' || r == '\n' || r == '\t' || (r >= 32 && r < 127) {
+			out = append(out, r)
+		} else {
+			out = append(out, '.')
+		}
+	}
+	return string(out)
+}
+
+func (c *ctx) parseTLSHandshakeMessage(ht byte, b []byte, base int, root *Field, flow *tlsFlow) {
+	hl := len(b)
+	hsNode := newNode(fmt.Sprintf("%s (length %d)", tlsHandshakeName(ht), hl), base-4, min(hl+4, len(b)+4))
+	switch ht {
+	case 1:
+		c.parseClientHello(b, base, hsNode, flow)
+	case 2:
+		c.parseServerHello(b, base, hsNode, flow)
+	case 11:
+		c.parseTLSCertificates(b, base, hsNode, flow)
+	case 8:
+		c.parseTLSExtensionsMessage(b, base, hsNode, flow, false)
+	case 4: // NewSessionTicket
+		if len(b) >= 4 {
+			hsNode.add(newField(fmt.Sprintf("Ticket Lifetime: %d s", be32(b[0:4])), "", base, 4))
+			if len(b) >= 8 {
+				hsNode.add(newField(fmt.Sprintf("Ticket Age Add: %d", be32(b[4:8])), "", base+4, 4))
+			}
+		}
+	case 15: // CertificateVerify
+		if len(b) >= 4 {
+			hsNode.add(newField(fmt.Sprintf("Signature Algorithm: 0x%04x", be16(b[0:2])), "", base, 2))
+			if len(b) > 4 {
+				hsNode.add(newField("Signature: "+hexPreview(b[4:], 64), "", base+4, len(b)-4))
+			}
+		}
+	}
+	root.add(hsNode)
+}
+
+func (c *ctx) parseTLSExtensionsMessage(b []byte, base int, node *Field, flow *tlsFlow, server bool) {
+	if len(b) < 2 {
+		return
+	}
+	l := int(be16(b[0:2]))
+	if 2+l > len(b) {
+		l = len(b) - 2
+	}
+	node.add(newField(fmt.Sprintf("Extensions Length: %d", l), "", base, 2))
+	c.parseTLSExtensions(b[2:2+l], base+2, node, flow, server)
+}
+
+func tlsCipherName(s uint16) string {
+	names := map[uint16]string{
+		0x1301: "TLS_AES_128_GCM_SHA256", 0x1302: "TLS_AES_256_GCM_SHA384",
+		0x1303: "TLS_CHACHA20_POLY1305_SHA256", 0x1304: "TLS_AES_128_CCM_SHA256",
+		0x1305: "TLS_AES_128_CCM_8_SHA256", 0xc02b: "TLS_ECDHE_ECDSA_AES128_GCM_SHA256",
+		0xc02c: "TLS_ECDHE_ECDSA_AES256_GCM_SHA384", 0xc02f: "TLS_ECDHE_RSA_AES128_GCM_SHA256",
+		0xc030: "TLS_ECDHE_RSA_AES256_GCM_SHA384", 0x009c: "TLS_RSA_AES128_GCM_SHA256",
+		0x009d: "TLS_RSA_AES256_GCM_SHA384", 0xcca8: "TLS_ECDHE_RSA_CHACHA20_POLY1305",
+		0xcca9: "TLS_ECDHE_ECDSA_CHACHA20_POLY1305",
+	}
+	if n := names[s]; n != "" {
+		return n
+	}
+	return fmt.Sprintf("0x%04x", s)
+}
+
+func (c *ctx) parseClientHello(b []byte, base int, node *Field, flow *tlsFlow) {
 	if len(b) < 34 {
 		return
 	}
 	ver := be16(b[0:2])
-	node.add(newField(fmt.Sprintf("Version: %s (0x%04x)", tlsVersionName(ver), ver), "", base, 2))
+	random := b[2:34]
+	node.add(
+		newField(fmt.Sprintf("Version: %s (0x%04x)", tlsVersionName(ver), ver), "", base, 2),
+		newField("Random: "+hexPreview(random, 32), "", base+2, 32),
+	)
+	flow.observeClientHello(c, random)
 
 	off := 34
 	if off >= len(b) {
 		return
 	}
 	sidLen := int(b[off])
+	if off+1+sidLen > len(b) {
+		return
+	}
+	node.add(newField(fmt.Sprintf("Session ID (%d bytes): %s", sidLen, hexPreview(b[off+1:off+1+sidLen], 24)), "", base+off, 1+sidLen))
 	off += 1 + sidLen
 	if off+2 > len(b) {
 		return
 	}
 	csLen := int(be16(b[off : off+2]))
-	off += 2 + csLen
+	csEnd := off + 2 + csLen
+	if csEnd > len(b) {
+		csEnd = len(b)
+	}
+	var suites []string
+	for q := off + 2; q+2 <= csEnd; q += 2 {
+		suites = append(suites, tlsCipherName(be16(b[q:q+2])))
+	}
+	node.add(newField(fmt.Sprintf("Cipher Suites (%d): %s", len(suites), strings.Join(suites, ", ")), "", base+off, 2+csLen))
+	off = csEnd
 	if off >= len(b) {
 		return
 	}
 	compLen := int(b[off])
+	node.add(newField(fmt.Sprintf("Compression Methods: %d", compLen), "", base+off, 1+compLen))
 	off += 1 + compLen
 	if off+2 > len(b) {
 		return
@@ -844,67 +865,231 @@ func (c *ctx) parseClientHello(b []byte, base int, node *Field) {
 	if end > len(b) {
 		end = len(b)
 	}
-	extNode := newField(fmt.Sprintf("Extensions (%d bytes)", extTotal), "", base+off, end-off)
-	for off+4 <= end {
-		etype := be16(b[off : off+2])
-		elen := int(be16(b[off+2 : off+4]))
-		if off+4+elen > end {
-			break
-		}
-		edata := b[off+4 : off+4+elen]
-		name := tlsExtensionName(etype)
-		f := newField(fmt.Sprintf("%s (%d bytes)", name, elen), "", base+off, 4+elen)
-		if etype == 0 && len(edata) >= 5 {
-			// server_name extension: list length, type, name length, name
-			listLen := int(be16(edata[0:2]))
-			p := 2
-			for p+3 <= len(edata) && p < 2+listLen {
-				ntype := edata[p]
-				nlen := int(be16(edata[p+1 : p+3]))
-				if p+3+nlen > len(edata) {
-					break
-				}
-				if ntype == 0 {
-					sni := string(edata[p+3 : p+3+nlen])
-					c.m.TLSSNI = sni
-					f.add(newField("Server Name: "+sni, "", base+off+4+p+3, nlen))
-				}
-				p += 3 + nlen
-			}
-		}
-		if etype == 16 && len(edata) >= 5 {
-			p := 0
-			for p+4 <= len(edata) {
-				gname := be16(edata[p : p+2])
-				glen := int(be16(edata[p+2 : p+4]))
-				if p+4+glen > len(edata) {
-					break
-				}
-				if gname == 0 {
-					groups := []string{}
-					for q := p + 4; q+2 <= p+4+glen; q += 2 {
-						groups = append(groups, tlsGroupName(be16(edata[q:q+2])))
-					}
-					f.add(newField("Supported Groups: "+strings.Join(groups, ", "), "", base+off+4+p, glen+4))
-					break
-				}
-				p += 4 + glen
-			}
-		}
-		extNode.add(f)
-		off += 4 + elen
-	}
-	if len(extNode.Children) > 0 {
-		node.add(extNode)
+	if end > off {
+		node.add(newField(fmt.Sprintf("Extensions (%d bytes)", extTotal), "", base+off-2, 2+end-off))
+		c.parseTLSExtensions(b[off:end], base+off, node, flow, false)
 	}
 }
 
-func (c *ctx) parseServerHello(b []byte, base int, node *Field) {
-	if len(b) < 34 {
+func (c *ctx) parseServerHello(b []byte, base int, node *Field, flow *tlsFlow) {
+	if len(b) < 38 {
 		return
 	}
-	ver := be16(b[0:2])
-	node.add(newField(fmt.Sprintf("Version: %s (0x%04x)", tlsVersionName(ver), ver), "", base, 2))
+	legacy := be16(b[0:2])
+	random := b[2:34]
+	node.add(
+		newField(fmt.Sprintf("Legacy Version: %s (0x%04x)", tlsVersionName(legacy), legacy), "", base, 2),
+		newField("Random: "+hexPreview(random, 32), "", base+2, 32),
+	)
+	off := 34
+	sidLen := int(b[off])
+	if off+1+sidLen+3 > len(b) {
+		return
+	}
+	node.add(newField(fmt.Sprintf("Session ID (%d bytes): %s", sidLen, hexPreview(b[off+1:off+1+sidLen], 24)), "", base+off, 1+sidLen))
+	off += 1 + sidLen
+	suite := be16(b[off : off+2])
+	node.add(newField(fmt.Sprintf("Cipher Suite: %s (0x%04x)", tlsCipherName(suite), suite), "", base+off, 2))
+	off += 2
+	node.add(newField(fmt.Sprintf("Compression Method: %d", b[off]), "", base+off, 1))
+	off++
+	version := legacy
+	if off+2 <= len(b) {
+		extTotal := int(be16(b[off : off+2]))
+		off += 2
+		end := off + extTotal
+		if end > len(b) {
+			end = len(b)
+		}
+		if end > off {
+			// supported_versions is parsed below and updates the actual version.
+			c.parseTLSExtensions(b[off:end], base+off, node, flow, true)
+			if v := flow.getVersion(); v != 0 {
+				version = v
+			}
+		}
+	}
+	node.add(newField(fmt.Sprintf("Negotiated Version: %s", tlsVersionName(version)), "", base, 0))
+	flow.observeServerHello(c, random, version, suite)
+}
+
+func (c *ctx) parseTLSCertificates(b []byte, base int, node *Field, flow *tlsFlow) {
+	off := 0
+	tlsVer := flow.getVersion()
+	if tlsVer == 0x0304 {
+		if len(b) < 1 {
+			return
+		}
+		ctxLen := int(b[0])
+		off = 1 + ctxLen
+		if off+3 > len(b) {
+			return
+		}
+		node.add(newField(fmt.Sprintf("Certificate Request Context (%d bytes)", ctxLen), hexPreview(b[1:1+ctxLen], 24), base, 1+ctxLen))
+	}
+	if off+3 > len(b) {
+		return
+	}
+	listLen := int(b[off])<<16 | int(b[off+1])<<8 | int(b[off+2])
+	off += 3
+	end := off + listLen
+	if end > len(b) {
+		end = len(b)
+	}
+	node.add(newField(fmt.Sprintf("Certificate List Length: %d", listLen), "", base+off-3, 3))
+	idx := 0
+	for off+3 <= end {
+		clen := int(b[off])<<16 | int(b[off+1])<<8 | int(b[off+2])
+		off += 3
+		if off+clen > end {
+			break
+		}
+		der := b[off : off+clen]
+		cf := newNode(fmt.Sprintf("Certificate %d (%d bytes)", idx+1, clen), base+off, clen)
+		if cert, err := x509.ParseCertificate(der); err == nil {
+			cf.add(
+				newField("Subject: "+cert.Subject.String(), "", 0, 0),
+				newField("Issuer: "+cert.Issuer.String(), "", 0, 0),
+				newField("Serial Number: "+cert.SerialNumber.String(), "", 0, 0),
+				newField("Not Before: "+cert.NotBefore.UTC().Format("2006-01-02 15:04:05 MST"), "", 0, 0),
+				newField("Not After: "+cert.NotAfter.UTC().Format("2006-01-02 15:04:05 MST"), "", 0, 0),
+				newField("Signature Algorithm: "+cert.SignatureAlgorithm.String(), "", 0, 0),
+				newField("Public Key Algorithm: "+cert.PublicKeyAlgorithm.String(), "", 0, 0),
+			)
+			if len(cert.DNSNames) > 0 {
+				cf.add(newField("DNS Names: "+strings.Join(cert.DNSNames, ", "), "", 0, 0))
+				if c.m.TLSSNI == "" {
+					c.m.TLSSNI = cert.DNSNames[0]
+				}
+			}
+			if len(cert.IPAddresses) > 0 {
+				var ips []string
+				for _, ip := range cert.IPAddresses {
+					ips = append(ips, ip.String())
+				}
+				cf.add(newField("IP Addresses: "+strings.Join(ips, ", "), "", 0, 0))
+			}
+		} else {
+			cf.add(newField("DER: "+hexPreview(der, 64), "", 0, 0), newField("Parse Error: "+err.Error(), "", 0, 0))
+		}
+		node.add(cf)
+		off += clen
+		idx++
+		// TLS 1.3 per-certificate extensions.
+		if tlsVer == 0x0304 && off+2 <= end {
+			el := int(be16(b[off : off+2]))
+			off += 2 + el
+		}
+	}
+}
+
+func (c *ctx) parseTLSExtensions(data []byte, base int, node *Field, flow *tlsFlow, server bool) {
+	for off := 0; off+4 <= len(data); {
+		etype := be16(data[off : off+2])
+		elen := int(be16(data[off+2 : off+4]))
+		if off+4+elen > len(data) {
+			break
+		}
+		edata := data[off+4 : off+4+elen]
+		name := tlsExtensionName(etype)
+		f := newField(fmt.Sprintf("%s (%d bytes)", name, elen), "", base+off, 4+elen)
+		switch etype {
+		case 0: // server_name
+			if len(edata) >= 5 {
+				listLen := int(be16(edata[0:2]))
+				p := 2
+				for p+3 <= len(edata) && p < 2+listLen {
+					ntype := edata[p]
+					nlen := int(be16(edata[p+1 : p+3]))
+					if p+3+nlen > len(edata) {
+						break
+					}
+					if ntype == 0 {
+						sni := string(edata[p+3 : p+3+nlen])
+						c.m.TLSSNI = sni
+						f.add(newField("Server Name: "+sni, "", base+off+4+p+3, nlen))
+					}
+					p += 3 + nlen
+				}
+			}
+		case 16: // ALPN
+			if len(edata) >= 2 {
+				listLen := int(be16(edata[0:2]))
+				p := 2
+				for p < len(edata) && p < 2+listLen {
+					l := int(edata[p])
+					p++
+					if p+l > len(edata) {
+						break
+					}
+					proto := string(edata[p : p+l])
+					f.add(newField("ALPN Protocol: "+proto, "", base+off+4+p, l))
+					p += l
+				}
+			}
+		case 10: // supported_groups
+			if len(edata) >= 2 {
+				l := int(be16(edata[0:2]))
+				var groups []string
+				for q := 2; q+2 <= len(edata) && q < 2+l; q += 2 {
+					groups = append(groups, tlsGroupName(be16(edata[q:q+2])))
+				}
+				f.add(newField("Supported Groups: "+strings.Join(groups, ", "), "", base+off+4, len(edata)))
+			}
+		case 13: // signature_algorithms
+			if len(edata) >= 2 {
+				l := int(be16(edata[0:2]))
+				var algs []string
+				for q := 2; q+2 <= len(edata) && q < 2+l; q += 2 {
+					algs = append(algs, fmt.Sprintf("0x%04x", be16(edata[q:q+2])))
+				}
+				f.add(newField("Signature Algorithms: "+strings.Join(algs, ", "), "", base+off+4, len(edata)))
+			}
+		case 43: // supported_versions
+			if server {
+				if len(edata) >= 2 {
+					v := be16(edata[0:2])
+					flow.setVersion(v)
+					f.add(newField("Selected Version: "+tlsVersionName(v), "", base+off+4, 2))
+				}
+			} else if len(edata) >= 1 {
+				l := int(edata[0])
+				var vs []string
+				for q := 1; q+2 <= len(edata) && q < 1+l; q += 2 {
+					vs = append(vs, tlsVersionName(be16(edata[q:q+2])))
+				}
+				f.add(newField("Supported Versions: "+strings.Join(vs, ", "), "", base+off+4, len(edata)))
+			}
+		case 51: // key_share
+			if server {
+				if len(edata) >= 4 {
+					g := be16(edata[0:2])
+					l := int(be16(edata[2:4]))
+					if 4+l <= len(edata) {
+						f.add(newField("Selected Group: "+tlsGroupName(g), "", base+off+4, 2), newField("Key Exchange: "+hexPreview(edata[4:4+l], 48), "", base+off+6, l))
+					}
+				}
+			} else if len(edata) >= 2 {
+				listLen := int(be16(edata[0:2]))
+				p := 2
+				for p+4 <= len(edata) && p < 2+listLen {
+					g := be16(edata[p : p+2])
+					l := int(be16(edata[p+2 : p+4]))
+					if p+4+l > len(edata) {
+						break
+					}
+					f.add(newField("Key Share "+tlsGroupName(g)+": "+hexPreview(edata[p+4:p+4+l], 48), "", base+off+4+p, 4+l))
+					p += 4 + l
+				}
+			}
+		default:
+			if elen > 0 {
+				f.Value = hexPreview(edata, 32)
+			}
+		}
+		node.add(f)
+		off += 4 + elen
+	}
 }
 
 func tlsExtensionName(t uint16) string {

@@ -130,6 +130,7 @@ sudo ./bin/ebpfshark -capture eth0,lo -snaplen 2048 -sample-rate 1
 -no-auth                 关闭认证（仅限本机调试，不推荐）
 -mcp-token ""            HTTP MCP 的 Bearer Token（留空则启动时生成）
 -no-mcp                  关闭 HTTP MCP 端点
+-tls-keylog ""           NSS SSLKEYLOGFILE，用于 TLS 1.2/1.3 与 QUIC 解密
 -auto-update            自动更新开关（默认 true）
 -update-interval 10m    自动更新检查间隔
 -update-url ""          自动更新 manifest URL
@@ -140,7 +141,8 @@ sudo ./bin/ebpfshark -capture eth0,lo -snaplen 2048 -sample-rate 1
 环境变量：`EBPFSHARK_ADDR`、`EBPFSHARK_MAX_PACKETS`、`EBPFSHARK_IFACE`、`EBPFSHARK_WEB_DIR`、
 `EBPFSHARK_LOG_LEVEL`、`EBPFSHARK_AUTH_USER`、`EBPFSHARK_AUTH_PASS`、
 `EBPFSHARK_STREAM_BUDGET`、`EBPFSHARK_MCP_TOKEN`、`EBPFSHARK_AUTO_UPDATE`、
-`EBPFSHARK_UPDATE_INTERVAL`、`EBPFSHARK_UPDATE_URL`。
+`EBPFSHARK_UPDATE_INTERVAL`、`EBPFSHARK_UPDATE_URL`、`EBPFSHARK_TLS_KEYLOG`。
+`SSLKEYLOGFILE` 也会作为 `-tls-keylog` 的默认值。
 
 ### 开发模式
 
@@ -159,7 +161,15 @@ make dev-web
 
 ```bash
 make generate   # bpftool 生成 vmlinux.h，bpf2go 生成 capture_bpfel.{go,o}
-make go-build
+make go-build        # core：常用协议
+make go-build-full   # full：全部协议
+```
+
+也可以直接：
+
+```bash
+CGO_ENABLED=0 go build -tags full -o bin/ebpfshark ./cmd/ebpfshark
+go test -tags full ./...
 ```
 
 生成物 **不进入 git**：
@@ -194,6 +204,8 @@ make go-build
 
 ## 协议支持
 
+> 默认 **core** 构建只包含常用协议（DNS、DHCP、HTTP/1.x、TLS、IGMP/MPLS/GRE 及链路/网络/传输层）。完整协议集使用 `-tags full` 或 `make go-build-full`。
+
 > 标注“基础”的协议仍有消息类型/字段待补全，或受加密/压缩限制；加密内容不做解密。
 
 | 层次 | 协议 | 说明 |
@@ -213,11 +225,11 @@ make go-build
 | 隧道 | VXLAN | VNI + 内层以太网完整解析 |
 | 传输层 | TCP | 端口、序列号、标志位、窗口、常用选项、校验和 |
 | 传输层 | UDP | 端口、长度、校验和 |
-| 传输层 | TLS | 记录层、Handshake、ClientHello/SNI、Alert、Application Data 长度 |
-| 传输层 | QUIC | Long/Short Header、版本、连接 ID、包类型（基础，不解密） |
+| 传输层 | TLS | 记录层、ClientHello/ServerHello、SNI/ALPN、X.509 证书链、Alert；SSLKEYLOGFILE 解密 TLS 1.3/1.2 GCM |
+| 传输层 | QUIC | Long/Short Header、Initial 解密、帧解析、CRYPTO/TLS SNI；keylog 解密 Handshake/1-RTT |
 | 应用层 | DNS | A/AAAA/CNAME/NS/PTR/MX/TXT/SOA/SRV/CAA/NAPTR/TLSA/SVCB/HTTPS；EDNS0/DNSSEC 标志；mDNS/LLMNR |
 | 应用层 | HTTP/1.x | 请求行/状态行、Header、Body 预览 |
-| 应用层 | HTTP/2 | 明文帧：SETTINGS/HEADERS/DATA/GOAWAY/PING 等（基础；HPACK 未解码） |
+| 应用层 | HTTP/2 | 全部帧、HPACK 静态/动态表/Huffman、HEADERS+CONTINUATION、DATA 预览 |
 | 应用层 | DHCP | 完整 DHCPv4 消息类型、常用 option、Option Overload、Relay Agent、Classless Routes |
 | 应用层 | NTP | 版本、模式、Stratum、时间戳、扩展字段/MAC |
 | 应用层 | SNMP v1/v2c/v3 | 全部 PDU、v1 Trap、v2c Bulk、v3 USM 头/Scoped PDU、BER/OID/异常值 |
@@ -235,8 +247,8 @@ make go-build
 **过滤器**：新增协议同样支持协议谓词，例如 `mqtt`、`redis`、`vxlan`、`bgp`、
 `ssh`、`quic`、`http2`、`postgresql`、`igmp`、`wireguard`。
 
-**尚未支持**：TLS 解密/证书链、QUIC Initial 解密与 HTTP/3、HTTP/2 HPACK、
-WebSocket/gRPC、SCTP、MySQL、RADIUS/LDAP/Kerberos、RTP/RTCP、NetFlow/IPFIX。
+**尚未支持**：QUIC QPACK/HTTP3、TLS 1.2 CBC/ChaCha 解密、WebSocket/gRPC、
+SCTP、MySQL、RADIUS/LDAP/Kerberos、RTP/RTCP、NetFlow/IPFIX。
 
 ## 过滤器构造器
 
@@ -573,8 +585,8 @@ curl -s -b /tmp/ebpfshark.cookie \
 ## 已知限制
 
 - TCP 流重组只处理已捕获的字节：snaplen 截断、GSO/TSO 超级包、内核丢包都会表现为缺口；
-  重组不做应用层协议解析（HTTP body 分块、压缩、TLS 解密等仍需后续处理）。
-- 不解密 TLS：只能看到 Handshake / SNI / Application Data 长度。
+  重组不做应用层协议解析（HTTP body 分块、gzip/br 解压等仍需后续处理）。
+- 未提供 keylog 时不解密 TLS/QUIC 应用数据；只能看到握手/记录层字段。
 - snaplen ≤ 2048 B；超出部分标记为 truncated（列表中的 ✂）。
 - 过滤器在用户态执行，不具备内核级过滤的性能优势。
 - TCX 需要内核 ≥ 6.6 且启用 BTF；旧内核暂不支持。
@@ -603,13 +615,23 @@ curl -s -b /tmp/ebpfshark.cookie \
 - **Redis**：RESP3 的 chunked string（`;`）与 attribute（`|`）只做有限展开；
   顶层 reply 与命令的区分依赖已知命令表。
 - **DNS/DHCP**：DNS 未覆盖全部 RR 类型；DHCP 未实现全部 255 个 option。
-- **TLS/HTTP/2/QUIC**：TLS 证书链/ALPN、HTTP/2 HPACK、QUIC Initial 解密仍未完成；
-  没有 `SSLKEYLOGFILE` 时无法解密应用数据。
+- **TLS 解密**：需要启动时通过 `-tls-keylog` / `SSLKEYLOGFILE` 提供密钥；TLS 1.3
+  只支持 AES-128/256-GCM，TLS 1.2 只支持 AES-GCM；CBC/ChaCha 套件暂不解密。
+  若抓包从握手中间开始，缺少 ClientHello/ServerHello/序列号状态时只能显示密文。
+- **TLS 证书**：只做 X.509 解析，不做证书链信任校验；证书消息必须完整捕获，
+  snaplen 截断时只能显示部分 DER。
+- **HTTP/2 HPACK**：动态表按 TCP 流保存在内存中；CONTINUATION 只在同一 TCP 段内
+  合并，跨段分片或从连接中间开始抓包时可能无法解析动态索引。
+- **QUIC**：Initial 使用 RFC 9001 v1/v2 固定盐解密；Handshake/1-RTT 需要 keylog 且
+  必须先捕获 ClientHello。Short Header 默认按 8 字节 DCID 解析；HTTP/3 QPACK
+  尚未解码，只能看到 STREAM 明文帧。
+- **SSH**：仍只解析明文消息；加密后的 KEX/用户认证/通道数据无法解密，未实现
+  SSH 私钥导入。
 
 ## Roadmap
 
 - [ ] 内核态预过滤（把常用显示过滤器编译成 cBPF/eBPF）
-- [ ] HTTP/2、QUIC、gRPC 解析
+- [x] HTTP/2 HPACK、QUIC Initial/keylog（HTTP/3 QPACK 仍待补）
 - [ ] 抓包文件分片、时间范围导出
 - [ ] 报文着色规则与自定义列
 - [ ] Prometheus metrics / OpenTelemetry 导出
