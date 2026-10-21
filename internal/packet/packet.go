@@ -30,6 +30,60 @@ const (
 	LinkLinuxSLL2 LinkType = 276 // LINKTYPE_LINUX_SLL2
 )
 
+// LayerMask is a compact bitset of protocol layers present in a packet.
+type LayerMask uint64
+
+const (
+	LayerEth LayerMask = 1 << iota
+	LayerVLAN
+	LayerARP
+	LayerIPv4
+	LayerIPv6
+	LayerTCP
+	LayerUDP
+	LayerICMP
+	LayerICMPv6
+	LayerIGMP
+	LayerGRE
+	LayerMPLS
+	LayerVXLAN
+	LayerDNS
+	LayerHTTP
+	LayerHTTP2
+	LayerTLS
+	LayerDHCP
+	LayerQUIC
+	LayerNTP
+	LayerSNMP
+	LayerSyslog
+	LayerSTUN
+	LayerMQTT
+	LayerRedis
+	LayerPostgreSQL
+	LayerBGP
+	LayerSSH
+	LayerSSDP
+	LayerSIP
+	LayerWireGuard
+	LayerData
+)
+
+var layerBits = map[string]LayerMask{
+	"eth": LayerEth, "vlan": LayerVLAN, "arp": LayerARP, "ip": LayerIPv4,
+	"ipv6": LayerIPv6, "tcp": LayerTCP, "udp": LayerUDP, "icmp": LayerICMP,
+	"icmpv6": LayerICMPv6, "igmp": LayerIGMP, "gre": LayerGRE, "mpls": LayerMPLS,
+	"vxlan": LayerVXLAN, "dns": LayerDNS, "http": LayerHTTP, "http2": LayerHTTP2,
+	"tls": LayerTLS, "ssl": LayerTLS, "dhcp": LayerDHCP, "quic": LayerQUIC,
+	"ntp": LayerNTP, "snmp": LayerSNMP, "syslog": LayerSyslog, "stun": LayerSTUN,
+	"mqtt": LayerMQTT, "redis": LayerRedis, "postgresql": LayerPostgreSQL,
+	"postgres": LayerPostgreSQL, "bgp": LayerBGP, "ssh": LayerSSH, "ssdp": LayerSSDP,
+	"sip": LayerSIP, "wireguard": LayerWireGuard, "wg": LayerWireGuard, "data": LayerData,
+	"ip6": LayerIPv6, "icmp6": LayerICMPv6,
+}
+
+// LayerBit returns the bit for a layer name, or 0 if unknown.
+func LayerBit(name string) LayerMask { return layerBits[name] }
+
 // Packet is a single captured frame.
 type Packet struct {
 	ID        uint64    `json:"id"`
@@ -68,8 +122,9 @@ type Meta struct {
 	FrameLen int
 	CapLen   int
 
-	LinkType LinkType
-	Layers   []string
+	LinkType  LinkType
+	Layers    []string
+	LayerMask LayerMask
 
 	SrcIP   netip.Addr
 	DstIP   netip.Addr
@@ -121,6 +176,9 @@ type Meta struct {
 
 // HasLayer reports whether the given protocol layer was dissected.
 func (m *Meta) HasLayer(name string) bool {
+	if bit := LayerBit(name); bit != 0 && m.LayerMask != 0 {
+		return m.LayerMask&bit != 0
+	}
 	for _, l := range m.Layers {
 		if l == name {
 			return true

@@ -117,6 +117,7 @@ func (s *Store) Add(p *packet.Packet) {
 		p.Summary = res.Summary
 		p.Meta = res.Meta
 		p.LinkType = res.Meta.LinkType
+		decode.ReleaseFields(res.Fields)
 	}
 	if p.Time.IsZero() {
 		p.Time = time.Now()
@@ -224,7 +225,7 @@ func (s *Store) updateFlow(p *packet.Packet) {
 		key := aIP.String() + "|" + bIP.String() + "|" + proto + "|" + itoa(aPort) + "|" + itoa(bPort)
 		f, ok := s.flows[key]
 		if !ok {
-			if len(s.flows) >= s.maxFlows {
+			if len(s.flows) >= s.maxFlows+s.maxFlows/16 {
 				s.evictFlow()
 			}
 			f = &Flow{
@@ -305,16 +306,24 @@ func tcpState(flags uint8) string {
 }
 
 func (s *Store) evictFlow() {
-	var oldestKey string
-	var oldest time.Time
-	for k, f := range s.flows {
-		if oldestKey == "" || f.Last.Before(oldest) {
-			oldestKey = k
-			oldest = f.Last
-		}
+	type item struct {
+		key  string
+		last time.Time
 	}
-	if oldestKey != "" {
-		delete(s.flows, oldestKey)
+	items := make([]item, 0, len(s.flows))
+	for k, f := range s.flows {
+		items = append(items, item{k, f.Last})
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].last.Before(items[j].last) })
+	target := s.maxFlows / 8
+	if target < 64 {
+		target = 64
+	}
+	for i := 0; i < len(items) && i < target; i++ {
+		if len(s.flows) <= s.maxFlows*95/100 {
+			break
+		}
+		delete(s.flows, items[i].key)
 	}
 }
 

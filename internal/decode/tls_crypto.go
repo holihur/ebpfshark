@@ -74,6 +74,7 @@ type tlsFlow struct {
 	suite              uint16
 	hsSeqC, hsSeqS     uint64
 	appSeqC, appSeqS   uint64
+	appActive          [2]bool
 	seq12C, seq12S     uint64
 	cache              map[string]tlsCached
 }
@@ -323,17 +324,19 @@ func (f *tlsFlow) decryptRecord(c *ctx, header, body []byte) ([]byte, byte, stri
 			labels[0], labels[1] = labels[1], labels[0]
 			seqs[0], seqs[1] = seqs[1], seqs[0]
 		}
-		for i := 0; i < 2; i++ {
-			secret := keylogSecret(random, labels[i])
-			if secret == nil {
-				continue
-			}
-			start := *seqs[i]
-			for n := uint64(0); n < 64; n++ {
-				seq := start + n
-				if pt, inner, ok := tls13Open(secret, f.suite, seq, header, body); ok {
-					*seqs[i] = seq + 1
-					return pt, inner, labels[i], true
+		if !f.appActive[dir] {
+			for i := 0; i < 2; i++ {
+				secret := keylogSecret(random, labels[i])
+				if secret == nil {
+					continue
+				}
+				start := *seqs[i]
+				for n := uint64(0); n < 64; n++ {
+					seq := start + n
+					if pt, inner, ok := tls13Open(secret, f.suite, seq, header, body); ok {
+						*seqs[i] = seq + 1
+						return pt, inner, labels[i], true
+					}
 				}
 			}
 		}
@@ -353,6 +356,7 @@ func (f *tlsFlow) decryptRecord(c *ctx, header, body []byte) ([]byte, byte, stri
 				seq := start + n
 				if pt, inner, ok := tls13Open(secret, f.suite, seq, header, body); ok {
 					*appSeqs[i] = seq + 1
+					f.appActive[dir] = true
 					return pt, inner, appLabels[i], true
 				}
 			}

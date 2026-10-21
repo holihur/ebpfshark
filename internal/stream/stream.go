@@ -3,6 +3,7 @@
 package stream
 
 import (
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -69,6 +70,7 @@ type Manager struct {
 	budget     int64
 	dirLimit   int
 	evicted    uint64
+	lastEvict  time.Time
 }
 
 // NewManager creates a manager with a global payload budget in bytes.
@@ -192,23 +194,45 @@ func (m *Manager) Stats() Stats {
 }
 
 func (m *Manager) enforceLimitsLocked() {
-	for (len(m.convs) > maxFlows || m.totalBytes > m.budget) && len(m.convs) > 0 {
-		var oldestKey string
-		var oldest time.Time
-		for key, c := range m.convs {
-			if oldestKey == "" || c.last.Before(oldest) {
-				oldestKey = key
-				oldest = c.last
-			}
+	if len(m.convs) <= maxFlows && m.totalBytes <= m.budget {
+		return
+	}
+	// Avoid an O(n) scan on every packet. Allow a small overshoot, then evict
+	// a batch at most a few times per second.
+	if time.Since(m.lastEvict) < 250*time.Millisecond &&
+		len(m.convs) <= maxFlows+maxFlows/16 &&
+		m.totalBytes <= m.budget {
+		return
+	}
+	type item struct {
+		key  string
+		last time.Time
+	}
+	items := make([]item, 0, len(m.convs))
+	for key, c := range m.convs {
+		items = append(items, item{key, c.last})
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].last.Before(items[j].last) })
+	target := maxFlows / 8
+	if target < 64 {
+		target = 64
+	}
+	evictTo := m.budget * 95 / 100
+	limit := target
+	if m.totalBytes > m.budget {
+		limit = len(items)
+	}
+	for i := 0; i < len(items) && i < limit; i++ {
+		if len(m.convs) <= maxFlows && m.totalBytes <= evictTo {
+			break
 		}
-		if oldestKey == "" {
-			return
-		}
-		c := m.convs[oldestKey]
+		key := items[i].key
+		c := m.convs[key]
 		m.totalBytes -= int64(c.a2b.size() + c.b2a.size())
-		delete(m.convs, oldestKey)
+		delete(m.convs, key)
 		m.evicted++
 	}
+	m.lastEvict = time.Now()
 }
 
 func (c *conversation) snapshot() Snapshot {

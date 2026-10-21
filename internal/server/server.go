@@ -441,6 +441,7 @@ func (s *Server) handlePacketDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	res := decode.Decode(p.Data, p.LinkType, int(p.WireLen))
+	defer decode.ReleaseFields(res.Fields)
 	writeJSON(w, http.StatusOK, detailResponse{
 		Packet:   toPacketJSON(p),
 		Fields:   res.Fields,

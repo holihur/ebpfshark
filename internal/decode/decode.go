@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/netip"
 	"strings"
+	"sync"
 
 	"ebpfshark/internal/packet"
 )
@@ -199,6 +200,7 @@ func (c *ctx) fallbackInfo() string {
 
 func (c *ctx) addLayer(name string) {
 	c.layers = append(c.layers, name)
+	c.m.LayerMask |= packet.LayerBit(name)
 }
 
 func (c *ctx) addRoot(f *Field) {
@@ -207,12 +209,37 @@ func (c *ctx) addRoot(f *Field) {
 	}
 }
 
+var fieldPool = sync.Pool{New: func() any { return &Field{} }}
+
+func allocField(label, value string, off, length int) *Field {
+	f := fieldPool.Get().(*Field)
+	f.Label, f.Value, f.Offset, f.Length, f.Severity, f.Children = label, value, off, length, "", nil
+	return f
+}
+
 func newField(label, value string, off, length int) *Field {
-	return &Field{Label: label, Value: value, Offset: off, Length: length}
+	return allocField(label, value, off, length)
 }
 
 func newNode(label string, off, length int) *Field {
-	return &Field{Label: label, Offset: off, Length: length}
+	return allocField(label, "", off, length)
+}
+
+// ReleaseFields returns a protocol tree to the decoder's pool. Callers that
+// only need Summary/Meta (the ingest path) use this to cut GC pressure.
+func ReleaseFields(fields []*Field) {
+	for _, f := range fields {
+		if f == nil {
+			continue
+		}
+		if len(f.Children) > 0 {
+			ReleaseFields(f.Children)
+		}
+		f.Label, f.Value = "", ""
+		f.Offset, f.Length, f.Severity = 0, 0, ""
+		f.Children = nil
+		fieldPool.Put(f)
+	}
 }
 
 func (f *Field) add(children ...*Field) *Field {
