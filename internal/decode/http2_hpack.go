@@ -16,7 +16,7 @@ type h2Flow struct {
 	cache              map[string][]hpack.HeaderField
 }
 
-var h2Flows sync.Map
+var h2Flows = flowStore[*h2Flow]{max: 2048}
 
 func h2FlowKey(c *ctx) string {
 	a := fmt.Sprintf("%s:%d", c.m.SrcIP, c.m.SrcPort)
@@ -29,16 +29,13 @@ func h2FlowKey(c *ctx) string {
 
 func h2FlowFor(c *ctx) *h2Flow {
 	key := h2FlowKey(c)
-	if v, ok := h2Flows.Load(key); ok {
-		return v.(*h2Flow)
-	}
-	f := &h2Flow{
-		decC:  hpack.NewDecoder(4096, nil),
-		decS:  hpack.NewDecoder(4096, nil),
-		cache: make(map[string][]hpack.HeaderField),
-	}
-	actual, _ := h2Flows.LoadOrStore(key, f)
-	return actual.(*h2Flow)
+	return h2Flows.GetOrCreate(key, func() *h2Flow {
+		return &h2Flow{
+			decC:  hpack.NewDecoder(4096, nil),
+			decS:  hpack.NewDecoder(4096, nil),
+			cache: make(map[string][]hpack.HeaderField),
+		}
+	})
 }
 
 func (f *h2Flow) observeClient(c *ctx) {

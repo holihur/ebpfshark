@@ -40,13 +40,11 @@ func Schema() []FieldSchema {
 		return FieldSchema{Name: name, Group: "Payload", Type: "bytes", Ops: bytesOps}
 	}
 
-	return []FieldSchema{
-		layer("ip"), layer("ipv6"), layer("tcp"), layer("udp"), layer("icmp"), layer("icmpv6"),
-		layer("arp"), layer("dns"), layer("http"), layer("http2"), layer("tls"), layer("dhcp"),
-		layer("vlan"), layer("eth"), layer("vxlan"), layer("mpls"), layer("gre"), layer("igmp"),
-		layer("quic"), layer("ntp"), layer("snmp"), layer("syslog"), layer("stun"), layer("mqtt"),
-		layer("redis"), layer("postgresql"), layer("bgp"), layer("ssh"), layer("ssdp"), layer("sip"),
-		layer("wireguard"),
+	fields := make([]FieldSchema, 0, 96)
+	for _, name := range protocolLayerNames() {
+		fields = append(fields, layer(name))
+	}
+	fields = append(fields, []FieldSchema{
 
 		num("frame.len", "Frame"),
 		num("frame.cap_len", "Frame"),
@@ -115,5 +113,6 @@ func Schema() []FieldSchema {
 		str("tls.handshake.extensions_server_name", "Application"),
 
 		bytes("frame"), bytes("data"), bytes("payload"),
-	}
+	}...)
+	return fields
 }

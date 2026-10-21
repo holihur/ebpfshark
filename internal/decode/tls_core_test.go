@@ -6,7 +6,9 @@ import (
 	"crypto/cipher"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha1"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/binary"
@@ -143,4 +145,56 @@ func hexString(b []byte) string {
 		out[i*2], out[i*2+1] = h[v>>4], h[v&15]
 	}
 	return string(out)
+}
+
+func TestTLS12CBCDecrypt(t *testing.T) {
+	master := bytes.Repeat([]byte{7}, 48)
+	cr := bytes.Repeat([]byte{0x31}, 32)
+	sr := bytes.Repeat([]byte{0x32}, 32)
+	keylogData.Lock()
+	keylogData.m[hexString(cr)] = map[string][]byte{"CLIENT_RANDOM": master}
+	keylogData.Unlock()
+	key, _, macKey, _, hf, ok := tls12CBCKeys(master, cr, sr, 0x002f)
+	if !ok {
+		t.Fatal("CBC keys")
+	}
+
+	plain := []byte("hello cbc")
+	content := append([]byte(nil), plain...)
+	content = append(content, make([]byte, 20)...) // MAC placeholder
+	padLen := 15 - len(content)%16
+	content = append(content, make([]byte, padLen+1)...)
+	for i := len(content) - padLen - 1; i < len(content); i++ {
+		content[i] = byte(padLen)
+	}
+	bodyLen := 16 + len(content)
+	header := []byte{23, 0x03, 0x03, byte(bodyLen >> 8), byte(bodyLen)}
+	h := hmac.New(sha1.New, macKey)
+	h.Write([]byte{0, 0, 0, 0, 0, 0, 0, 0})
+	h.Write(header)
+	h.Write(plain)
+	copy(content[len(plain):], h.Sum(nil))
+	iv := bytes.Repeat([]byte{0x44}, 16)
+	block, _ := aes.NewCipher(key)
+	ct := make([]byte, len(content))
+	cipher.NewCBCEncrypter(block, iv).CryptBlocks(ct, content)
+	rec := append(header, iv...)
+	rec = append(rec, ct...)
+	if _, ok := tls12CBCOpen(key, macKey, hf, 0, header, rec[5:]); !ok {
+		t.Fatal("direct CBC open failed")
+	}
+
+	c := appCtx(rec)
+	flow := tlsFlowFor(c)
+	flow.observeClientHello(c, cr)
+	flow.Lock()
+	flow.serverRandom, flow.version, flow.suite = sr, 0x0303, 0x002f
+	flow.Unlock()
+	if !c.dissectTLS(rec, 0) {
+		t.Fatal("CBC record not recognized")
+	}
+	if string(c.m.Payload) != "hello cbc" {
+		t.Fatalf("CBC plaintext = %q, labels: %v", c.m.Payload, fieldLabels(c.roots))
+	}
+	_ = hf
 }

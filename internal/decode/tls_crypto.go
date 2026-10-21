@@ -4,6 +4,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
+	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/binary"
@@ -83,7 +84,7 @@ type tlsCached struct {
 	label string
 }
 
-var tlsFlows sync.Map // canonical endpoint key -> *tlsFlow
+var tlsFlows = flowStore[*tlsFlow]{max: 4096}
 
 func epKey(c *ctx, ipPort string) string { _ = c; return ipPort }
 
@@ -98,12 +99,9 @@ func tlsFlowKey(c *ctx) string {
 
 func tlsFlowFor(c *ctx) *tlsFlow {
 	key := tlsFlowKey(c)
-	if v, ok := tlsFlows.Load(key); ok {
-		return v.(*tlsFlow)
-	}
-	f := &tlsFlow{cache: make(map[string]tlsCached)}
-	actual, _ := tlsFlows.LoadOrStore(key, f)
-	return actual.(*tlsFlow)
+	return tlsFlows.GetOrCreate(key, func() *tlsFlow {
+		return &tlsFlow{cache: make(map[string]tlsCached)}
+	})
 }
 
 func (f *tlsFlow) observeClientHello(c *ctx, random []byte) {
@@ -387,6 +385,92 @@ func (f *tlsFlow) decryptRecord(c *ctx, header, body []byte) ([]byte, byte, stri
 				}
 			}
 		}
+		ck, sk, cmac, smac, hf, ok := tls12CBCKeys(master, f.clientRandom, f.serverRandom, f.suite)
+		if ok {
+			key, mac, seqp := ck, cmac, &f.seq12C
+			if dir == 1 {
+				key, mac, seqp = sk, smac, &f.seq12S
+			}
+			start := *seqp
+			for n := uint64(0); n < 128; n++ {
+				seq := start + n
+				if pt, ok := tls12CBCOpen(key, mac, hf, seq, header, body); ok {
+					*seqp = seq + 1
+					f.cache[cacheKey] = tlsCached{append([]byte(nil), pt...), 23, "CLIENT_RANDOM"}
+					return pt, 23, "CLIENT_RANDOM", true
+				}
+			}
+		}
 	}
 	return nil, 0, "", false
+}
+
+// tls12CBCSuite reports whether suite is an AES-CBC/HMAC suite supported by
+// the best-effort TLS 1.2 decryptor.
+func tls12CBCSuite(suite uint16) (keyLen int, hf func() hash.Hash, ok bool) {
+	switch suite {
+	case 0x002f, 0xc013, 0xc009, 0xc023:
+		return 16, sha256.New, true // AES-128-CBC with SHA-1 MAC (PRF is SHA-256)
+	case 0x0035, 0xc014, 0xc00a, 0xc024:
+		return 32, sha256.New, true // AES-256-CBC
+	}
+	return 0, nil, false
+}
+
+func tls12CBCKeys(master, clientRandom, serverRandom []byte, suite uint16) (ck, sk, cmac, smac []byte, hf func() hash.Hash, ok bool) {
+	keyLen, hf, ok := tls12CBCSuite(suite)
+	if !ok {
+		return nil, nil, nil, nil, nil, false
+	}
+	const macLen = 20
+	const ivLen = 16
+	seed := append(append([]byte(nil), serverRandom...), clientRandom...)
+	kb := tls12PRF(master, "key expansion", seed, 2*(macLen+keyLen+ivLen), hf)
+	p := 0
+	cmac = kb[p : p+macLen]
+	p += macLen
+	smac = kb[p : p+macLen]
+	p += macLen
+	ck = kb[p : p+keyLen]
+	p += keyLen
+	sk = kb[p : p+keyLen]
+	p += keyLen
+	return ck, sk, cmac, smac, hf, true
+}
+
+func tls12CBCOpen(key, macKey []byte, hf func() hash.Hash, seq uint64, header, body []byte) ([]byte, bool) {
+	_ = hf // PRF hash; these suites authenticate records with HMAC-SHA1.
+	if len(body) < 16+16+1 {
+		return nil, false
+	}
+	iv := body[:16]
+	ct := body[16:]
+	block, err := aes.NewCipher(key)
+	if err != nil || len(ct)%aes.BlockSize != 0 {
+		return nil, false
+	}
+	pt := make([]byte, len(ct))
+	cipher.NewCBCDecrypter(block, iv).CryptBlocks(pt, ct)
+	pad := int(pt[len(pt)-1])
+	if pad+1 > len(pt) || len(pt)-1-pad < 20 {
+		return nil, false
+	}
+	for _, b := range pt[len(pt)-1-pad:] {
+		if int(b) != pad {
+			return nil, false
+		}
+	}
+	contentEnd := len(pt) - 1 - pad
+	plain := pt[:contentEnd-20]
+	recvMAC := pt[contentEnd-20 : contentEnd]
+	macInput := make([]byte, 8+len(header)+len(plain))
+	binary.BigEndian.PutUint64(macInput, seq)
+	copy(macInput[8:], header)
+	copy(macInput[8+len(header):], plain)
+	h := hmac.New(sha1.New, macKey)
+	h.Write(macInput)
+	if !hmac.Equal(h.Sum(nil), recvMAC) {
+		return nil, false
+	}
+	return plain, true
 }

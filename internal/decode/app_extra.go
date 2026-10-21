@@ -465,7 +465,10 @@ func mqttLooksLikeProps(b []byte, off int) bool {
 		return false
 	}
 	if l == 0 {
-		return true
+		// Empty properties are valid in MQTT v5, but treating a v4 payload
+		// starting with 0x00 as empty properties corrupts the payload. Require
+		// a non-empty, known property for the stateless heuristic.
+		return false
 	}
 	if n >= len(b) {
 		return false

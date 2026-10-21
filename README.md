@@ -225,7 +225,7 @@ go test -tags full ./...
 | 隧道 | VXLAN | VNI + 内层以太网完整解析 |
 | 传输层 | TCP | 端口、序列号、标志位、窗口、常用选项、校验和 |
 | 传输层 | UDP | 端口、长度、校验和 |
-| 传输层 | TLS | 记录层、ClientHello/ServerHello、SNI/ALPN、X.509 证书链、Alert；SSLKEYLOGFILE 解密 TLS 1.3/1.2 GCM |
+| 传输层 | TLS | 记录层、ClientHello/ServerHello、SNI/ALPN、X.509 证书链、Alert；SSLKEYLOGFILE 解密 TLS 1.3 AES-GCM、TLS 1.2 AES-GCM/CBC |
 | 传输层 | QUIC | Long/Short Header、Initial 解密、帧解析、CRYPTO/TLS SNI；keylog 解密 Handshake/1-RTT |
 | 应用层 | DNS | A/AAAA/CNAME/NS/PTR/MX/TXT/SOA/SRV/CAA/NAPTR/TLSA/SVCB/HTTPS；EDNS0/DNSSEC 标志；mDNS/LLMNR |
 | 应用层 | HTTP/1.x | 请求行/状态行、Header、Body 预览 |
@@ -247,7 +247,7 @@ go test -tags full ./...
 **过滤器**：新增协议同样支持协议谓词，例如 `mqtt`、`redis`、`vxlan`、`bgp`、
 `ssh`、`quic`、`http2`、`postgresql`、`igmp`、`wireguard`。
 
-**尚未支持**：QUIC QPACK/HTTP3、TLS 1.2 CBC/ChaCha 解密、WebSocket/gRPC、
+**尚未支持**：QUIC QPACK/HTTP3、TLS 1.2 ChaCha20/CCM 解密、WebSocket/gRPC、
 SCTP、MySQL、RADIUS/LDAP/Kerberos、RTP/RTCP、NetFlow/IPFIX。
 
 ## 过滤器构造器
@@ -599,8 +599,8 @@ curl -s -b /tmp/ebpfshark.cookie \
 
 ### 协议解析已知问题
 
-- **MQTT**：v4/v5 的 Properties 主要依据报文内“属性长度 + 已知属性 ID”启发式识别，
-  未按连接持久化协议版本；v4 PUBLISH 载荷以 `0x00` 开头时可能被误判为 v5 空属性。
+- **MQTT**：v4/v5 的 Properties 主要依据报文内“非空属性长度 + 已知属性 ID”启发式识别，
+  未按连接持久化协议版本；v5 空 Properties 不会自动识别，会作为载荷显示。
 - **PostgreSQL**：`'D'`（DataRow/Describe）、`'E'`（ErrorResponse/Execute）、
   `'S'`（ParameterStatus/Sync）在前端与后端含义不同，当前按报文结构启发式区分；
   SASL 认证只展开消息类型，不解析 SASL 机制载荷。
@@ -616,12 +616,12 @@ curl -s -b /tmp/ebpfshark.cookie \
   顶层 reply 与命令的区分依赖已知命令表。
 - **DNS/DHCP**：DNS 未覆盖全部 RR 类型；DHCP 未实现全部 255 个 option。
 - **TLS 解密**：需要启动时通过 `-tls-keylog` / `SSLKEYLOGFILE` 提供密钥；TLS 1.3
-  只支持 AES-128/256-GCM，TLS 1.2 只支持 AES-GCM；CBC/ChaCha 套件暂不解密。
+  支持 AES-128/256-GCM，TLS 1.2 支持 AES-GCM 与 AES-CBC；ChaCha20/CCM 套件暂不解密。
   若抓包从握手中间开始，缺少 ClientHello/ServerHello/序列号状态时只能显示密文。
 - **TLS 证书**：只做 X.509 解析，不做证书链信任校验；证书消息必须完整捕获，
   snaplen 截断时只能显示部分 DER。
-- **HTTP/2 HPACK**：动态表按 TCP 流保存在内存中；CONTINUATION 只在同一 TCP 段内
-  合并，跨段分片或从连接中间开始抓包时可能无法解析动态索引。
+- **HTTP/2 HPACK**：动态表按 TCP 流保存在有上限的 flow store 中；CONTINUATION 只在
+  同一 TCP 段内合并，跨段分片或从连接中间开始抓包时可能无法解析动态索引。
 - **QUIC**：Initial 使用 RFC 9001 v1/v2 固定盐解密；Handshake/1-RTT 需要 keylog 且
   必须先捕获 ClientHello。Short Header 默认按 8 字节 DCID 解析；HTTP/3 QPACK
   尚未解码，只能看到 STREAM 明文帧。
