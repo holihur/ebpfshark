@@ -76,6 +76,23 @@ ENV_FILE="${ENV_DIR}/ebpfshark.env"
 UNIT_FILE="${ROOT}/etc/systemd/system/${SERVICE}.service"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+require_build_deps() {
+  local missing=0
+  for tool in make go pnpm clang llvm-strip bpftool; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+      echo "  missing: $tool" >&2
+      missing=1
+    fi
+  done
+  if [[ ! -f /usr/include/bpf/bpf_helpers.h ]]; then
+    echo "  missing: libbpf headers (/usr/include/bpf/bpf_helpers.h)" >&2
+    missing=1
+  fi
+  if [[ "$missing" -ne 0 ]]; then
+    die "build dependencies required; on Debian/Ubuntu: apt-get install -y clang llvm libbpf-dev bpftool (plus Go and pnpm)"
+  fi
+}
+
 gen_secret() {
   if command -v openssl >/dev/null 2>&1; then
     openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 32
@@ -101,8 +118,7 @@ if [[ "$UNINSTALL" -eq 1 ]]; then
 fi
 
 if [[ "$REBUILD" -eq 1 ]]; then
-  command -v go >/dev/null 2>&1 || die "go is required for --rebuild"
-  command -v pnpm >/dev/null 2>&1 || die "pnpm is required for --rebuild"
+  require_build_deps
   info "building ebpfshark"
   (cd "$SCRIPT_DIR" && make web && make go-build)
 fi
@@ -111,9 +127,8 @@ if [[ -z "$BINARY" ]]; then
   if [[ -x "$SCRIPT_DIR/bin/ebpfshark" ]]; then
     BINARY="$SCRIPT_DIR/bin/ebpfshark"
   else
-    command -v go >/dev/null 2>&1 || die "no binary found; build first or pass --binary"
-    command -v pnpm >/dev/null 2>&1 || die "pnpm is required to build the web UI"
-    info "no prebuilt binary, building"
+    require_build_deps
+    info "no prebuilt binary, building (eBPF objects are generated locally)"
     (cd "$SCRIPT_DIR" && make web && make go-build)
     BINARY="$SCRIPT_DIR/bin/ebpfshark"
   fi

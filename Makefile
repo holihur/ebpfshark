@@ -8,6 +8,7 @@ BIN := bin/ebpfshark
 WEB_DIR := web
 WEB_DIST := internal/server/webdist
 VMLINUX := internal/capture/bpf/vmlinux.h
+GENERATED := internal/capture/capture_bpfel.go internal/capture/capture_bpfel.o
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo 0.1.0-dev)
 LDFLAGS := -X ebpfshark/internal/server.Version=$(VERSION)
 
@@ -20,7 +21,7 @@ help:
 	@echo "  make build      Regenerate eBPF, build the UI, compile the binary"
 	@echo "  make generate   Rebuild vmlinux.h + eBPF object (needs clang, bpftool)"
 	@echo "  make web        Build the React UI into $(WEB_DIST)"
-	@echo "  make go-build   Compile the Go binary only"
+	@echo "  make go-build   Compile the Go binary (generates eBPF objects if missing)"
 	@echo "  make run        Run the backend on :9999 (UI must be built)"
 	@echo "  make dev        Run the backend on :9999 with debug logging"
 	@echo "  make dev-web    Run the Vite dev server on :5173 (proxies to :9999)"
@@ -44,24 +45,27 @@ web:
 	cp -r $(WEB_DIR)/dist/. $(WEB_DIST)/
 	touch $(WEB_DIST)/.keep
 
-go-build:
+go-build: $(GENERATED)
 	mkdir -p bin
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags '$(LDFLAGS)' -o $(BIN) ./cmd/ebpfshark
+
+$(GENERATED): $(VMLINUX) internal/capture/bpf/capture.c internal/capture/generate.go
+	cd internal/capture && $(GO) generate ./...
 
 run: go-build
 	./$(BIN) -addr :9999
 
-dev:
+dev: $(GENERATED)
 	$(GO) run ./cmd/ebpfshark -addr :9999 -log-level debug
 
 dev-web:
 	cd $(WEB_DIR) && $(PNPM) run dev
 
-test:
+test: $(GENERATED)
 	$(GO) test ./...
 	cd $(WEB_DIR) && $(PNPM) run lint
 
-vet:
+vet: $(GENERATED)
 	$(GO) vet ./...
 
 deps:
@@ -70,3 +74,4 @@ deps:
 
 clean:
 	rm -rf bin $(WEB_DIST)/assets $(WEB_DIST)/index.html $(WEB_DIST)/favicon.svg $(WEB_DIR)/dist
+	rm -f $(GENERATED) $(VMLINUX)

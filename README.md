@@ -43,7 +43,7 @@ ebpfshark 使用 TCX（TC eXpress）把两个很小的 eBPF 程序挂到网卡�
 | 权限 | root，或 `CAP_BPF` + `CAP_NET_ADMIN` + `CAP_PERFMON` |
 | Go | ≥ 1.25 |
 | Node.js | ≥ 20，包管理器使用 **pnpm** |
-| 重新生成 eBPF 时 | `clang`、`llvm`、`bpftool`、`libbpf-dev` |
+| 从源码构建 eBPF | `clang`、`llvm`（含 `llvm-strip`）、`bpftool`、`libbpf-dev` |
 
 Ubuntu / Debian 安装构建依赖：
 
@@ -73,10 +73,11 @@ sudo ./install.sh
 ### 方式二：手动构建
 
 ```bash
-# 1. 安装前端依赖并构建（eBPF 对象已随仓库提供）
-make web
+# 1. 生成 eBPF 对象（vmlinux.h + bpf2go，需要 clang/bpftool/libbpf-dev）
+make generate
 
-# 2. 编译二进制（内嵌前端）
+# 2. 构建前端并编译二进制（也可以直接 make build）
+make web
 make go-build
 
 # 3. 运行（需要 root / CAP_BPF）
@@ -85,6 +86,10 @@ sudo ./bin/ebpfshark -addr :9999
 # 首次启动会在日志和 stderr 打印随机生成的管理员密码
 # 打开 http://localhost:9999，使用 admin + 该密码登录
 ```
+
+> 仓库不提交 eBPF 生成物。首次从源码构建必须安装 `clang`、`llvm`、`bpftool`
+> 和 `libbpf-dev`；`make go-build` 在缺少生成文件时也会自动调用 `make generate`。
+> 如果使用一键安装且仓库中没有 `bin/ebpfshark`，同样需要这些构建依赖。
 
 建议通过环境变量设置固定密码（避免每次重启重新生成，也避免密码出现在 `ps` 中）：
 
@@ -156,6 +161,18 @@ make dev-web
 make generate   # bpftool 生成 vmlinux.h，bpf2go 生成 capture_bpfel.{go,o}
 make go-build
 ```
+
+生成物 **不进入 git**：
+
+| 文件 | 处理方式 |
+| --- | --- |
+| `internal/capture/bpf/vmlinux.h` | 从本机 `/sys/kernel/btf/vmlinux` 生成 |
+| `internal/capture/capture_bpfel.go` | bpf2go 生成 |
+| `internal/capture/capture_bpfel.o` | bpf2go 生成，由 `//go:embed` 嵌入二进制 |
+| `web/dist`、`internal/server/webdist/assets` | 前端构建产物 |
+| `bin/`、`web/node_modules/` | 构建/依赖产物 |
+
+因此首次构建请执行 `make build`（或 `make generate`），不要直接运行 `go build ./...`。
 
 ## 使用说明
 
@@ -487,8 +504,8 @@ tcp contains "GET /admin"
 cmd/ebpfshark/              main：flag、信号处理、HTTP server
 internal/capture/           eBPF 加载、TCX 挂载、ringbuf 读取、网卡枚举
   bpf/capture.c             抓包 eBPF C 代码
-  bpf/vmlinux.h             bpftool 生成的内核类型（CO-RE）
-  capture_bpfel.{go,o}      bpf2go 生成
+  bpf/vmlinux.h             bpftool 生成（本地生成，不提交）
+  capture_bpfel.{go,o}      bpf2go 生成（本地生成，不提交）
 internal/decode/            30+ 协议解析（Ethernet/IP/TCP/UDP/应用层/隧道）
 internal/filter/            显示过滤器 lexer/parser/matcher + 构造器 schema
 internal/auth/              密码校验、内存会话、登录限流

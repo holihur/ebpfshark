@@ -5,6 +5,9 @@
 /web/*.tsbuildinfo
 /internal/server/webdist/*
 !/internal/server/webdist/.keep
+/internal/capture/bpf/vmlinux.h
+/internal/capture/capture_bpfel.go
+/internal/capture/capture_bpfel.o
 *.log
 .DS_Store
 

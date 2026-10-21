@@ -4,6 +4,9 @@
 
 ## 1. 一键安装
 
+> 如果仓库中没有 `bin/ebpfshark`，安装脚本会从源码构建，需要 eBPF 构建依赖。
+> 只想安装现成二进制时使用 `--binary PATH`。
+
 在项目目录中执行：
 
 ```bash
@@ -14,6 +17,8 @@ sudo ./install.sh
 安装脚本会：
 
 1. 使用已有的 `bin/ebpfshark`；没有则自动执行 `make web && make go-build`
+   （会先生成 `vmlinux.h` 与 `capture_bpfel.{go,o}`，需要 `clang`、`llvm`、
+   `bpftool`、`libbpf-dev`；也可用 `--binary` 安装现成二进制）
 2. 安装二进制到 `/usr/local/bin/ebpfshark`
 3. 生成 `/etc/ebpfshark/ebpfshark.env`（权限 600）：
    - 管理员用户名 / 随机密码
