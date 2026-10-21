@@ -11,7 +11,7 @@ import (
 
 var httpPorts = map[uint16]bool{80: true, 81: true, 591: true, 3000: true, 3128: true, 8000: true, 8008: true, 8080: true, 8081: true, 8888: true}
 var tlsPorts = map[uint16]bool{443: true, 465: true, 636: true, 853: true, 993: true, 995: true, 8443: true, 9443: true, 10443: true}
-var dnsPorts = map[uint16]bool{53: true, 5353: true}
+var dnsPorts = map[uint16]bool{53: true, 5353: true, 5355: true}
 
 func (c *ctx) dissectUDPPayload(b []byte, base int, sport, dport uint16) bool {
 	if len(b) == 0 {
@@ -27,6 +27,26 @@ func (c *ctx) dissectUDPPayload(b []byte, base int, sport, dport uint16) bool {
 			return true
 		}
 	}
+	switch {
+	case sport == 123 || dport == 123:
+		return c.dissectNTP(b, base)
+	case sport == 161 || dport == 161 || sport == 162 || dport == 162:
+		return c.dissectSNMP(b, base)
+	case sport == 514 || dport == 514:
+		return c.dissectSyslog(b, base)
+	case sport == 3478 || dport == 3478 || sport == 3479 || dport == 3479:
+		return c.dissectSTUN(b, base)
+	case sport == 4789 || dport == 4789 || sport == 8472 || dport == 8472:
+		return c.dissectVXLAN(b, base)
+	case sport == 51820 || dport == 51820:
+		return c.dissectWireGuard(b, base)
+	case sport == 1900 || dport == 1900:
+		return c.dissectSSDP(b, base)
+	case sport == 5060 || dport == 5060:
+		return c.dissectSIP(b, base)
+	case (sport == 443 || dport == 443) && looksLikeQUIC(b):
+		return c.dissectQUIC(b, base)
+	}
 	return false
 }
 
@@ -36,6 +56,42 @@ func (c *ctx) dissectTCPPayload(b []byte, base int, sport, dport uint16) {
 	}
 	if dnsPorts[sport] || dnsPorts[dport] {
 		if c.dissectDNS(b, base, true) {
+			return
+		}
+	}
+	if looksLikeHTTP2(b) && c.dissectHTTP2(b, base) {
+		return
+	}
+	if looksLikeSSHBanner(b) && c.dissectSSH(b, base) {
+		return
+	}
+	switch {
+	case sport == 6379 || dport == 6379:
+		if c.dissectRedis(b, base) {
+			return
+		}
+	case sport == 5432 || dport == 5432:
+		if c.dissectPostgreSQL(b, base) {
+			return
+		}
+	case sport == 1883 || dport == 1883:
+		if c.dissectMQTT(b, base) {
+			return
+		}
+	case sport == 179 || dport == 179:
+		if c.dissectBGP(b, base) {
+			return
+		}
+	case sport == 22 || dport == 22:
+		if c.dissectSSH(b, base) {
+			return
+		}
+	case sport == 5060 || dport == 5060:
+		if c.dissectSIP(b, base) {
+			return
+		}
+	case sport == 514 || dport == 514:
+		if c.dissectSyslog(b, base) {
 			return
 		}
 	}

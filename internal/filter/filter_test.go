@@ -178,3 +178,31 @@ func TestKnownFields(t *testing.T) {
 		t.Error("expected a populated field list")
 	}
 }
+
+func TestNewProtocolFilters(t *testing.T) {
+	names := []string{"ntp", "snmp", "syslog", "stun", "mqtt", "redis", "postgresql",
+		"bgp", "ssh", "ssdp", "sip", "quic", "http2", "vxlan", "mpls", "gre",
+		"igmp", "wireguard"}
+	for _, name := range names {
+		f, err := Parse(name)
+		if err != nil {
+			t.Fatalf("Parse(%q): %v", name, err)
+		}
+		if !f.Match(&packet.Meta{Layers: []string{name}}) {
+			t.Errorf("%q should match its layer", name)
+		}
+	}
+	if f, _ := Parse("postgres"); !f.Match(&packet.Meta{Layers: []string{"postgresql"}}) {
+		t.Error("postgres alias should match postgresql")
+	}
+	if f, _ := Parse("wg"); !f.Match(&packet.Meta{Layers: []string{"wireguard"}}) {
+		t.Error("wg alias should match wireguard")
+	}
+	f, err := Parse(`redis contains "SET"`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !f.Match(&packet.Meta{Layers: []string{"redis"}, Payload: []byte("SET foo bar")}) {
+		t.Error("redis contains should match payload")
+	}
+}

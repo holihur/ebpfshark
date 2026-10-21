@@ -14,7 +14,9 @@ ebpfshark 使用 TCX（TC eXpress）把两个很小的 eBPF 程序挂到网卡�
   避免 UI 轮询/SSE 把分析工具自己的请求混进抓包结果。
 - **登录认证**：默认启用用户名/密码登录，HttpOnly 会话 Cookie、登录失败限流；
   除健康检查和登录接口外，所有 API（含 SSE 与 pcap 导出）都要求有效会话。
-- **协议解析**：Ethernet / VLAN / ARP / IPv4 / IPv6（含扩展头）/ TCP / UDP / ICMP / ICMPv6 / DNS / HTTP/1.x / TLS ClientHello（SNI）/ DHCP。
+- **协议解析**：30+ 协议与封装，覆盖链路层、IPv4/IPv6、TCP/UDP、DNS/HTTP/TLS、
+  MQTT/Redis/PostgreSQL/BGP/SSH、VXLAN/GRE/MPLS、STUN/NTP/SNMP 等。
+  完整列表见 **[协议支持](#协议支持)**。
 - **显示过滤器**：Wireshark + tcpdump 混合语法，支持字段比较、CIDR、端口范围、布尔表达式、`contains`。
 - **过滤器构造器**：可视化选择协议、字段、运算符和值，支持 AND/OR、取反、实时预览与校验。
 - **Wireshark 风格三栏**：报文列表、可展开协议树、hex + ASCII；点击字段高亮对应字节。
@@ -172,6 +174,52 @@ make go-build
     版本信息收纳在 `…` 菜单中。
 11. 过滤器栏右侧的 **过滤器构造器** 按钮可以可视化组合过滤条件，支持协议、字段、运算符、
     AND/OR、取反、实时预览和校验，应用后自动写入过滤器输入框。
+
+## 协议支持
+
+> 标注“基础”的协议目前解析头部/控制字段，不做完整应用层重组；加密内容不做解密。
+
+| 层次 | 协议 | 说明 |
+| --- | --- | --- |
+| 链路层 | Ethernet II | MAC、EtherType |
+| 链路层 | 802.1Q / QinQ VLAN | 最多 4 层 VLAN 标签 |
+| 链路层 | ARP / RARP | 请求/响应、发送方/目标地址 |
+| 链路层 | MPLS | 标签栈、TTL，递归解析内层 IPv4/IPv6 |
+| 链路层 | Linux SLL / SLL2 | pcap/pcapng 导入的 cooked capture |
+| 链路层 | Raw IP | wg/tun 等无二层头接口自动识别 |
+| 网络层 | IPv4 | 选项、分片、TTL、校验和 |
+| 网络层 | IPv6 | 扩展头、Hop Limit |
+| 网络层 | ICMP / ICMPv6 | Echo、不可达、TTL 超时等；ICMPv6 含校验和 |
+| 网络层 | IGMP | Membership Query / Report / Leave（基础） |
+| 网络层 | GRE | Checksum/Key/Sequence，递归解析 IPv4/IPv6/ARP/以太网 |
+| 网络层 | IP-in-IP | IPv4/IPv6 隧道递归解析 |
+| 隧道 | VXLAN | VNI + 内层以太网完整解析 |
+| 传输层 | TCP | 端口、序列号、标志位、窗口、常用选项、校验和 |
+| 传输层 | UDP | 端口、长度、校验和 |
+| 传输层 | TLS | 记录层、Handshake、ClientHello/SNI、Alert、Application Data 长度 |
+| 传输层 | QUIC | Long/Short Header、版本、连接 ID、包类型（基础，不解密） |
+| 应用层 | DNS | A/AAAA/CNAME/NS/PTR/MX/TXT/SOA；含 mDNS 5353、LLMNR 5355 |
+| 应用层 | HTTP/1.x | 请求行/状态行、Header、Body 预览 |
+| 应用层 | HTTP/2 | 明文帧：SETTINGS/HEADERS/DATA/GOAWAY/PING 等（基础；HPACK 未解码） |
+| 应用层 | DHCP | Discover/Offer/Request/ACK 等，常用选项 |
+| 应用层 | NTP | 版本、模式、Stratum、时间戳 |
+| 应用层 | SNMP v1/v2c | GET/GETNEXT/GETBULK/SET/RESPONSE/TRAP，BER/OID/值（基础） |
+| 应用层 | Syslog | RFC5424 与 BSD 格式，facility/severity |
+| 应用层 | STUN | Binding/Allocate 等方法、USERNAME/XOR-MAPPED-ADDRESS 等属性 |
+| 应用层 | MQTT | CONNECT/PUBLISH/SUBSCRIBE 等（基础） |
+| 应用层 | Redis | RESP 数组/内联命令，常见命令与参数 |
+| 应用层 | PostgreSQL | Startup、Query、ErrorResponse、CommandComplete 等（基础） |
+| 应用层 | BGP-4 | OPEN/UPDATE/NOTIFICATION/KEEPALIVE/ROUTE-REFRESH（基础） |
+| 应用层 | SSH | 版本标识、明文消息类型；加密后的内容不解密 |
+| 应用层 | SSDP | M-SEARCH/NOTIFY/响应与常用 Header |
+| 应用层 | SIP | INVITE/REGISTER/BYE 等请求与响应（基础） |
+| 应用层 | WireGuard | 握手/Transport Data 头部 |
+
+**过滤器**：新增协议同样支持协议谓词，例如 `mqtt`、`redis`、`vxlan`、`bgp`、
+`ssh`、`quic`、`http2`、`postgresql`、`igmp`、`wireguard`。
+
+**尚未支持**：TLS 解密/证书链、QUIC Initial 解密与 HTTP/3、HTTP/2 HPACK、
+WebSocket/gRPC、SCTP、MySQL、RADIUS/LDAP/Kerberos、RTP/RTCP、NetFlow/IPFIX。
 
 ## 过滤器构造器
 
@@ -441,7 +489,7 @@ internal/capture/           eBPF 加载、TCX 挂载、ringbuf 读取、网卡�
   bpf/capture.c             抓包 eBPF C 代码
   bpf/vmlinux.h             bpftool 生成的内核类型（CO-RE）
   capture_bpfel.{go,o}      bpf2go 生成
-internal/decode/            Ethernet/IP/TCP/UDP/ICMP/ARP/DNS/HTTP/TLS/DHCP 解析
+internal/decode/            30+ 协议解析（Ethernet/IP/TCP/UDP/应用层/隧道）
 internal/filter/            显示过滤器 lexer/parser/matcher + 构造器 schema
 internal/auth/              密码校验、内存会话、登录限流
 internal/store/             报文环形缓冲、统计、会话、SSE 订阅者

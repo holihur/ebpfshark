@@ -82,6 +82,42 @@ func (n layerNode) Match(m *packet.Meta) bool {
 		return m.HasLayer("tls")
 	case "dhcp":
 		return m.HasLayer("dhcp")
+	case "ntp":
+		return m.HasLayer("ntp")
+	case "snmp":
+		return m.HasLayer("snmp")
+	case "syslog":
+		return m.HasLayer("syslog")
+	case "stun":
+		return m.HasLayer("stun")
+	case "mqtt":
+		return m.HasLayer("mqtt")
+	case "redis":
+		return m.HasLayer("redis")
+	case "postgresql", "postgres":
+		return m.HasLayer("postgresql")
+	case "bgp":
+		return m.HasLayer("bgp")
+	case "ssh":
+		return m.HasLayer("ssh")
+	case "ssdp":
+		return m.HasLayer("ssdp")
+	case "sip":
+		return m.HasLayer("sip")
+	case "quic":
+		return m.HasLayer("quic")
+	case "http2":
+		return m.HasLayer("http2")
+	case "vxlan":
+		return m.HasLayer("vxlan")
+	case "mpls":
+		return m.HasLayer("mpls")
+	case "gre":
+		return m.HasLayer("gre")
+	case "igmp":
+		return m.HasLayer("igmp")
+	case "wireguard", "wg":
+		return m.HasLayer("wireguard")
 	case "vlan":
 		return m.HasLayer("vlan")
 	case "eth":
@@ -151,7 +187,10 @@ func (n cmpNode) Match(m *packet.Meta) bool {
 		switch f {
 		case "frame":
 			return bytes.Contains(m.Raw, []byte(n.str))
-		case "tcp", "udp", "data", "http", "dns", "tls", "payload":
+		case "tcp", "udp", "data", "http", "dns", "tls", "payload",
+			"ntp", "snmp", "syslog", "stun", "mqtt", "redis", "postgresql",
+			"bgp", "ssh", "ssdp", "sip", "quic", "http2", "vxlan", "mpls",
+			"gre", "igmp", "wireguard":
 			return bytes.Contains(m.Payload, []byte(n.str))
 		}
 		return false
@@ -615,7 +654,10 @@ func (p *parser) parseUnary() (Filter, error) {
 func isProtoName(s string) bool {
 	switch s {
 	case "tcp", "udp", "icmp", "icmpv6", "icmp6", "arp", "ip", "ipv6", "ip6",
-		"dns", "http", "tls", "ssl", "dhcp", "vlan", "eth":
+		"dns", "http", "tls", "ssl", "dhcp", "vlan", "eth",
+		"ntp", "snmp", "syslog", "stun", "mqtt", "redis", "postgresql", "postgres",
+		"bgp", "ssh", "ssdp", "sip", "quic", "http2", "vxlan", "mpls", "gre",
+		"igmp", "wireguard", "wg":
 		return true
 	}
 	return false
@@ -928,7 +970,10 @@ func isAddrField(f string) bool {
 
 func isBytesField(f string) bool {
 	switch f {
-	case "frame", "tcp", "udp", "data", "payload", "http", "dns", "tls":
+	case "frame", "tcp", "udp", "data", "payload", "http", "dns", "tls",
+		"ntp", "snmp", "syslog", "stun", "mqtt", "redis", "postgresql",
+		"bgp", "ssh", "ssdp", "sip", "quic", "http2", "vxlan", "mpls",
+		"gre", "igmp", "wireguard":
 		return true
 	}
 	return false

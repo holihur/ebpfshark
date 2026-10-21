@@ -116,6 +116,8 @@ func (c *ctx) dissectEthernet() {
 		c.dissectIPv6(payload, off)
 	case etherTypeARP, etherTypeRARP:
 		c.dissectARP(payload, off)
+	case 0x8847, 0x8848:
+		c.dissectMPLS(payload, off)
 	default:
 		if len(payload) > 0 {
 			c.addRoot(newNode(fmt.Sprintf("Data (%d bytes)", len(payload)), off, len(payload)))

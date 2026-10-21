@@ -33,6 +33,7 @@ type ctx struct {
 	data     []byte
 	wireLen  int
 	linkType packet.LinkType
+	depth    int
 
 	m      packet.Meta
 	roots  []*Field
@@ -45,7 +46,13 @@ type ctx struct {
 // Decode dissects data. linkType selects the outermost decoder and wireLen is
 // the original on-wire length (which may exceed len(data) when truncated).
 func Decode(data []byte, linkType packet.LinkType, wireLen int) Result {
-	c := &ctx{data: data, wireLen: wireLen, linkType: linkType}
+	return decode(data, linkType, wireLen, 0)
+}
+
+const maxTunnelDepth = 4
+
+func decode(data []byte, linkType packet.LinkType, wireLen, depth int) Result {
+	c := &ctx{data: data, wireLen: wireLen, linkType: linkType, depth: depth}
 	c.m.ID = 0
 	c.m.FrameLen = wireLen
 	c.m.CapLen = len(data)
@@ -116,14 +123,19 @@ func Decode(data []byte, linkType packet.LinkType, wireLen int) Result {
 
 func (c *ctx) topProtocol() string {
 	switch c.proto {
-	case "http":
-		return "HTTP"
-	case "dns":
-		return "DNS"
-	case "tls":
-		return "TLS"
-	case "dhcp":
-		return "DHCP"
+	case "http2":
+		return "HTTP/2"
+	case "postgresql":
+		return "PostgreSQL"
+	case "wireguard":
+		return "WireGuard"
+	case "syslog":
+		return "Syslog"
+	case "redis":
+		return "Redis"
+	}
+	if c.proto != "" {
+		return strings.ToUpper(c.proto)
 	}
 	if c.m.HasLayer("icmpv6") {
 		return "ICMPv6"
@@ -149,11 +161,28 @@ func (c *ctx) topProtocol() string {
 	if c.m.HasLayer("eth") {
 		return "Ethernet"
 	}
+	if c.m.HasLayer("mpls") {
+		return "MPLS"
+	}
+	if c.m.HasLayer("gre") {
+		return "GRE"
+	}
+	if c.m.HasLayer("igmp") {
+		return "IGMP"
+	}
 	return "Frame"
 }
 
 func (c *ctx) fallbackInfo() string {
 	switch {
+	case c.m.HasLayer("vxlan"):
+		return "VXLAN"
+	case c.m.HasLayer("mpls"):
+		return "MPLS"
+	case c.m.HasLayer("gre"):
+		return "GRE"
+	case c.m.HasLayer("igmp"):
+		return "IGMP"
 	case c.m.HasLayer("arp"):
 		return "ARP"
 	case c.m.HasLayer("tcp"):
@@ -241,6 +270,20 @@ func hexPreview(b []byte, max int) string {
 }
 
 // Bytes returns the first n bytes as a hex string.
+// shiftFields offsets a protocol tree by base so nested dissectors can reuse
+// the same frame-relative highlighting.
+func shiftFields(fields []*Field, base int) []*Field {
+	for _, f := range fields {
+		if f.Offset >= 0 {
+			f.Offset += base
+		}
+		if len(f.Children) > 0 {
+			f.Children = shiftFields(f.Children, base)
+		}
+	}
+	return fields
+}
+
 func hexBytes(b []byte, n int) string {
 	if len(b) > n {
 		b = b[:n]

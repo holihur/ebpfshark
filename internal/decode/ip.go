@@ -128,10 +128,14 @@ func (c *ctx) dissectIPv4(b []byte, base int) {
 		c.dissectUDP(l4, l4base, src, dst, totalLen-ihl)
 	case 1:
 		c.dissectICMP(l4, l4base)
+	case 2:
+		c.dissectIGMP(l4, l4base)
 	case 4:
 		c.dissectIPv4(l4, l4base)
 	case 41:
 		c.dissectIPv6(l4, l4base)
+	case 47:
+		c.dissectGRE(l4, l4base)
 	default:
 		c.dissectData(l4, l4base)
 	}

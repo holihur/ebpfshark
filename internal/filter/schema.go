@@ -42,7 +42,11 @@ func Schema() []FieldSchema {
 
 	return []FieldSchema{
 		layer("ip"), layer("ipv6"), layer("tcp"), layer("udp"), layer("icmp"), layer("icmpv6"),
-		layer("arp"), layer("dns"), layer("http"), layer("tls"), layer("dhcp"), layer("vlan"), layer("eth"),
+		layer("arp"), layer("dns"), layer("http"), layer("http2"), layer("tls"), layer("dhcp"),
+		layer("vlan"), layer("eth"), layer("vxlan"), layer("mpls"), layer("gre"), layer("igmp"),
+		layer("quic"), layer("ntp"), layer("snmp"), layer("syslog"), layer("stun"), layer("mqtt"),
+		layer("redis"), layer("postgresql"), layer("bgp"), layer("ssh"), layer("ssdp"), layer("sip"),
+		layer("wireguard"),
 
 		num("frame.len", "Frame"),
 		num("frame.cap_len", "Frame"),
