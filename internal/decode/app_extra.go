@@ -416,94 +416,429 @@ func mqttRemainingLength(b []byte) (int, int, bool) {
 	return 0, 0, false
 }
 
+type mqttPropDef struct {
+	name string
+	kind byte // 1=byte 2=u16 4=u32 v=varint s=string b=binary p=pair
+}
+
+var mqttPropDefs = map[byte]mqttPropDef{
+	0x01: {"Payload Format Indicator", 1}, 0x02: {"Message Expiry Interval", 4},
+	0x03: {"Content Type", 's'}, 0x08: {"Response Topic", 's'},
+	0x09: {"Correlation Data", 'b'}, 0x0b: {"Subscription Identifier", 'v'},
+	0x11: {"Session Expiry Interval", 4}, 0x12: {"Assigned Client Identifier", 's'},
+	0x13: {"Server Keep Alive", 2}, 0x15: {"Authentication Method", 's'},
+	0x16: {"Authentication Data", 'b'}, 0x17: {"Request Problem Information", 1},
+	0x18: {"Will Delay Interval", 4}, 0x19: {"Request Response Information", 1},
+	0x1a: {"Response Information", 's'}, 0x1c: {"Server Reference", 's'},
+	0x1f: {"Reason String", 's'}, 0x21: {"Receive Maximum", 2},
+	0x22: {"Topic Alias Maximum", 2}, 0x23: {"Topic Alias", 2},
+	0x24: {"Maximum QoS", 1}, 0x25: {"Retain Available", 1},
+	0x26: {"User Property", 'p'}, 0x27: {"Maximum Packet Size", 4},
+	0x28: {"Wildcard Subscription Available", 1}, 0x29: {"Subscription Identifier Available", 1},
+	0x2a: {"Shared Subscription Available", 1},
+}
+
+func mqttVarint(b []byte, off int) (int, int, bool) {
+	mult, value := 1, 0
+	for i := 0; i < 4 && off+i < len(b); i++ {
+		value += int(b[off+i]&0x7f) * mult
+		mult *= 128
+		if b[off+i]&0x80 == 0 {
+			return value, off + i + 1, true
+		}
+	}
+	return 0, off, false
+}
+
+func mqttString(b []byte, off int) (string, int, bool) {
+	if off+2 > len(b) {
+		return "", off, false
+	}
+	l := int(be16(b[off : off+2]))
+	off += 2
+	if off+l > len(b) {
+		return "", off, false
+	}
+	return string(b[off : off+l]), off + l, true
+}
+
+func mqttBinary(b []byte, off int) ([]byte, int, bool) {
+	if off+2 > len(b) {
+		return nil, off, false
+	}
+	l := int(be16(b[off : off+2]))
+	off += 2
+	if off+l > len(b) {
+		return nil, off, false
+	}
+	return b[off : off+l], off + l, true
+}
+
+func mqttLooksLikeProps(b []byte, off int) bool {
+	l, n, ok := mqttVarint(b, off)
+	if !ok {
+		return false
+	}
+	if l == 0 {
+		return true
+	}
+	if n >= len(b) {
+		return false
+	}
+	_, known := mqttPropDefs[b[n]]
+	return known
+}
+
+func mqttParseProps(b []byte, off int) ([]*Field, int) {
+	var out []*Field
+	propsLen, next, ok := mqttVarint(b, off)
+	if !ok || next+propsLen > len(b) {
+		return out, off
+	}
+	end := next + propsLen
+	p := next
+	for p < end {
+		id := b[p]
+		p++
+		def, ok := mqttPropDefs[id]
+		if !ok {
+			return out, end
+		}
+		f := newField(fmt.Sprintf("%s (id 0x%02x)", def.name, id), "", 0, 0)
+		switch def.kind {
+		case 1:
+			if p >= end {
+				return out, end
+			}
+			f.Value = strconv.Itoa(int(b[p]))
+			p++
+		case 2:
+			if p+2 > end {
+				return out, end
+			}
+			f.Value = strconv.Itoa(int(be16(b[p : p+2])))
+			p += 2
+		case 4:
+			if p+4 > end {
+				return out, end
+			}
+			f.Value = strconv.FormatUint(uint64(be32(b[p:p+4])), 10)
+			p += 4
+		case 'v':
+			v, n, ok := mqttVarint(b[:end], p)
+			if !ok {
+				return out, end
+			}
+			f.Value = strconv.Itoa(v)
+			p = n
+		case 's':
+			v, n, ok := mqttString(b[:end], p)
+			if !ok {
+				return out, end
+			}
+			f.Value = v
+			p = n
+		case 'b':
+			v, n, ok := mqttBinary(b[:end], p)
+			if !ok {
+				return out, end
+			}
+			f.Value = hexPreview(v, 48)
+			p = n
+		case 'p':
+			k, n, ok := mqttString(b[:end], p)
+			if !ok {
+				return out, end
+			}
+			v, n2, ok := mqttString(b[:end], n)
+			if !ok {
+				return out, end
+			}
+			f.Label = k
+			f.Value = v
+			p = n2
+		}
+		out = append(out, f)
+	}
+	return out, end
+}
+
+func mqttReason(code byte) string {
+	switch code {
+	case 0x00:
+		return "Success"
+	case 0x80:
+		return "Unspecified error"
+	case 0x81:
+		return "Malformed Packet"
+	case 0x82:
+		return "Protocol Error"
+	case 0x83:
+		return "Implementation specific error"
+	case 0x84:
+		return "Unsupported Protocol Version"
+	case 0x85:
+		return "Client Identifier not valid"
+	case 0x86:
+		return "Bad User Name or Password"
+	case 0x87:
+		return "Not authorized"
+	case 0x88:
+		return "Server unavailable"
+	case 0x89:
+		return "Server busy"
+	case 0x8a:
+		return "Banned"
+	case 0x8b:
+		return "Server shutting down"
+	case 0x8c:
+		return "Bad authentication method"
+	case 0x8d:
+		return "Keep Alive timeout"
+	case 0x8e:
+		return "Session taken over"
+	case 0x8f:
+		return "Topic Filter invalid"
+	case 0x90:
+		return "Topic Name invalid"
+	case 0x91:
+		return "Packet Identifier in use"
+	case 0x92:
+		return "Packet Identifier not found"
+	case 0x93:
+		return "Receive Maximum exceeded"
+	case 0x94:
+		return "Topic Alias invalid"
+	case 0x95:
+		return "Packet too large"
+	case 0x96:
+		return "Message rate too high"
+	case 0x97:
+		return "Quota exceeded"
+	case 0x98:
+		return "Administrative action"
+	case 0x99:
+		return "Payload format invalid"
+	case 0x9a:
+		return "Retain not supported"
+	case 0x9b:
+		return "QoS not supported"
+	case 0x9c:
+		return "Use another server"
+	case 0x9d:
+		return "Server moved"
+	case 0x9e:
+		return "Shared Subscriptions not supported"
+	case 0x9f:
+		return "Connection rate exceeded"
+	case 0xa0:
+		return "Maximum connect time"
+	case 0xa1:
+		return "Subscription Identifiers not supported"
+	case 0xa2:
+		return "Wildcard Subscriptions not supported"
+	}
+	return fmt.Sprintf("Reason 0x%02x", code)
+}
+
 func (c *ctx) dissectMQTT(b []byte, base int) bool {
 	if len(b) < 2 {
 		return false
 	}
 	pktType := b[0] >> 4
-	if pktType == 0 || pktType > 14 {
+	if pktType == 0 || pktType > 15 {
 		return false
 	}
-	rem, hl, ok := mqttRemainingLength(b[1:])
+	rem, hl, ok := mqttVarint(b, 1)
 	if !ok {
 		return false
 	}
-	off := 1 + hl
+	off := hl
 	if off+rem > len(b) {
 		rem = len(b) - off
 	}
 	body := b[off : off+rem]
-
 	c.addLayer("mqtt")
 	c.proto = "mqtt"
 	root := newNode(fmt.Sprintf("MQ Telemetry Transport (%s)", mqttTypeName(pktType)), base, off+rem)
 	root.add(
 		newField(fmt.Sprintf("Packet Type: %s (%d)", mqttTypeName(pktType), pktType), "", base, 1),
 		newField(fmt.Sprintf("Flags: 0x%x", b[0]&0xf), "", base, 1),
-		newField(fmt.Sprintf("Remaining Length: %d", rem), "", base+1, hl),
+		newField(fmt.Sprintf("Remaining Length: %d", rem), "", base+1, hl-1),
 	)
 	info := "MQTT " + mqttTypeName(pktType)
+	p := 0
 
 	switch pktType {
 	case 1: // CONNECT
-		if len(body) >= 4 {
-			plen := int(be16(body[0:2]))
-			if 2+plen+4 <= len(body) {
-				proto := string(body[2 : 2+plen])
-				ver := body[2+plen]
-				flags := body[3+plen]
-				idLenOff := 6 + plen
-				root.add(
-					newField("Protocol Name: "+proto, "", base+off, 2+plen),
-					newField(fmt.Sprintf("Protocol Level: %d", ver), "", base+off+2+plen, 1),
-					newField(fmt.Sprintf("Connect Flags: 0x%02x", flags), "", base+off+3+plen, 1),
-					newField(fmt.Sprintf("Keep Alive: %d s", be16(body[4+plen:6+plen])), "", base+off+4+plen, 2),
-				)
-				if idLenOff+2 <= len(body) {
-					idLen := int(be16(body[idLenOff : idLenOff+2]))
-					if idLenOff+2+idLen <= len(body) {
-						clientID := string(body[idLenOff+2 : idLenOff+2+idLen])
-						root.add(newField("Client ID: "+clientID, "", base+off+idLenOff, 2+idLen))
-						info += " client=" + clientID
+		proto, n, ok := mqttString(body, 0)
+		if ok && n < len(body) {
+			level := body[n]
+			flags := body[n+1]
+			keepalive := be16(body[n+2 : n+4])
+			root.add(
+				newField("Protocol Name: "+proto, "", base+off, n),
+				newField(fmt.Sprintf("Protocol Level: %d", level), "", base+off+n, 1),
+				newField(fmt.Sprintf("Connect Flags: 0x%02x (username=%d password=%d willRetain=%d willQoS=%d will=%d cleanStart=%d)",
+					flags, (flags>>7)&1, (flags>>6)&1, (flags>>5)&1, (flags>>3)&3, (flags>>2)&1, (flags>>1)&1), "", base+off+n+1, 1),
+				newField(fmt.Sprintf("Keep Alive: %d s", keepalive), "", base+off+n+2, 2),
+			)
+			p = n + 4
+			if level >= 5 {
+				props, np := mqttParseProps(body, p)
+				if len(props) > 0 {
+					pn := newField("Properties", "", 0, 0)
+					pn.Children = props
+					root.add(pn)
+				}
+				p = np
+			}
+			if id, np, ok := mqttString(body, p); ok {
+				root.add(newField("Client ID: "+id, "", base+off+p, 2+len(id)))
+				info += " client=" + id
+				p = np
+			}
+			if flags&0x04 != 0 { // will
+				wprops := []*Field(nil)
+				if level >= 5 {
+					var np int
+					wprops, np = mqttParseProps(body, p)
+					p = np
+				}
+				wtopic, np, ok := mqttString(body, p)
+				if ok {
+					wf := newField("Will Topic: "+wtopic, "", base+off+p, 2+len(wtopic))
+					wf.Children = wprops
+					p = np
+					if wb, np2, ok := mqttBinary(body, p); ok {
+						wf.add(newField(fmt.Sprintf("Will Payload (%d bytes)", len(wb)), hexPreview(wb, 32), base+off+p, len(wb)))
+						p = np2
 					}
+					root.add(wf)
+				}
+			}
+			if flags&0x80 != 0 {
+				if u, np, ok := mqttString(body, p); ok {
+					root.add(newField("Username: "+u, "", base+off+p, 2+len(u)))
+					info += " user=" + u
+					p = np
+				}
+			}
+			if flags&0x40 != 0 {
+				if pw, np, ok := mqttBinary(body, p); ok {
+					root.add(newField(fmt.Sprintf("Password (%d bytes)", len(pw)), hexPreview(pw, 24), base+off+p, len(pw)))
+					p = np
 				}
 			}
 		}
-	case 3: // PUBLISH
+	case 2: // CONNACK
 		if len(body) >= 2 {
-			tlen := int(be16(body[0:2]))
-			if 2+tlen <= len(body) {
-				topic := string(body[2 : 2+tlen])
-				pending := len(body) - 2 - tlen
-				qos := (b[0] >> 1) & 0x3
-				if qos > 0 && pending >= 2 {
-					root.add(newField(fmt.Sprintf("Packet ID: %d", be16(body[2+tlen:4+tlen])), "", base+off+2+tlen, 2))
-					pending -= 2
+			root.add(newField(fmt.Sprintf("Session Present: %d", body[0]&1), "", base+off, 1))
+			root.add(newField(fmt.Sprintf("Reason Code: %s", mqttReason(body[1])), "", base+off+1, 1))
+			p = 2
+			if mqttLooksLikeProps(body, p) {
+				props, np := mqttParseProps(body, p)
+				if len(props) > 0 {
+					pn := newField("Properties", "", 0, 0)
+					pn.Children = props
+					root.add(pn)
 				}
-				root.add(
-					newField("Topic: "+topic, "", base+off, 2+tlen),
-					newField(fmt.Sprintf("QoS: %d", qos), "", base, 1),
-					newField(fmt.Sprintf("Payload (%d bytes)", pending), "", base+off+len(body)-pending, pending),
-				)
-				info = fmt.Sprintf("MQTT PUBLISH topic=%s (%d bytes)", topic, pending)
+				p = np
+			}
+			info = fmt.Sprintf("MQTT CONNACK %s", mqttReason(body[1]))
+		}
+	case 3: // PUBLISH
+		topic, n, ok := mqttString(body, 0)
+		if ok {
+			qos := (b[0] >> 1) & 3
+			retain := b[0] & 1
+			root.add(
+				newField("Topic: "+topic, "", base+off, n),
+				newField(fmt.Sprintf("QoS: %d", qos), "", base, 1),
+				newField(fmt.Sprintf("Retain: %d", retain), "", base, 1),
+			)
+			p = n
+			if qos > 0 && p+2 <= len(body) {
+				root.add(newField(fmt.Sprintf("Packet ID: %d", be16(body[p:p+2])), "", base+off+p, 2))
+				p += 2
+			}
+			if mqttLooksLikeProps(body, p) {
+				props, np := mqttParseProps(body, p)
+				if len(props) > 0 {
+					pn := newField("Properties", "", 0, 0)
+					pn.Children = props
+					root.add(pn)
+				}
+				p = np
+			}
+			payload := body[min(p, len(body)):]
+			root.add(newField(fmt.Sprintf("Payload (%d bytes)", len(payload)), hexPreview(payload, 48), base+off+p, len(payload)))
+			info = fmt.Sprintf("MQTT PUBLISH topic=%s (%d bytes)", topic, len(payload))
+		}
+	case 4, 5, 6, 7, 9, 11: // PUBACK/PUBREC/PUBREL/PUBCOMP/SUBACK/UNSUBACK
+		if len(body) >= 2 {
+			root.add(newField(fmt.Sprintf("Packet ID: %d", be16(body[0:2])), "", base+off, 2))
+			p = 2
+			if p < len(body) {
+				root.add(newField("Reason Code: "+mqttReason(body[p]), "", base+off+p, 1))
+				p++
+			}
+			props, np := mqttParseProps(body, p)
+			if len(props) > 0 {
+				pn := newField("Properties", "", 0, 0)
+				pn.Children = props
+				root.add(pn)
+			}
+			p = np
+			for i := 0; p < len(body); i++ {
+				root.add(newField(fmt.Sprintf("Reason Code %d: %s", i+1, mqttReason(body[p])), "", base+off+p, 1))
+				p++
 			}
 		}
 	case 8, 10: // SUBSCRIBE / UNSUBSCRIBE
 		if len(body) >= 2 {
 			root.add(newField(fmt.Sprintf("Packet ID: %d", be16(body[0:2])), "", base+off, 2))
-			p := 2
-			if p+2 <= len(body) {
-				tlen := int(be16(body[p : p+2]))
-				if p+2+tlen <= len(body) {
-					topic := string(body[p+2 : p+2+tlen])
-					root.add(newField("Topic Filter: "+topic, "", base+off+p, 2+tlen))
-					info += " topic=" + topic
+			p = 2
+			if mqttLooksLikeProps(body, p) {
+				props, np := mqttParseProps(body, p)
+				if len(props) > 0 {
+					pn := newField("Properties", "", 0, 0)
+					pn.Children = props
+					root.add(pn)
 				}
+				p = np
+			}
+			for i := 0; p+2 <= len(body); i++ {
+				topic, np, ok := mqttString(body, p)
+				if !ok {
+					break
+				}
+				f := newField(fmt.Sprintf("Topic Filter %d: %s", i+1, topic), "", base+off+p, 2+len(topic))
+				p = np
+				if pktType == 8 && p < len(body) {
+					f.add(newField(fmt.Sprintf("Options: 0x%02x (QoS %d)", body[p], body[p]&3), "", base+off+p, 1))
+					p++
+				}
+				root.add(f)
 			}
 		}
+	case 12, 13: // PINGREQ/PINGRESP
+	case 14, 15: // DISCONNECT/AUTH
+		if p < len(body) {
+			root.add(newField("Reason Code: "+mqttReason(body[p]), "", base+off+p, 1))
+			p++
+		}
+		props, np := mqttParseProps(body, p)
+		if len(props) > 0 {
+			pn := newField("Properties", "", 0, 0)
+			pn.Children = props
+			root.add(pn)
+		}
+		p = np
 	}
+	_ = p
 	c.addRoot(root)
-	c.appInfo = info
+	c.appInfo = shorten(info, 120)
 	return true
 }
 
@@ -618,78 +953,165 @@ func (c *ctx) dissectRedis(b []byte, base int) bool {
 
 // ------------------------------------------------------------ PostgreSQL
 
-var pgTypes = map[byte]string{
-	'R': "Authentication", 'S': "Sync / ParameterStatus", 'K': "BackendKeyData", 'Z': "ReadyForQuery",
-	'T': "RowDescription", 'D': "DataRow", 'C': "CommandComplete",
-	'N': "NoticeResponse", 'Q': "Query", 'P': "Parse", 'B': "Bind", 'E': "Execute",
-	'X': "Terminate", 'd': "CopyData", 'c': "CopyDone", 'f': "CopyFail",
+func pgTypeName(t byte) string {
+	switch t {
+	case 'R':
+		return "Authentication"
+	case 'S':
+		return "ParameterStatus / Sync"
+	case 'K':
+		return "BackendKeyData"
+	case 'Z':
+		return "ReadyForQuery"
+	case 'T':
+		return "RowDescription"
+	case 'D':
+		return "DataRow / Describe"
+	case 'C':
+		return "CommandComplete"
+	case 'E':
+		return "ErrorResponse / Execute"
+	case 'N':
+		return "NoticeResponse"
+	case 'Q':
+		return "Query"
+	case 'P':
+		return "Parse"
+	case 'B':
+		return "Bind"
+	case 'A':
+		return "NotificationResponse"
+	case 'X':
+		return "Terminate"
+	case 'd':
+		return "CopyData"
+	case 'c':
+		return "CopyDone"
+	case 'f':
+		return "CopyFail"
+	case '1':
+		return "ParseComplete"
+	case '2':
+		return "BindComplete"
+	case '3':
+		return "CloseComplete"
+	case 'n':
+		return "NoData"
+	case 's':
+		return "PortalSuspended"
+	case 'I':
+		return "EmptyQueryResponse"
+	}
+	return fmt.Sprintf("Message '%c'", t)
 }
 
-func pgErrorFields(b []byte) string {
-	var sev, msg string
+func pgCString(b []byte, off int) (string, int, bool) {
+	if off >= len(b) {
+		return "", off, false
+	}
+	end := bytes.IndexByte(b[off:], 0)
+	if end < 0 {
+		return string(b[off:]), len(b), true
+	}
+	return string(b[off : off+end]), off + end + 1, true
+}
+
+func pgErrorFields(b []byte) []*Field {
+	var out []*Field
+	names := map[byte]string{'S': "Severity", 'V': "Severity (non-localized)", 'C': "SQLSTATE Code", 'M': "Message", 'D': "Detail", 'H': "Hint", 'P': "Position", 'W': "Where", 's': "Schema", 't': "Table", 'c': "Column", 'd': "Data type", 'n': "Constraint", 'F': "File", 'L': "Line", 'R': "Routine"}
 	for off := 0; off < len(b) && b[off] != 0; {
 		code := b[off]
 		off++
-		end := bytes.IndexByte(b[off:], 0)
-		if end < 0 {
+		val, next, ok := pgCString(b, off)
+		if !ok {
 			break
 		}
-		val := string(b[off : off+end])
-		off += end + 1
-		if code == 'S' {
-			sev = val
-		} else if code == 'M' {
-			msg = val
+		name := names[code]
+		if name == "" {
+			name = fmt.Sprintf("Field '%c'", code)
 		}
+		out = append(out, newField(name+": "+val, "", 0, 0))
+		off = next
 	}
-	return strings.TrimSpace(sev + ": " + msg)
+	return out
+}
+
+func pgAuthName(code uint32) string {
+	switch code {
+	case 0:
+		return "AuthenticationOk"
+	case 2:
+		return "KerberosV5"
+	case 3:
+		return "CleartextPassword"
+	case 5:
+		return "MD5Password"
+	case 6:
+		return "SCMCredential"
+	case 7:
+		return "GSS"
+	case 8:
+		return "GSSContinue"
+	case 9:
+		return "SSPI"
+	case 10:
+		return "SASL"
+	case 11:
+		return "SASLContinue"
+	case 12:
+		return "SASLFinal"
+	}
+	return fmt.Sprintf("Authentication %d", code)
 }
 
 func (c *ctx) dissectPostgreSQL(b []byte, base int) bool {
 	if len(b) < 4 {
 		return false
 	}
-	length := int(be32(b[0:4]))
-	if length < 4 || length > 1<<20 {
-		return false
+	startupLen := 0
+	if len(b) >= 8 {
+		l := int(be32(b[0:4]))
+		if l >= 8 && l <= 1<<20 {
+			startupLen = l
+		}
 	}
-
 	c.addLayer("postgresql")
 	c.proto = "postgresql"
-	info := ""
-	root := newNode("PostgreSQL", base, min(length, len(b)))
+	info := "PostgreSQL"
+	root := newNode("PostgreSQL", base, len(b))
 
-	if length >= 8 && int(be32(b[4:8])) >= 196608 {
+	if startupLen > 0 && int(be32(b[4:8])) >= 196608 {
+		length := startupLen
 		code := be32(b[4:8])
 		switch code {
 		case 196608:
 			root = newNode("PostgreSQL Startup Message", base, min(length, len(b)))
-			root.add(newField(fmt.Sprintf("Length: %d", length), "", base, 4))
-			root.add(newField("Protocol Version: 3.0", "", base+4, 4))
+			root.add(newField(fmt.Sprintf("Length: %d", length), "", base, 4), newField("Protocol Version: 3.0", "", base+4, 4))
 			off := 8
 			kv := map[string]string{}
-			for off < len(b) && b[off] != 0 {
-				kEnd := bytes.IndexByte(b[off:], 0)
-				if kEnd < 0 {
+			for off < len(b) {
+				key, n, ok := pgCString(b, off)
+				if !ok || key == "" {
 					break
 				}
-				key := string(b[off : off+kEnd])
-				off += kEnd + 1
-				vEnd := bytes.IndexByte(b[off:], 0)
-				if vEnd < 0 {
+				val, n2, ok := pgCString(b, n)
+				if !ok {
 					break
 				}
-				kv[key] = string(b[off : off+vEnd])
-				off += vEnd + 1
+				kv[key] = val
+				off = n2
 			}
 			info = "PostgreSQL startup"
-			if user := kv["user"]; user != "" {
-				root.add(newField("User: "+user, "", base, 0))
-				info += " user=" + user
-			}
-			if db := kv["database"]; db != "" {
-				root.add(newField("Database: "+db, "", base, 0))
-				info += " db=" + db
+			for _, k := range []string{"user", "database", "application_name", "client_encoding", "options"} {
+				if v := kv[k]; v != "" {
+					root.add(newField(k+": "+v, "", base, 0))
+					if k == "user" {
+						info += " user=" + v
+					}
+					if k == "database" {
+						info += " db=" + v
+					}
+				}
 			}
 		case 80877103:
 			root = newNode("PostgreSQL SSLRequest", base, min(length, len(b)))
@@ -704,58 +1126,157 @@ func (c *ctx) dissectPostgreSQL(b []byte, base int) bool {
 		if msgLen < 4 || 1+msgLen > len(b) {
 			return false
 		}
-		name := pgTypes[typ]
-		if name == "" {
-			name = fmt.Sprintf("Message '%c'", typ)
-		}
+		name := pgTypeName(typ)
 		root = newNode("PostgreSQL "+name, base, 1+msgLen)
-		root.add(
-			newField(fmt.Sprintf("Type: %c (%s)", typ, name), "", base, 1),
-			newField(fmt.Sprintf("Length: %d", msgLen), "", base+1, 4),
-		)
+		root.add(newField(fmt.Sprintf("Type: %c (%s)", typ, name), "", base, 1), newField(fmt.Sprintf("Length: %d", msgLen), "", base+1, 4))
 		payload := b[5:min(1+msgLen, len(b))]
 		info = "PostgreSQL " + name
 		switch typ {
+		case 'R':
+			if len(payload) >= 4 {
+				code := be32(payload[0:4])
+				root.add(newField(fmt.Sprintf("Authentication: %s (%d)", pgAuthName(code), code), "", base+5, 4))
+				info += ": " + pgAuthName(code)
+			}
+		case 'S':
+			if key, n, ok := pgCString(payload, 0); ok {
+				if val, _, ok := pgCString(payload, n); ok {
+					root.add(newField("Parameter: "+key+" = "+val, "", base+5, len(payload)))
+					info += ": " + key + "=" + val
+				}
+			}
+		case 'K':
+			if len(payload) >= 8 {
+				root.add(newField(fmt.Sprintf("Backend PID: %d", be32(payload[0:4])), "", base+5, 4), newField(fmt.Sprintf("Secret Key: 0x%08x", be32(payload[4:8])), "", base+9, 4))
+			}
+		case 'Z':
+			if len(payload) >= 1 {
+				st := map[byte]string{'I': "idle", 'T': "in transaction", 'E': "failed transaction"}[payload[0]]
+				root.add(newField("Transaction Status: "+st, "", base+5, 1))
+			}
 		case 'Q':
 			q := trimNul(payload)
 			root.add(newField("Query: "+shorten(q, 300), "", base+5, len(payload)))
 			info += ": " + shorten(q, 80)
 		case 'P':
-			if i := bytes.IndexByte(payload, 0); i >= 0 && i+1 < len(payload) {
-				q := trimNul(payload[i+1:])
-				root.add(newField("Query: "+shorten(q, 300), "", base+5+i+1, len(payload)-i-1))
-				info += ": " + shorten(q, 80)
+			stmt, n, ok := pgCString(payload, 0)
+			if ok {
+				q, n2, ok := pgCString(payload, n)
+				if ok {
+					root.add(newField("Statement: "+stmt, "", base+5, n), newField("Query: "+shorten(q, 300), "", base+5+n, n2-n))
+					info += ": " + shorten(q, 80)
+					if n2+2 <= len(payload) {
+						cnt := int(be16(payload[n2 : n2+2]))
+						root.add(newField(fmt.Sprintf("Parameter Types: %d", cnt), "", base+5+n2, 2))
+					}
+				}
 			}
+		case 'B':
+			portal, n, ok := pgCString(payload, 0)
+			if ok {
+				stmt, n2, ok := pgCString(payload, n)
+				if ok {
+					root.add(newField("Portal: "+portal, "", base+5, n), newField("Statement: "+stmt, "", base+5+n, n2-n))
+					info += fmt.Sprintf(" portal=%s statement=%s", portal, stmt)
+					if n2+2 <= len(payload) {
+						fc := int(be16(payload[n2 : n2+2]))
+						root.add(newField(fmt.Sprintf("Parameter Format Codes: %d", fc), "", base+5+n2, 2))
+					}
+				}
+			}
+		case 'T':
+			if len(payload) >= 2 {
+				nfields := int(be16(payload[0:2]))
+				root.add(newField(fmt.Sprintf("Fields: %d", nfields), "", base+5, 2))
+				p := 2
+				for i := 0; i < nfields && p+18 <= len(payload); i++ {
+					fname, n, ok := pgCString(payload, p)
+					if !ok {
+						break
+					}
+					p = n
+					col := newField(fmt.Sprintf("Column %d: %s", i+1, fname), "", base+5+p, 18)
+					if p+18 <= len(payload) {
+						col.add(
+							newField(fmt.Sprintf("Table OID: %d", be32(payload[p:p+4])), "", 0, 0),
+							newField(fmt.Sprintf("Column ID: %d", be16(payload[p+4:p+6])), "", 0, 0),
+							newField(fmt.Sprintf("Type OID: %d", be32(payload[p+6:p+10])), "", 0, 0),
+							newField(fmt.Sprintf("Type Size: %d", int16(be16(payload[p+10:p+12]))), "", 0, 0),
+							newField(fmt.Sprintf("Type Modifier: %d", int32(be32(payload[p+12:p+16]))), "", 0, 0),
+							newField(fmt.Sprintf("Format: %d", be16(payload[p+16:p+18])), "", 0, 0),
+						)
+						p += 18
+					}
+					root.add(col)
+				}
+			}
+		case 'D':
+			// Ambiguous: backend DataRow or frontend Describe.
+			if len(payload) >= 2 {
+				cols := int(be16(payload[0:2]))
+				if cols < 1024 && (cols == 0 || len(payload) > 2+4) {
+					root.add(newField(fmt.Sprintf("Columns: %d", cols), "", base+5, 2))
+					p := 2
+					for i := 0; i < cols && p+4 <= len(payload); i++ {
+						l := int(int32(be32(payload[p : p+4])))
+						p += 4
+						if l < 0 {
+							root.add(newField(fmt.Sprintf("Column %d: NULL", i+1), "", 0, 0))
+							continue
+						}
+						if p+l > len(payload) {
+							break
+						}
+						v := payload[p : p+l]
+						txt := string(v)
+						if !isPrintable(v) {
+							txt = hexPreview(v, 32)
+						}
+						root.add(newField(fmt.Sprintf("Column %d: %s", i+1, shorten(txt, 120)), "", base+5+p, l))
+						p += l
+					}
+					info += fmt.Sprintf(" rows=%d", cols)
+					break
+				}
+			}
+			target := "S"
+			if len(payload) > 0 {
+				target = string(payload[0])
+			}
+			nm, _, _ := pgCString(payload, 1)
+			root.add(newField("Describe Target: "+target, "", base+5, 1), newField("Name: "+nm, "", 0, 0))
+			info += " target=" + target
+		case 'E':
+			// Ambiguous: backend ErrorResponse or frontend Execute.
+			if len(payload) > 0 && strings.IndexByte("SVCMDHPWstcdnFLR", payload[0]) >= 0 {
+				fields := pgErrorFields(payload)
+				root.add(fields...)
+				for _, f := range fields {
+					if strings.HasPrefix(f.Label, "Message: ") {
+						info += ": " + shorten(f.Label, 80)
+						break
+					}
+				}
+			} else {
+				portal, _, _ := pgCString(payload, 0)
+				root.add(newField("Portal: "+portal, "", 0, 0))
+				info += " portal=" + portal
+			}
+		case 'N':
+			root.add(pgErrorFields(payload)...)
 		case 'C':
 			s := trimNul(payload)
 			root.add(newField("Tag: "+s, "", base+5, len(payload)))
 			info += ": " + s
-		case 'E':
-			e := pgErrorFields(payload)
-			root.add(newField("Error: "+shorten(e, 200), "", base+5, len(payload)))
-			info += ": " + shorten(e, 80)
-		case 'R':
+		case 'A':
 			if len(payload) >= 4 {
-				code := be32(payload[0:4])
-				result := "AuthenticationOk"
-				switch code {
-				case 3:
-					result = "AuthenticationCleartextPassword"
-				case 5:
-					result = "AuthenticationMD5Password"
-				case 10:
-					result = "AuthenticationSASL"
+				pid := be32(payload[0:4])
+				ch, n, ok := pgCString(payload, 4)
+				if ok {
+					msg, _, _ := pgCString(payload, n)
+					root.add(newField(fmt.Sprintf("PID: %d", pid), "", base+5, 4), newField("Channel: "+ch, "", base+9, n-4), newField("Payload: "+shorten(msg, 120), "", 0, 0))
+					info = fmt.Sprintf("PostgreSQL NOTIFY %s: %s", ch, shorten(msg, 60))
 				}
-				root.add(newField(fmt.Sprintf("Authentication: %s (%d)", result, code), "", base+5, 4))
-				info += ": " + result
-			}
-		case 'T':
-			if len(payload) >= 2 {
-				root.add(newField(fmt.Sprintf("Fields: %d", be16(payload[0:2])), "", base+5, 2))
-			}
-		case 'D':
-			if len(payload) >= 2 {
-				root.add(newField(fmt.Sprintf("Columns: %d", be16(payload[0:2])), "", base+5, 2))
 			}
 		}
 	} else {
@@ -767,9 +1288,273 @@ func (c *ctx) dissectPostgreSQL(b []byte, base int) bool {
 	return true
 }
 
+func isPrintable(b []byte) bool {
+	for _, c := range b {
+		if c < 32 && c != 9 && c != 10 && c != 13 {
+			return false
+		}
+		if c > 126 {
+			return false
+		}
+	}
+	return true
+}
+
 // -------------------------------------------------------------------- BGP
 
 var bgpTypes = map[byte]string{1: "OPEN", 2: "UPDATE", 3: "NOTIFICATION", 4: "KEEPALIVE", 5: "ROUTE-REFRESH"}
+
+func bgpPrefixList(data []byte, afi uint16, addPath bool) []string {
+	var out []string
+	for p := 0; p < len(data); {
+		if addPath {
+			if p+4 > len(data) {
+				break
+			}
+			p += 4
+		}
+		if p >= len(data) {
+			break
+		}
+		bits := int(data[p])
+		p++
+		max := 4
+		if afi == 2 {
+			max = 16
+		}
+		if bits > max*8 {
+			break
+		}
+		n := (bits + 7) / 8
+		if p+n > len(data) {
+			break
+		}
+		var ip netip.Addr
+		if afi == 2 {
+			var a [16]byte
+			copy(a[:], data[p:p+n])
+			ip = netip.AddrFrom16(a)
+		} else {
+			var a [4]byte
+			copy(a[:], data[p:p+n])
+			ip = netip.AddrFrom4(a)
+		}
+		out = append(out, fmt.Sprintf("%s/%d", ip, bits))
+		p += n
+	}
+	return out
+}
+
+func bgpASPath(v []byte) string {
+	var segs []string
+	for p := 0; p+2 <= len(v); {
+		st, cnt := v[p], int(v[p+1])
+		p += 2
+		asnSize := 2
+		if p+cnt*4 <= len(v) && (p+cnt*4 == len(v) || cnt == 0) {
+			asnSize = 4
+		}
+		var asns []string
+		for i := 0; i < cnt && p+asnSize <= len(v); i++ {
+			if asnSize == 4 {
+				asns = append(asns, strconv.Itoa(int(be32(v[p:p+4]))))
+				p += 4
+			} else {
+				asns = append(asns, strconv.Itoa(int(be16(v[p:p+2]))))
+				p += 2
+			}
+		}
+		kind := map[byte]string{1: "AS_SET", 2: "AS_SEQUENCE", 3: "AS_CONFED_SEQUENCE", 4: "AS_CONFED_SET"}[st]
+		if kind == "" {
+			kind = fmt.Sprintf("Segment %d", st)
+		}
+		segs = append(segs, kind+" ["+strings.Join(asns, " ")+"]")
+	}
+	return strings.Join(segs, " ")
+}
+
+func bgpCommunity(v uint32) string {
+	switch v {
+	case 0xffffff01:
+		return "NO_EXPORT"
+	case 0xffffff02:
+		return "NO_ADVERTISE"
+	case 0xffffff03:
+		return "NO_EXPORT_SUBCONFED"
+	case 0xffffff04:
+		return "NOPEER"
+	}
+	return fmt.Sprintf("%d:%d", v>>16, v&0xffff)
+}
+
+func bgpCapability(code byte, v []byte) string {
+	switch code {
+	case 1:
+		if len(v) >= 4 {
+			return fmt.Sprintf("Multiprotocol AFI=%d SAFI=%d", be16(v[0:2]), v[3])
+		}
+	case 2:
+		return "Route Refresh"
+	case 3:
+		return "Outbound Route Filtering"
+	case 5:
+		if len(v) >= 6 {
+			return fmt.Sprintf("Extended Next Hop AFI=%d SAFI=%d NH-AFI=%d", be16(v[0:2]), be16(v[2:4]), be16(v[4:6]))
+		}
+	case 6:
+		return "Extended Message"
+	case 7:
+		return "BGPsec"
+	case 8:
+		return "Multiple Labels"
+	case 9:
+		if len(v) >= 1 {
+			role := map[byte]string{0: "Provider", 1: "RS", 2: "RS-Client", 3: "Customer"}[v[0]]
+			return "BGP Role: " + role
+		}
+	case 64:
+		if len(v) >= 2 {
+			restart := be16(v[0:2]) & 0x0fff
+			return fmt.Sprintf("Graceful Restart %d s", restart)
+		}
+	case 65:
+		if len(v) >= 4 {
+			return fmt.Sprintf("4-octet ASN %d", be32(v[0:4]))
+		}
+	case 67:
+		return "Dynamic Capability"
+	case 69:
+		return "Add-Path"
+	case 70:
+		return "Enhanced Route Refresh"
+	case 71:
+		return "Long-Lived Graceful Restart"
+	case 72:
+		if len(v) >= 1 {
+			hl := int(v[0])
+			if 1+hl <= len(v) {
+				host := string(v[1 : 1+hl])
+				rest := v[1+hl:]
+				dom := ""
+				if len(rest) >= 1 && 1+int(rest[0]) <= len(rest) {
+					dom = string(rest[1 : 1+int(rest[0])])
+				}
+				return "FQDN " + host + " " + dom
+			}
+		}
+	case 73:
+		return "Software Version " + string(v)
+	}
+	return hexPreview(v, 32)
+}
+
+func bgpAttrs(data []byte, base int) []*Field {
+	var out []*Field
+	for p := 0; p+3 <= len(data); {
+		flags, typ := data[p], data[p+1]
+		p += 2
+		l := int(data[p])
+		p++
+		if flags&0x10 != 0 {
+			if p >= len(data) {
+				break
+			}
+			l = int(be16(data[p-1 : p+1]))
+			p++
+		}
+		if p+l > len(data) {
+			break
+		}
+		v := data[p : p+l]
+		name := map[byte]string{1: "ORIGIN", 2: "AS_PATH", 3: "NEXT_HOP", 4: "MULTI_EXIT_DISC", 5: "LOCAL_PREF", 6: "ATOMIC_AGGREGATE", 7: "AGGREGATOR", 8: "COMMUNITIES", 9: "ORIGINATOR_ID", 10: "CLUSTER_LIST", 14: "MP_REACH_NLRI", 15: "MP_UNREACH_NLRI", 16: "EXTENDED_COMMUNITIES", 17: "AS4_PATH", 18: "AS4_AGGREGATOR", 26: "AIGP", 32: "LARGE_COMMUNITIES", 35: "ONLY_TO_CUSTOMER"}[typ]
+		if name == "" {
+			name = fmt.Sprintf("Attribute %d", typ)
+		}
+		f := newField(fmt.Sprintf("%s (flags 0x%02x, %d bytes)", name, flags, l), "", base+p-l, l)
+		switch typ {
+		case 1:
+			if len(v) > 0 {
+				f.Value = map[byte]string{0: "IGP", 1: "EGP", 2: "INCOMPLETE"}[v[0]]
+			}
+		case 2, 17:
+			f.Value = bgpASPath(v)
+		case 3:
+			if len(v) == 4 {
+				f.Value = netip.AddrFrom4([4]byte{v[0], v[1], v[2], v[3]}).String()
+			}
+		case 4, 5:
+			if len(v) == 4 {
+				f.Value = strconv.Itoa(int(be32(v)))
+			}
+		case 6:
+			f.Value = "Atomic aggregate"
+		case 7, 18:
+			if len(v) >= 6 {
+				asnSize := 2
+				if len(v) == 8 {
+					asnSize = 4
+				}
+				ipOff := asnSize
+				if ipOff+4 <= len(v) {
+					if asnSize == 4 {
+						f.Value = fmt.Sprintf("AS%d %s", be32(v[0:4]), netip.AddrFrom4([4]byte{v[4], v[5], v[6], v[7]}))
+					} else {
+						f.Value = fmt.Sprintf("AS%d %s", be16(v[0:2]), netip.AddrFrom4([4]byte{v[2], v[3], v[4], v[5]}))
+					}
+				}
+			}
+		case 8:
+			var cs []string
+			for i := 0; i+4 <= len(v); i += 4 {
+				cs = append(cs, bgpCommunity(be32(v[i:i+4])))
+			}
+			f.Value = strings.Join(cs, " ")
+		case 9:
+			if len(v) == 4 {
+				f.Value = netip.AddrFrom4([4]byte{v[0], v[1], v[2], v[3]}).String()
+			}
+		case 10:
+			var ips []string
+			for i := 0; i+4 <= len(v); i += 4 {
+				ips = append(ips, netip.AddrFrom4([4]byte{v[i], v[i+1], v[i+2], v[i+3]}).String())
+			}
+			f.Value = strings.Join(ips, " ")
+		case 14, 15:
+			if len(v) >= 3 {
+				afi := be16(v[0:2])
+				safi := v[2]
+				if typ == 14 && len(v) >= 5 {
+					nhLen := int(v[3])
+					if 5+nhLen <= len(v) {
+						nh := v[4 : 4+nhLen]
+						rest := v[5+nhLen:]
+						if len(rest) > 0 {
+							rest = rest[1:]
+						}
+						nhStr := hexPreview(nh, 16)
+						if a, ok := netip.AddrFromSlice(nh); ok {
+							nhStr = a.String()
+						}
+						f.Value = fmt.Sprintf("AFI=%d SAFI=%d next-hop=%s NLRI=%s", afi, safi, nhStr, strings.Join(bgpPrefixList(rest, afi, false), " "))
+					}
+				} else if typ == 15 {
+					f.Value = fmt.Sprintf("AFI=%d SAFI=%d withdrawn=%s", afi, safi, strings.Join(bgpPrefixList(v[3:], afi, false), " "))
+				}
+			}
+		case 16:
+			f.Value = hexPreview(v, 64)
+		case 32:
+			var cs []string
+			for i := 0; i+12 <= len(v); i += 12 {
+				cs = append(cs, fmt.Sprintf("%d:%d:%d", be32(v[i:i+4]), be32(v[i+4:i+8]), be32(v[i+8:i+12])))
+			}
+			f.Value = strings.Join(cs, " ")
+		}
+		out = append(out, f)
+		p += l
+	}
+	return out
+}
 
 func (c *ctx) dissectBGP(b []byte, base int) bool {
 	if len(b) < 19 {
@@ -808,47 +1593,99 @@ func (c *ctx) dissectBGP(b []byte, base int) bool {
 				asn := be16(msg[20:22])
 				hold := be16(msg[22:24])
 				routerID := netip.AddrFrom4([4]byte{msg[24], msg[25], msg[26], msg[27]}).String()
+				optLen := int(msg[28])
 				f.add(
 					newField(fmt.Sprintf("Version: %d", msg[19]), "", base+off+19, 1),
 					newField(fmt.Sprintf("My AS: %d", asn), "", base+off+20, 2),
 					newField(fmt.Sprintf("Hold Time: %d s", hold), "", base+off+22, 2),
 					newField("BGP Identifier: "+routerID, "", base+off+24, 4),
+					newField(fmt.Sprintf("Optional Parameters Length: %d", optLen), "", base+off+28, 1),
 				)
-				info = fmt.Sprintf("BGP OPEN AS%d", asn)
+				info = fmt.Sprintf("BGP OPEN AS%d router=%s", asn, routerID)
+				var caps []string
+				for p := 29; p+2 <= len(msg) && p < 29+optLen; {
+					pt, pl := msg[p], int(msg[p+1])
+					p += 2
+					if p+pl > len(msg) {
+						break
+					}
+					pv := msg[p : p+pl]
+					p += pl
+					if pt != 2 {
+						continue
+					}
+					for q := 0; q+2 <= len(pv); {
+						code, cl := pv[q], int(pv[q+1])
+						q += 2
+						if q+cl > len(pv) {
+							break
+						}
+						desc := bgpCapability(code, pv[q:q+cl])
+						f.add(newField(fmt.Sprintf("Capability %d: %s", code, desc), hexPreview(pv[q:q+cl], 24), base+off+p-pl+q-2, cl))
+						caps = append(caps, desc)
+						q += cl
+					}
+				}
+				if len(caps) > 0 {
+					info += " caps=" + shorten(strings.Join(caps, ", "), 80)
+				}
 			}
 		case 2: // UPDATE
 			if len(msg) >= 23 {
 				wlen := int(be16(msg[19:21]))
 				alenOff := 21 + wlen
-				info = fmt.Sprintf("BGP UPDATE withdrawn=%d", wlen)
+				f.add(newField(fmt.Sprintf("Withdrawn Routes Length: %d", wlen), "", base+off+19, 2))
+				withdrawn := []string{}
+				if wlen > 0 && 21+wlen <= len(msg) {
+					withdrawn = bgpPrefixList(msg[21:21+wlen], 1, false)
+					f.add(newField("Withdrawn Routes: "+strings.Join(withdrawn, " "), "", base+off+21, wlen))
+				}
 				if alenOff+2 <= len(msg) {
 					alen := int(be16(msg[alenOff : alenOff+2]))
-					f.add(
-						newField(fmt.Sprintf("Withdrawn Routes Length: %d", wlen), "", base+off+19, 2),
-						newField(fmt.Sprintf("Path Attributes Length: %d", alen), "", base+off+alenOff, 2),
-					)
-					info += fmt.Sprintf(" attributes=%d", alen)
+					f.add(newField(fmt.Sprintf("Path Attributes Length: %d", alen), "", base+off+alenOff, 2))
+					attrStart := alenOff + 2
+					if attrStart+alen <= len(msg) {
+						attrs := bgpAttrs(msg[attrStart:attrStart+alen], base+off+attrStart)
+						f.add(attrs...)
+						nlri := msg[attrStart+alen:]
+						prefixes := bgpPrefixList(nlri, 1, false)
+						if len(prefixes) > 0 {
+							f.add(newField("NLRI: "+strings.Join(prefixes, " "), "", base+off+attrStart+alen, len(nlri)))
+						}
+						info = fmt.Sprintf("BGP UPDATE withdrawn=%d prefixes=%d attrs=%d", len(withdrawn), len(prefixes), len(attrs))
+					}
 				}
 			}
 		case 3: // NOTIFICATION
 			if len(msg) >= 21 {
+				errCode, sub := msg[19], msg[20]
+				codes := map[byte]string{1: "Message Header Error", 2: "OPEN Message Error", 3: "UPDATE Message Error", 4: "Hold Timer Expired", 5: "FSM Error", 6: "Cease", 7: "Route Refresh Error", 8: "Send Hold Timer Expired"}
+				cname := codes[errCode]
+				if cname == "" {
+					cname = fmt.Sprintf("Code %d", errCode)
+				}
 				f.add(
-					newField(fmt.Sprintf("Error Code: %d", msg[19]), "", base+off+19, 1),
-					newField(fmt.Sprintf("Error Subcode: %d", msg[20]), "", base+off+20, 1),
+					newField(fmt.Sprintf("Error Code: %s (%d)", cname, errCode), "", base+off+19, 1),
+					newField(fmt.Sprintf("Error Subcode: %d", sub), "", base+off+20, 1),
 					newField("Data: "+hexPreview(msg[21:], 48), "", base+off+21, len(msg)-21),
 				)
-				info = fmt.Sprintf("BGP NOTIFICATION code=%d subcode=%d", msg[19], msg[20])
+				info = fmt.Sprintf("BGP NOTIFICATION %s sub=%d", cname, sub)
 			}
 		case 4:
 			info = "BGP KEEPALIVE"
 		case 5:
-			info = "BGP ROUTE-REFRESH"
+			if len(msg) >= 23 {
+				afi := be16(msg[19:21])
+				safi := msg[22]
+				f.add(newField(fmt.Sprintf("AFI: %d", afi), "", base+off+19, 2), newField("Reserved: "+strconv.Itoa(int(msg[21])), "", base+off+21, 1), newField(fmt.Sprintf("SAFI: %d", safi), "", base+off+22, 1))
+				info = fmt.Sprintf("BGP ROUTE-REFRESH AFI=%d SAFI=%d", afi, safi)
+			}
 		}
 		root.add(f)
 		off += length
 	}
 	c.addRoot(root)
-	c.appInfo = info
+	c.appInfo = shorten(info, 120)
 	return true
 }
 

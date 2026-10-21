@@ -364,3 +364,69 @@ func TestSTUNError(t *testing.T) {
 		t.Fatal("missing STUN error code")
 	}
 }
+
+func TestMQTTV5Publish(t *testing.T) {
+	body := []byte{0, 1, 't', 0x03, 0x23, 0x00, 0x01, 'h', 'i'}
+	b := append([]byte{0x30, byte(len(body))}, body...)
+	c := appCtx(b)
+	if !c.dissectMQTT(b, 0) {
+		t.Fatal("MQTT not recognized")
+	}
+	if !strings.Contains(c.appInfo, "PUBLISH") {
+		t.Fatalf("info=%q", c.appInfo)
+	}
+	if !containsLabel(fieldLabels(c.roots), "Topic Alias") {
+		t.Fatal("missing topic alias property")
+	}
+}
+
+func TestPostgreSQLDataRow(t *testing.T) {
+	payload := []byte{0, 1, 0, 0, 0, 2, 'h', 'i'}
+	b := make([]byte, 5+len(payload))
+	b[0] = 'D'
+	binary.BigEndian.PutUint32(b[1:5], uint32(4+len(payload)))
+	copy(b[5:], payload)
+	c := appCtx(b)
+	if !c.dissectPostgreSQL(b, 0) {
+		t.Fatal("PostgreSQL not recognized")
+	}
+	if !strings.Contains(c.appInfo, "rows=1") {
+		t.Fatalf("info=%q", c.appInfo)
+	}
+	if !containsLabel(fieldLabels(c.roots), "Column 1: hi") {
+		t.Fatal("missing data row column")
+	}
+}
+
+func bgpFrame(typ byte, body []byte) []byte {
+	m := make([]byte, 19+len(body))
+	for i := 0; i < 16; i++ {
+		m[i] = 0xff
+	}
+	binary.BigEndian.PutUint16(m[16:18], uint16(len(m)))
+	m[18] = typ
+	copy(m[19:], body)
+	return m
+}
+
+func TestBGPOpenAndUpdate(t *testing.T) {
+	open := []byte{4, 0xfd, 0xe8, 0, 180, 1, 1, 1, 1, 14, 2, 12, 65, 4, 0, 0, 0xfd, 0xe9, 1, 4, 0, 1, 0, 1}
+	c := appCtx(bgpFrame(1, open))
+	if !c.dissectBGP(bgpFrame(1, open), 0) {
+		t.Fatal("BGP OPEN not recognized")
+	}
+	if !containsLabel(fieldLabels(c.roots), "4-octet ASN 65001") {
+		t.Fatal("missing 4-byte ASN capability")
+	}
+	attrs := []byte{0x40, 1, 1, 0, 0x40, 2, 6, 2, 1, 0, 0, 0xfd, 0xe9, 0x40, 3, 4, 192, 0, 2, 1}
+	body := []byte{0, 2, 8, 10, 0, 20}
+	body = append(body, attrs...)
+	body = append(body, 24, 192, 0, 2)
+	c = appCtx(bgpFrame(2, body))
+	if !c.dissectBGP(bgpFrame(2, body), 0) {
+		t.Fatal("BGP UPDATE not recognized")
+	}
+	if !strings.Contains(c.appInfo, "prefixes=1") {
+		t.Fatalf("info=%q", c.appInfo)
+	}
+}

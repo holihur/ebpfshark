@@ -223,10 +223,10 @@ make go-build
 | 应用层 | SNMP v1/v2c | GET/GETNEXT/GETBULK/SET/RESPONSE/TRAP，BER/OID/值（基础） |
 | 应用层 | Syslog | RFC5424 与 BSD 格式，facility/severity |
 | 应用层 | STUN | Binding/Allocate 等方法、ERROR-CODE、XOR-PEER/RELAYED、ICE、Integrity 等属性 |
-| 应用层 | MQTT | CONNECT/PUBLISH/SUBSCRIBE 等（基础） |
+| 应用层 | MQTT | 全部 14 种报文、CONNECT/Will/用户名密码、QoS、SUBSCRIBE 选项、v5 Properties |
 | 应用层 | Redis | RESP 数组/内联命令，常见命令与参数 |
-| 应用层 | PostgreSQL | Startup、Query、ErrorResponse、CommandComplete 等（基础） |
-| 应用层 | BGP-4 | OPEN/UPDATE/NOTIFICATION/KEEPALIVE/ROUTE-REFRESH（基础） |
+| 应用层 | PostgreSQL | Startup/SSL/Cancel、Auth、Query/Parse/Bind、RowDescription/DataRow、Error/Notice、Notify、Copy |
+| 应用层 | BGP-4 | OPEN capabilities、UPDATE withdrawn/Path Attributes/NLRI、MP_REACH/UNREACH、Notification/Route-Refresh |
 | 应用层 | SSH | 版本标识、明文消息类型；加密后的内容不解密 |
 | 应用层 | SSDP | M-SEARCH/NOTIFY/响应与常用 Header |
 | 应用层 | SIP | INVITE/REGISTER/BYE 等请求与响应（基础） |
