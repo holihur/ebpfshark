@@ -16,9 +16,10 @@ import (
 
 // Subscriber receives packets that match its filter.
 type Subscriber struct {
-	ID     int64
-	C      chan *packet.Packet
-	Filter filter.Filter
+	ID        int64
+	C         chan *packet.Packet
+	Filter    filter.Filter
+	FilterKey string // canonical expression, used to evaluate identical filters once
 
 	dropped atomic.Uint64
 }
@@ -157,8 +158,24 @@ func (s *Store) Add(p *packet.Packet) {
 	s.updateFlow(p)
 
 	var recipients []*Subscriber
+	matches := make(map[string]bool)
 	for _, sub := range s.subs {
-		if sub.Filter == nil || sub.Filter.Match(&p.Meta) {
+		if sub.Filter == nil {
+			recipients = append(recipients, sub)
+			continue
+		}
+		ok := false
+		if key := sub.FilterKey; key != "" {
+			if v, hit := matches[key]; hit {
+				ok = v
+			} else {
+				ok = sub.Filter.Match(&p.Meta)
+				matches[key] = ok
+			}
+		} else {
+			ok = sub.Filter.Match(&p.Meta)
+		}
+		if ok {
 			recipients = append(recipients, sub)
 		}
 	}
@@ -515,6 +532,12 @@ func (s *Store) Flows(limit int) []*Flow {
 
 // Subscribe registers a live subscriber. The caller must Unsubscribe.
 func (s *Store) Subscribe(f filter.Filter, buf int) *Subscriber {
+	return s.SubscribeKey(f, "", buf)
+}
+
+// SubscribeKey is Subscribe with a stable filter expression key. Subscribers
+// sharing a key have their filter evaluated once per packet.
+func (s *Store) SubscribeKey(f filter.Filter, key string, buf int) *Subscriber {
 	if buf <= 0 {
 		buf = 2048
 	}
@@ -522,9 +545,10 @@ func (s *Store) Subscribe(f filter.Filter, buf int) *Subscriber {
 	defer s.mu.Unlock()
 	s.nextSub++
 	sub := &Subscriber{
-		ID:     s.nextSub,
-		C:      make(chan *packet.Packet, buf),
-		Filter: f,
+		ID:        s.nextSub,
+		C:         make(chan *packet.Packet, buf),
+		Filter:    f,
+		FilterKey: key,
 	}
 	if f == nil {
 		sub.Filter = filterAll{}

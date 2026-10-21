@@ -280,17 +280,21 @@ func macString(b []byte) string {
 }
 
 func hexPreview(b []byte, max int) string {
-	if len(b) > max {
+	truncated := len(b) > max
+	if truncated {
 		b = b[:max]
 	}
+	const digits = "0123456789abcdef"
 	var sb strings.Builder
+	sb.Grow(len(b)*3 + 2)
 	for i, x := range b {
 		if i > 0 {
 			sb.WriteByte(' ')
 		}
-		fmt.Fprintf(&sb, "%02x", x)
+		sb.WriteByte(digits[x>>4])
+		sb.WriteByte(digits[x&0x0f])
 	}
-	if len(b) == max {
+	if truncated {
 		sb.WriteString(" …")
 	}
 	return sb.String()
@@ -315,12 +319,17 @@ func hexBytes(b []byte, n int) string {
 	if len(b) > n {
 		b = b[:n]
 	}
+	const digits = "0123456789abcdef"
 	var sb strings.Builder
+	if len(b) > 1 {
+		sb.Grow(len(b)*3 - 1)
+	}
 	for i, x := range b {
 		if i > 0 {
 			sb.WriteByte(' ')
 		}
-		fmt.Fprintf(&sb, "%02x", x)
+		sb.WriteByte(digits[x>>4])
+		sb.WriteByte(digits[x&0x0f])
 	}
 	return sb.String()
 }

@@ -168,3 +168,24 @@ func TestSubscriber(t *testing.T) {
 		t.Fatal("timed out waiting for subscriber packet")
 	}
 }
+
+type countFilter struct{ calls *int }
+
+func (f countFilter) Match(*packet.Meta) bool { *f.calls++; return true }
+
+func TestSubscribeKeyEvaluatesOnce(t *testing.T) {
+	st := New(64)
+	calls := 0
+	f := countFilter{&calls}
+	a := st.SubscribeKey(f, "same", 2)
+	b := st.SubscribeKey(f, "same", 2)
+	defer st.Unsubscribe(a)
+	defer st.Unsubscribe(b)
+	st.Add(makePacket(1, "TCP", "1", "2"))
+	if calls != 1 {
+		t.Fatalf("filter evaluated %d times, want 1", calls)
+	}
+	if len(a.C) != 1 || len(b.C) != 1 {
+		t.Fatalf("subscriber delivery a=%d b=%d", len(a.C), len(b.C))
+	}
+}

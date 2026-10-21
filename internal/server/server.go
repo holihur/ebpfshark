@@ -391,12 +391,16 @@ func toPacketJSON(p *packet.Packet) packetJSON {
 	}
 }
 
-func (s *Server) parseFilter(r *http.Request) (filter.Filter, error) {
+func filterExpr(r *http.Request) string {
 	expr := r.URL.Query().Get("filter")
 	if expr == "" {
 		expr = r.URL.Query().Get("q")
 	}
-	return filter.Parse(expr)
+	return expr
+}
+
+func (s *Server) parseFilter(r *http.Request) (filter.Filter, error) {
+	return filter.Parse(filterExpr(r))
 }
 
 func (s *Server) handlePackets(w http.ResponseWriter, r *http.Request) {
@@ -532,7 +536,7 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	h.Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
 
-	sub := s.store.Subscribe(flt, 4096)
+	sub := s.store.SubscribeKey(flt, filterExpr(r), 4096)
 	defer s.store.Unsubscribe(sub)
 
 	fmt.Fprintf(w, "retry: 2000\n\n")

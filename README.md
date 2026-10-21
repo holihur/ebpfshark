@@ -583,6 +583,8 @@ curl -s -b /tmp/ebpfshark.cookie \
 - 订阅者消费过慢时会丢弃并计入 `dropped`，不会阻塞抓包线程。
 - 协议层判断使用 `LayerMask` 位图，避免每个包反复扫描 `[]string`。
 - 入包解析的字段树使用对象池；列表路径解析完 Summary/Meta 后立即归还节点。
+- 十六进制预览改为查表输出，避免逐字节 `fmt.Fprintf`。
+- 相同过滤表达式的多个 SSE 订阅者只计算一次过滤结果。
 - TLS/HTTP2 per-flow 状态有上限；流量表/重组表超限时批量淘汰，避免每包 O(n) 扫描。
 
 ## 已知限制

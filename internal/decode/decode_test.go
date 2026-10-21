@@ -238,3 +238,16 @@ func TestTruncatedFrame(t *testing.T) {
 		t.Fatal("expected a protocol label for truncated frame")
 	}
 }
+
+func TestLayerMask(t *testing.T) {
+	body := "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n"
+	res := decodeFrame(t, buildIPv4(6, buildTCP(50000, 80, 0x18, []byte(body))))
+	if res.Meta.LayerMask == 0 {
+		t.Fatal("empty layer mask")
+	}
+	for _, layer := range []string{"eth", "ip", "tcp", "http"} {
+		if !res.Meta.HasLayer(layer) {
+			t.Fatalf("missing layer %s", layer)
+		}
+	}
+}
