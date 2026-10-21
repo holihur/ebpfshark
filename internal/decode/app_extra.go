@@ -890,7 +890,7 @@ func respValue(b []byte, off, depth int) (string, int, bool) {
 			next += 2
 		}
 		return val, next, true
-	case '*':
+	case '*', '~', '>', '%', '|':
 		line, next, ok := respLine(b, off+1)
 		if !ok {
 			return "", off, false
@@ -899,8 +899,12 @@ func respValue(b []byte, off, depth int) (string, int, bool) {
 		if err != nil || n < 0 {
 			return line, next, true
 		}
-		parts := make([]string, 0, n)
-		for i := 0; i < n; i++ {
+		count := n
+		if b[off] == '%' || b[off] == '|' {
+			count = n * 2
+		}
+		parts := make([]string, 0, count)
+		for i := 0; i < count; i++ {
 			val, p, ok := respValue(b, next, depth+1)
 			if !ok {
 				break
@@ -908,7 +912,54 @@ func respValue(b []byte, off, depth int) (string, int, bool) {
 			parts = append(parts, val)
 			next = p
 		}
+		if b[off] == '%' || b[off] == '|' {
+			pairs := make([]string, 0, n)
+			for i := 0; i+1 < len(parts); i += 2 {
+				pairs = append(pairs, parts[i]+"="+parts[i+1])
+			}
+			return strings.Join(pairs, " "), next, true
+		}
 		return strings.Join(parts, " "), next, true
+	case '_':
+		_, next, _ := respLine(b, off+1)
+		return "null", next, true
+	case '#':
+		line, next, ok := respLine(b, off+1)
+		if ok {
+			if line == "t" {
+				return "true", next, true
+			}
+			return "false", next, true
+		}
+	case ',':
+		line, next, ok := respLine(b, off+1)
+		return line, next, ok
+	case '(':
+		line, next, ok := respLine(b, off+1)
+		return line, next, ok
+	case '=':
+		line, next, ok := respLine(b, off+1)
+		if !ok {
+			return "", off, false
+		}
+		n, err := strconv.Atoi(line)
+		if err != nil || n < 0 || next+n > len(b) {
+			return "", off, false
+		}
+		if n >= 4 {
+			return string(b[next+4 : next+n]), next + n + 2, true
+		}
+		return string(b[next : next+n]), next + n, true
+	case '!':
+		line, next, ok := respLine(b, off+1)
+		if !ok {
+			return "", off, false
+		}
+		n, err := strconv.Atoi(line)
+		if err != nil || n < 0 || next+n > len(b) {
+			return "", off, false
+		}
+		return string(b[next : next+n]), next + n + 2, true
 	}
 	return "", off, false
 }
@@ -918,12 +969,15 @@ func (c *ctx) dissectRedis(b []byte, base int) bool {
 		return false
 	}
 	var args []string
-	if b[0] == '*' || b[0] == '$' || b[0] == '+' || b[0] == '-' || b[0] == ':' {
-		val, _, ok := respValue(b, 0, 0)
+	isRESP := strings.ContainsRune("*$+-:_#,(!%~>|=", rune(b[0]))
+	val := ""
+	if isRESP {
+		v, _, ok := respValue(b, 0, 0)
 		if !ok {
 			return false
 		}
-		args = strings.Split(val, " ")
+		val = v
+		args = strings.Split(v, " ")
 	} else {
 		line, _, ok := respLine(b, 0)
 		if !ok {
@@ -936,7 +990,16 @@ func (c *ctx) dissectRedis(b []byte, base int) bool {
 	}
 	cmd := strings.ToUpper(args[0])
 	if !redisCommands[cmd] {
-		return false
+		if !isRESP {
+			return false
+		}
+		c.addLayer("redis")
+		c.proto = "redis"
+		root := newNode("Redis RESP3 Reply", base, len(b))
+		root.add(newField(fmt.Sprintf("Response Type: %c", b[0]), "", base, 1), newField("Response: "+shorten(val, 240), "", base, len(b)))
+		c.addRoot(root)
+		c.appInfo = shorten("Redis reply: "+val, 140)
+		return true
 	}
 
 	c.addLayer("redis")
@@ -1851,6 +1914,132 @@ var snmpPDUNames = map[byte]string{
 	0xA6: "INFORM-REQUEST", 0xA7: "TRAP-V2", 0xA8: "REPORT",
 }
 
+func snmpVersion(v int64) string {
+	switch v {
+	case 0:
+		return "v1"
+	case 1:
+		return "v2c"
+	case 3:
+		return "v3"
+	}
+	return fmt.Sprintf("version %d", v)
+}
+
+func snmpErrorStatus(v int64) string {
+	names := []string{"noError", "tooBig", "noSuchName", "badValue", "readOnly", "genErr", "noAccess", "wrongType", "wrongLength", "wrongEncoding", "wrongValue", "noCreation", "inconsistentValue", "resourceUnavailable", "commitFailed", "undoFailed", "authorizationError", "notWritable", "inconsistentName"}
+	if int(v) >= 0 && int(v) < len(names) {
+		return names[v]
+	}
+	return fmt.Sprintf("status %d", v)
+}
+
+func snmpVarbinds(list []byte, root *Field, base int) string {
+	first := ""
+	pos := 0
+	for i := 0; i < 128; i++ {
+		vb, ok := berRead(list, pos)
+		if !ok || vb.tag != 0x30 {
+			break
+		}
+		pos = vb.next
+		o, ok := berRead(vb.value, 0)
+		if !ok || o.tag != 0x06 {
+			continue
+		}
+		oid := berOID(o.value)
+		if first == "" {
+			first = oid
+		}
+		val, ok := berRead(vb.value, o.next)
+		if !ok {
+			root.add(newField(oid+" = <missing>", "", base, 0))
+			continue
+		}
+		switch val.tag {
+		case 0x80:
+			root.add(newField(oid+" = noSuchObject", "", base, 0))
+		case 0x81:
+			root.add(newField(oid+" = noSuchInstance", "", base, 0))
+		case 0x82:
+			root.add(newField(oid+" = endOfMibView", "", base, 0))
+		default:
+			root.add(newField(oid+" = "+berValue(val), "", base, 0))
+		}
+	}
+	return first
+}
+
+func snmpPDU(pdu berTLV, root *Field, base int) (string, string) {
+	name := snmpPDUNames[pdu.tag]
+	if name == "" {
+		return "", ""
+	}
+	info := name
+	pos := 0
+	if pdu.tag == 0xA4 { // SNMPv1 Trap-PDU
+		ent, ok := berRead(pdu.value, pos)
+		if ok && ent.tag == 0x06 {
+			root.add(newField("Enterprise: "+berOID(ent.value), "", base, 0))
+			pos = ent.next
+		}
+		agent, ok := berRead(pdu.value, pos)
+		if ok && agent.tag == 0x40 {
+			root.add(newField("Agent Address: "+berValue(agent), "", base, 0))
+			pos = agent.next
+		}
+		gen, ok := berRead(pdu.value, pos)
+		if ok {
+			gn := map[int64]string{0: "coldStart", 1: "warmStart", 2: "linkDown", 3: "linkUp", 4: "authenticationFailure", 5: "egpNeighborLoss", 6: "enterpriseSpecific"}[berInt(gen.value)]
+			root.add(newField(fmt.Sprintf("Generic Trap: %s (%d)", gn, berInt(gen.value)), "", base, 0))
+			pos = gen.next
+			info += " " + gn
+		}
+		spec, ok := berRead(pdu.value, pos)
+		if ok {
+			root.add(newField(fmt.Sprintf("Specific Trap: %d", berInt(spec.value)), "", base, 0))
+			pos = spec.next
+		}
+		ts, ok := berRead(pdu.value, pos)
+		if ok {
+			root.add(newField(fmt.Sprintf("Time Stamp: %d", berInt(ts.value)), "", base, 0))
+			pos = ts.next
+		}
+	} else {
+		req, ok := berRead(pdu.value, pos)
+		if ok {
+			root.add(newField(fmt.Sprintf("Request ID: %d", berInt(req.value)), "", base, 0))
+			pos = req.next
+		}
+		st, ok := berRead(pdu.value, pos)
+		if ok {
+			label := "Error Status"
+			if pdu.tag == 0xA5 {
+				label = "Non-repeaters"
+			}
+			root.add(newField(fmt.Sprintf("%s: %s (%d)", label, snmpErrorStatus(berInt(st.value)), berInt(st.value)), "", base, 0))
+			pos = st.next
+		}
+		idx, ok := berRead(pdu.value, pos)
+		if ok {
+			label := "Error Index"
+			if pdu.tag == 0xA5 {
+				label = "Max Repetitions"
+			}
+			root.add(newField(fmt.Sprintf("%s: %d", label, berInt(idx.value)), "", base, 0))
+			pos = idx.next
+		}
+	}
+	vbs, ok := berRead(pdu.value, pos)
+	if ok && vbs.tag == 0x30 {
+		oid := snmpVarbinds(vbs.value, root, base)
+		if oid != "" {
+			info += " " + oid
+		}
+	}
+	return name, info
+}
+
 func (c *ctx) dissectSNMP(b []byte, base int) bool {
 	if len(b) < 4 || b[0] != 0x30 {
 		return false
@@ -1863,69 +2052,116 @@ func (c *ctx) dissectSNMP(b []byte, base int) bool {
 	if !ok || ver.tag != 0x02 {
 		return false
 	}
-	community, ok := berRead(outer.value, ver.next)
-	if !ok || community.tag != 0x04 {
+	version := berInt(ver.value)
+	if version != 0 && version != 1 && version != 3 {
 		return false
 	}
-	pdu, ok := berRead(outer.value, community.next)
-	if !ok {
-		return false
-	}
-	name := snmpPDUNames[pdu.tag]
-	if name == "" {
-		return false
-	}
-
 	c.addLayer("snmp")
 	c.proto = "snmp"
-	root := newNode("Simple Network Management Protocol ("+name+")", base, len(b))
-	root.add(
-		newField(fmt.Sprintf("Version: %d", berInt(ver.value)), "", base, 0),
-		newField("Community: "+string(community.value), "", base, 0),
-		newField(fmt.Sprintf("PDU: %s (0x%02x)", name, pdu.tag), "", base, 0),
-	)
-	info := "SNMP " + name + " community=" + string(community.value)
-	pos := 0
-	var oid string
-	for i := 0; i < 4; i++ {
-		t, ok := berRead(pdu.value, pos)
-		if !ok {
-			break
+	root := newNode("Simple Network Management Protocol", base, len(b))
+	root.add(newField(fmt.Sprintf("Version: %s (%d)", snmpVersion(version), version), "", base, 0))
+	info := "SNMP " + snmpVersion(version)
+
+	if version == 3 {
+		header, ok := berRead(outer.value, ver.next)
+		if !ok || header.tag != 0x30 {
+			return false
 		}
-		pos = t.next
-		switch i {
-		case 0:
-			root.add(newField(fmt.Sprintf("Request ID: %d", berInt(t.value)), "", base, 0))
-		case 1:
-			root.add(newField(fmt.Sprintf("Error Status: %d", berInt(t.value)), "", base, 0))
-		case 2:
-			root.add(newField(fmt.Sprintf("Error Index: %d", berInt(t.value)), "", base, 0))
-		case 3:
-			if t.tag != 0x30 {
-				break
+		hpos := 0
+		msgID, ok := berRead(header.value, hpos)
+		if ok {
+			root.add(newField(fmt.Sprintf("Message ID: %d", berInt(msgID.value)), "", base, 0))
+			hpos = msgID.next
+		}
+		maxSize, ok := berRead(header.value, hpos)
+		if ok {
+			root.add(newField(fmt.Sprintf("Max Message Size: %d", berInt(maxSize.value)), "", base, 0))
+			hpos = maxSize.next
+		}
+		flags, ok := berRead(header.value, hpos)
+		if ok {
+			fv := byte(0)
+			if len(flags.value) > 0 {
+				fv = flags.value[0]
 			}
-			vbPos := 0
-			for n := 0; n < 16; n++ {
-				vb, ok := berRead(t.value, vbPos)
-				if !ok || vb.tag != 0x30 {
+			root.add(newField(fmt.Sprintf("Flags: 0x%02x (auth=%d priv=%d reportable=%d)", fv, (fv>>0)&1, (fv>>1)&1, (fv>>2)&1), "", base, 0))
+			hpos = flags.next
+		}
+		secModel, ok := berRead(header.value, hpos)
+		if ok {
+			root.add(newField(fmt.Sprintf("Security Model: %d", berInt(secModel.value)), "", base, 0))
+		}
+		sec, ok := berRead(outer.value, header.next)
+		if !ok || sec.tag != 0x04 {
+			return false
+		}
+		usm, ok := berRead(sec.value, 0)
+		if ok && usm.tag == 0x30 {
+			up := 0
+			names := []string{"Engine ID", "Engine Boots", "Engine Time", "User Name", "Authentication Parameters", "Privacy Parameters"}
+			for i := 0; i < len(names); i++ {
+				t, ok := berRead(usm.value, up)
+				if !ok {
 					break
 				}
-				vbPos = vb.next
-				o, ok := berRead(vb.value, 0)
-				if !ok || o.tag != 0x06 {
-					continue
+				up = t.next
+				val := string(t.value)
+				if i == 0 || i == 3 || i == 4 || i == 5 {
+					val = hexPreview(t.value, 32)
+					if t.tag == 0x04 && i == 3 {
+						val = string(t.value)
+					}
 				}
-				val, ok := berRead(vb.value, o.next)
-				if !ok {
-					continue
+				if i == 1 || i == 2 {
+					val = strconv.FormatInt(berInt(t.value), 10)
 				}
-				oid = berOID(o.value)
-				root.add(newField(oid+" = "+berValue(val), "", base, 0))
+				root.add(newField(names[i]+": "+val, "", base, 0))
+				if i == 3 {
+					info += " user=" + string(t.value)
+				}
 			}
 		}
-	}
-	if oid != "" {
-		info += " " + oid
+		data, ok := berRead(outer.value, sec.next)
+		if !ok || data.tag != 0x30 {
+			return false
+		}
+		dpos := 0
+		if ce, ok := berRead(data.value, dpos); ok {
+			root.add(newField("Context Engine ID: "+hexPreview(ce.value, 32), "", base, 0))
+			dpos = ce.next
+		}
+		if cn, ok := berRead(data.value, dpos); ok {
+			root.add(newField("Context Name: "+string(cn.value), "", base, 0))
+			dpos = cn.next
+		}
+		scoped, ok := berRead(data.value, dpos)
+		if !ok {
+			return false
+		}
+		if scoped.tag == 0x04 {
+			root.add(newField("Encrypted PDU: "+hexPreview(scoped.value, 64), "", base, 0))
+			info += " encrypted"
+		} else if name, pduInfo := snmpPDU(scoped, root, base); name != "" {
+			root.Label = "Simple Network Management Protocol (" + name + ")"
+			root.add(newField(fmt.Sprintf("PDU: %s (0x%02x)", name, scoped.tag), "", base, 0))
+			info += " " + pduInfo
+		}
+	} else {
+		community, ok := berRead(outer.value, ver.next)
+		if !ok || community.tag != 0x04 {
+			return false
+		}
+		pdu, ok := berRead(outer.value, community.next)
+		if !ok {
+			return false
+		}
+		name, pduInfo := snmpPDU(pdu, root, base)
+		if name == "" {
+			return false
+		}
+		root.Label = "Simple Network Management Protocol (" + name + ")"
+		root.add(newField("Community: "+string(community.value), "", base, 0), newField(fmt.Sprintf("PDU: %s (0x%02x)", name, pdu.tag), "", base, 0))
+		info += " " + name + " community=" + string(community.value) + " " + pduInfo
 	}
 	c.addRoot(root)
 	c.appInfo = shorten(info, 120)
@@ -1987,6 +2223,54 @@ var sipMethods = map[string]bool{
 	"MESSAGE": true, "REFER": true, "INFO": true, "UPDATE": true, "PRACK": true,
 }
 
+func sipHeaderName(k string) string {
+	k = strings.ToLower(strings.TrimSpace(k))
+	names := map[string]string{"v": "via", "f": "from", "t": "to", "i": "call-id", "m": "contact", "l": "content-length", "c": "content-type", "s": "subject", "k": "supported"}
+	if n := names[k]; n != "" {
+		return n
+	}
+	return k
+}
+
+func sipSDP(body []byte, root *Field, base int) {
+	sdp := newField("Session Description Protocol (SDP)", "", base, len(body))
+	for _, line := range strings.Split(string(body), "\n") {
+		line = strings.TrimRight(line, "\r")
+		if len(line) < 2 || line[1] != '=' {
+			continue
+		}
+		key, val := line[0], line[2:]
+		label := map[byte]string{'v': "Version", 'o': "Origin", 's': "Session Name", 'i': "Session Information", 'u': "URI", 'e': "Email", 'p': "Phone", 'c': "Connection", 'b': "Bandwidth", 't': "Timing", 'r': "Repeat", 'z': "Time Zone", 'k': "Encryption Key", 'a': "Attribute", 'm': "Media"}[key]
+		if label == "" {
+			label = string(key)
+		}
+		field := newField(label+": "+val, "", base, 0)
+		if key == 'm' {
+			parts := strings.Fields(val)
+			if len(parts) >= 3 {
+				field.Value = ""
+				field.add(newField("Media: "+parts[0], "", base, 0), newField("Port: "+parts[1], "", base, 0), newField("Protocol: "+parts[2], "", base, 0))
+				if len(parts) > 3 {
+					field.add(newField("Formats: "+strings.Join(parts[3:], " "), "", base, 0))
+				}
+			}
+		} else if key == 'c' {
+			parts := strings.Fields(val)
+			if len(parts) >= 3 {
+				field.Value = ""
+				field.add(newField("Network Type: "+parts[0], "", base, 0), newField("Address Type: "+parts[1], "", base, 0), newField("Connection Address: "+strings.Join(parts[2:], " "), "", base, 0))
+			}
+		} else if key == 'a' {
+			if k, v, ok := strings.Cut(val, ":"); ok {
+				field.Label = "Attribute: " + k
+				field.Value = v
+			}
+		}
+		sdp.add(field)
+	}
+	root.add(sdp)
+}
+
 func (c *ctx) dissectSIP(b []byte, base int) bool {
 	line, rest, ok := bytes.Cut(b, []byte("\n"))
 	if !ok {
@@ -2007,26 +2291,52 @@ func (c *ctx) dissectSIP(b []byte, base int) bool {
 	root := newNode("Session Initiation Protocol", base, len(b))
 	root.add(newField(first, "", base, len(line)))
 	headers := map[string]string{}
-	for _, hl := range strings.Split(string(rest), "\n") {
+	var body []byte
+	headerText := rest
+	if i := bytes.Index(rest, []byte("\r\n\r\n")); i >= 0 {
+		headerText, body = rest[:i], rest[i+4:]
+	} else if i := bytes.Index(rest, []byte("\n\n")); i >= 0 {
+		headerText, body = rest[:i], rest[i+2:]
+	}
+	for _, hl := range strings.Split(string(headerText), "\n") {
 		hl = strings.TrimRight(hl, "\r")
 		if hl == "" {
-			break
+			continue
 		}
 		k, v, ok := strings.Cut(hl, ":")
 		if ok {
-			headers[strings.ToLower(strings.TrimSpace(k))] = strings.TrimSpace(v)
-			root.add(newField(hl, "", base, 0))
+			key := sipHeaderName(k)
+			headers[key] = strings.TrimSpace(v)
+			root.add(newField(strings.TrimSpace(k)+": "+strings.TrimSpace(v), "", base, 0))
 		}
 	}
 	info := first
+	who := ""
+	if v := headers["from"]; v != "" {
+		who = v
+	}
+	if v := headers["to"]; v != "" {
+		if who != "" {
+			who += " -> "
+		}
+		who += v
+	}
+	if who != "" {
+		info += " " + who
+	}
 	if v := headers["call-id"]; v != "" {
 		info += " Call-ID=" + v
 	}
 	if v := headers["cseq"]; v != "" {
 		info += " CSeq=" + v
 	}
+	ct := strings.ToLower(headers["content-type"])
+	if len(body) > 0 && (strings.Contains(ct, "application/sdp") || bytes.HasPrefix(body, []byte("v="))) {
+		sipSDP(body, root, base)
+		info += " SDP"
+	}
 	c.addRoot(root)
-	c.appInfo = shorten(info, 120)
+	c.appInfo = shorten(info, 160)
 	return true
 }
 
@@ -2042,6 +2352,37 @@ var sshMessages = map[byte]string{
 	90: "CHANNEL_OPEN", 91: "CHANNEL_OPEN_CONFIRMATION", 92: "CHANNEL_OPEN_FAILURE",
 	93: "CHANNEL_WINDOW_ADJUST", 94: "CHANNEL_DATA", 95: "CHANNEL_EXTENDED_DATA",
 	96: "CHANNEL_EOF", 97: "CHANNEL_CLOSE", 98: "CHANNEL_REQUEST",
+}
+
+func sshString(b []byte, off int) (string, int, bool) {
+	if off+4 > len(b) {
+		return "", off, false
+	}
+	n := int(be32(b[off : off+4]))
+	off += 4
+	if n < 0 || off+n > len(b) {
+		return "", off, false
+	}
+	return string(b[off : off+n]), off + n, true
+}
+
+func sshNameList(b []byte, off int) (string, int, bool) {
+	v, n, ok := sshString(b, off)
+	if !ok {
+		return "", off, false
+	}
+	return strings.Join(strings.Split(v, ","), ", "), n, true
+}
+
+func sshAddStrings(f *Field, b []byte, off int, labels []string) {
+	for _, label := range labels {
+		v, n, ok := sshNameList(b, off)
+		if !ok {
+			return
+		}
+		f.add(newField(label+": "+v, "", 0, 0))
+		off = n
+	}
 }
 
 func (c *ctx) dissectSSH(b []byte, base int) bool {
@@ -2075,24 +2416,300 @@ func (c *ctx) dissectSSH(b []byte, base int) bool {
 		return false
 	}
 	padding := int(b[4])
-	if padding < 4 || 5+padding >= len(b) {
+	if padding < 4 || 5+padding > 4+pktLen {
 		return false
 	}
+	payload := b[5 : 4+pktLen-padding]
 	code := b[5]
 	name := sshMessages[code]
 	if name == "" {
-		return false
+		name = fmt.Sprintf("Unknown/Encrypted Message %d", code)
 	}
 	c.addLayer("ssh")
 	c.proto = "ssh"
-	root := newNode("SSH Protocol ("+name+")", base, len(b))
+	root := newNode("SSH Protocol ("+name+")", base, 4+pktLen)
 	root.add(
 		newField(fmt.Sprintf("Packet Length: %d", pktLen), "", base, 4),
 		newField(fmt.Sprintf("Padding Length: %d", padding), "", base+4, 1),
 		newField(fmt.Sprintf("Message: %s (%d)", name, code), "", base+5, 1),
 	)
+	info := "SSH " + name
+	p := 1
+
+	switch code {
+	case 1: // DISCONNECT
+		if p+4 <= len(payload) {
+			reason := be32(payload[p : p+4])
+			p += 4
+			desc, n, _ := sshString(payload, p)
+			p = n
+			lang, _, _ := sshString(payload, p)
+			root.add(newField(fmt.Sprintf("Reason Code: %d", reason), "", 0, 0), newField("Description: "+desc, "", 0, 0), newField("Language: "+lang, "", 0, 0))
+			info += " " + desc
+		}
+	case 2, 4: // IGNORE / DEBUG
+		if code == 4 {
+			always, n, ok := sshString(payload, p)
+			if ok {
+				root.add(newField("Always Display: "+always, "", 0, 0))
+				p = n
+			}
+		}
+		msg, _, _ := sshString(payload, p)
+		root.add(newField("Message: "+shorten(msg, 160), "", 0, 0))
+	case 3: // UNIMPLEMENTED
+		if p+4 <= len(payload) {
+			root.add(newField(fmt.Sprintf("Sequence Number: %d", be32(payload[p:p+4])), "", 0, 0))
+		}
+	case 5, 6: // SERVICE_REQUEST / SERVICE_ACCEPT
+		svc, _, ok := sshString(payload, p)
+		if ok {
+			root.add(newField("Service: "+svc, "", 0, 0))
+			info += " " + svc
+		}
+	case 7: // EXT_INFO
+		if p+4 <= len(payload) {
+			n := int(be32(payload[p : p+4]))
+			p += 4
+			for i := 0; i < n; i++ {
+				k, np, ok := sshString(payload, p)
+				if !ok {
+					break
+				}
+				p = np
+				v, np2, ok := sshString(payload, p)
+				if !ok {
+					break
+				}
+				p = np2
+				root.add(newField(k+": "+v, "", 0, 0))
+			}
+		}
+	case 20: // KEXINIT
+		if len(payload) >= 17 {
+			root.add(newField("Cookie: "+hexPreview(payload[1:17], 16), "", base+6, 16))
+			p = 17
+			sshAddStrings(root, payload, p, []string{
+				"Key Exchange Algorithms", "Server Host Key Algorithms",
+				"Encryption Client-to-Server", "Encryption Server-to-Client",
+				"MAC Client-to-Server", "MAC Server-to-Client",
+				"Compression Client-to-Server", "Compression Server-to-Client",
+				"Languages Client-to-Server", "Languages Server-to-Client",
+			})
+			// Re-walk to find the trailing first_kex_packet_follows byte.
+			q := 17
+			for i := 0; i < 10; i++ {
+				_, n, ok := sshString(payload, q)
+				if !ok {
+					break
+				}
+				q = n
+			}
+			if q < len(payload) {
+				root.add(newField(fmt.Sprintf("First KEX Packet Follows: %d", payload[q]), "", 0, 0))
+				q++
+				if q+4 <= len(payload) {
+					root.add(newField(fmt.Sprintf("Reserved: %d", be32(payload[q:q+4])), "", 0, 0))
+				}
+			}
+			info += " KEX"
+		}
+	case 30: // KEXDH_INIT / KEX_ECDH_INIT
+		if v, _, ok := sshString(payload, p); ok {
+			root.add(newField("Client Ephemeral Public Key: "+hexPreview([]byte(v), 64), "", 0, 0))
+		}
+	case 31, 33: // KEXDH_REPLY / GEX_REPLY / ECDH_REPLY
+		if code == 31 && p+12 <= len(payload) {
+			min := be32(payload[p : p+4])
+			pref := be32(payload[p+4 : p+8])
+			max := be32(payload[p+8 : p+12])
+			if min >= 1024 && min <= pref && pref <= max {
+				root.add(newField(fmt.Sprintf("Min Group Size: %d", min), "", 0, 0), newField(fmt.Sprintf("Preferred Group Size: %d", pref), "", 0, 0), newField(fmt.Sprintf("Max Group Size: %d", max), "", 0, 0))
+				p += 12
+				if v, _, ok := sshString(payload, p); ok {
+					root.add(newField("Prime: "+hexPreview([]byte(v), 64), "", 0, 0))
+				}
+				break
+			}
+		}
+		hostKey, n, ok := sshString(payload, p)
+		if ok {
+			root.add(newField("Server Host Key: "+hexPreview([]byte(hostKey), 64), "", 0, 0))
+			p = n
+			if f, n2, ok := sshString(payload, p); ok {
+				root.add(newField("Server Ephemeral Public Key: "+hexPreview([]byte(f), 64), "", 0, 0))
+				p = n2
+			}
+			if sig, _, ok := sshString(payload, p); ok {
+				root.add(newField("Signature: "+hexPreview([]byte(sig), 64), "", 0, 0))
+			}
+		}
+	case 32: // GEX_REQUEST_OLD
+		if p+4 <= len(payload) {
+			root.add(newField(fmt.Sprintf("Preferred Group Size: %d", be32(payload[p:p+4])), "", 0, 0))
+		}
+	case 34: // GEX_INIT / GEX_REPLY handled above
+		if v, _, ok := sshString(payload, p); ok {
+			root.add(newField("Client Ephemeral Public Key: "+hexPreview([]byte(v), 64), "", 0, 0))
+		}
+	case 36: // GEX_REQUEST
+		if p+12 <= len(payload) {
+			root.add(newField(fmt.Sprintf("Min Group Size: %d", be32(payload[p:p+4])), "", 0, 0), newField(fmt.Sprintf("Preferred Group Size: %d", be32(payload[p+4:p+8])), "", 0, 0), newField(fmt.Sprintf("Max Group Size: %d", be32(payload[p+8:p+12])), "", 0, 0))
+		}
+	case 50: // USERAUTH_REQUEST
+		user, n, ok := sshString(payload, p)
+		if ok {
+			root.add(newField("User Name: "+user, "", 0, 0))
+			p = n
+			svc, n2, ok := sshString(payload, p)
+			if ok {
+				root.add(newField("Service: "+svc, "", 0, 0))
+				p = n2
+				method, n3, ok := sshString(payload, p)
+				if ok {
+					root.add(newField("Method: "+method, "", 0, 0))
+					p = n3
+					info = fmt.Sprintf("SSH USERAUTH_REQUEST user=%s method=%s", user, method)
+					switch method {
+					case "password":
+						if p < len(payload) {
+							root.add(newField(fmt.Sprintf("Change Password: %d", payload[p]), "", 0, 0))
+							p++
+							if pw, _, ok := sshString(payload, p); ok {
+								root.add(newField("Password: "+shorten(pw, 32), "", 0, 0))
+							}
+						}
+					case "publickey":
+						if p < len(payload) {
+							root.add(newField(fmt.Sprintf("Has Signature: %d", payload[p]), "", 0, 0))
+							p++
+						}
+						if alg, _, ok := sshString(payload, p); ok {
+							root.add(newField("Public Key Algorithm: "+alg, "", 0, 0))
+						}
+					}
+				}
+			}
+		}
+	case 51: // USERAUTH_FAILURE
+		if list, n, ok := sshNameList(payload, p); ok {
+			root.add(newField("Authentications That Can Continue: "+list, "", 0, 0))
+			p = n
+			if p < len(payload) {
+				root.add(newField(fmt.Sprintf("Partial Success: %d", payload[p]), "", 0, 0))
+			}
+		}
+	case 52:
+		info = "SSH USERAUTH_SUCCESS"
+	case 53: // BANNER
+		if msg, n, ok := sshString(payload, p); ok {
+			root.add(newField("Message: "+shorten(msg, 160), "", 0, 0))
+			p = n
+			if lang, _, ok := sshString(payload, p); ok {
+				root.add(newField("Language: "+lang, "", 0, 0))
+			}
+		}
+	case 60: // PK_OK
+		if alg, n, ok := sshString(payload, p); ok {
+			root.add(newField("Public Key Algorithm: "+alg, "", 0, 0))
+			p = n
+			if blob, _, ok := sshString(payload, p); ok {
+				root.add(newField("Public Key: "+hexPreview([]byte(blob), 48), "", 0, 0))
+			}
+		}
+	case 80: // GLOBAL_REQUEST
+		if req, n, ok := sshString(payload, p); ok {
+			root.add(newField("Request Name: "+req, "", 0, 0))
+			p = n
+			if p < len(payload) {
+				root.add(newField(fmt.Sprintf("Want Reply: %d", payload[p]), "", 0, 0))
+				p++
+			}
+			if p < len(payload) {
+				root.add(newField("Request Data: "+hexPreview(payload[p:], 64), "", 0, 0))
+			}
+			info += " " + req
+		}
+	case 81, 82:
+		if len(payload) > 1 {
+			root.add(newField("Response Data: "+hexPreview(payload[1:], 64), "", 0, 0))
+		}
+	case 90: // CHANNEL_OPEN
+		if typ, n, ok := sshString(payload, p); ok {
+			root.add(newField("Channel Type: "+typ, "", 0, 0))
+			p = n
+			if p+12 <= len(payload) {
+				root.add(newField(fmt.Sprintf("Sender Channel: %d", be32(payload[p:p+4])), "", 0, 0), newField(fmt.Sprintf("Initial Window Size: %d", be32(payload[p+4:p+8])), "", 0, 0), newField(fmt.Sprintf("Maximum Packet Size: %d", be32(payload[p+8:p+12])), "", 0, 0))
+			}
+			info += " " + typ
+		}
+	case 91: // OPEN_CONFIRMATION
+		if p+16 <= len(payload) {
+			root.add(newField(fmt.Sprintf("Recipient Channel: %d", be32(payload[p:p+4])), "", 0, 0), newField(fmt.Sprintf("Sender Channel: %d", be32(payload[p+4:p+8])), "", 0, 0), newField(fmt.Sprintf("Initial Window Size: %d", be32(payload[p+8:p+12])), "", 0, 0), newField(fmt.Sprintf("Maximum Packet Size: %d", be32(payload[p+12:p+16])), "", 0, 0))
+		}
+	case 92: // OPEN_FAILURE
+		if p+4 <= len(payload) {
+			root.add(newField(fmt.Sprintf("Recipient Channel: %d", be32(payload[p:p+4])), "", 0, 0))
+			p += 4
+			if p+4 <= len(payload) {
+				root.add(newField(fmt.Sprintf("Reason Code: %d", be32(payload[p:p+4])), "", 0, 0))
+				p += 4
+				if desc, n, ok := sshString(payload, p); ok {
+					root.add(newField("Description: "+desc, "", 0, 0))
+					p = n
+					if lang, _, ok := sshString(payload, p); ok {
+						root.add(newField("Language: "+lang, "", 0, 0))
+					}
+				}
+			}
+		}
+	case 93: // WINDOW_ADJUST
+		if p+8 <= len(payload) {
+			root.add(newField(fmt.Sprintf("Recipient Channel: %d", be32(payload[p:p+4])), "", 0, 0), newField(fmt.Sprintf("Bytes to Add: %d", be32(payload[p+4:p+8])), "", 0, 0))
+		}
+	case 94: // DATA
+		if p+4 <= len(payload) {
+			root.add(newField(fmt.Sprintf("Recipient Channel: %d", be32(payload[p:p+4])), "", 0, 0))
+			p += 4
+			if data, _, ok := sshString(payload, p); ok {
+				root.add(newField(fmt.Sprintf("Data (%d bytes): %s", len(data), hexPreview([]byte(data), 64)), "", 0, 0))
+			}
+		}
+	case 95: // EXTENDED_DATA
+		if p+8 <= len(payload) {
+			root.add(newField(fmt.Sprintf("Recipient Channel: %d", be32(payload[p:p+4])), "", 0, 0), newField(fmt.Sprintf("Data Type Code: %d", be32(payload[p+4:p+8])), "", 0, 0))
+			p += 8
+			if data, _, ok := sshString(payload, p); ok {
+				root.add(newField(fmt.Sprintf("Data (%d bytes): %s", len(data), hexPreview([]byte(data), 64)), "", 0, 0))
+			}
+		}
+	case 96, 97, 98:
+		if code == 98 {
+			if p+4 <= len(payload) {
+				root.add(newField(fmt.Sprintf("Recipient Channel: %d", be32(payload[p:p+4])), "", 0, 0))
+				p += 4
+				if req, n, ok := sshString(payload, p); ok {
+					root.add(newField("Request Type: "+req, "", 0, 0))
+					p = n
+					if p < len(payload) {
+						root.add(newField(fmt.Sprintf("Want Reply: %d", payload[p]), "", 0, 0))
+						p++
+					}
+					if p < len(payload) {
+						root.add(newField("Request Data: "+hexPreview(payload[p:], 64), "", 0, 0))
+					}
+				}
+			}
+		} else if p+4 <= len(payload) {
+			root.add(newField(fmt.Sprintf("Recipient Channel: %d", be32(payload[p:p+4])), "", 0, 0))
+		}
+	}
+	if name == fmt.Sprintf("Unknown/Encrypted Message %d", code) {
+		root.add(newField("Payload: "+hexPreview(payload, 96), "", base+5, len(payload)))
+		info = "SSH encrypted/unknown payload"
+	}
 	c.addRoot(root)
-	c.appInfo = "SSH " + name
+	c.appInfo = shorten(info, 140)
 	return true
 }
 

@@ -220,16 +220,16 @@ make go-build
 | 应用层 | HTTP/2 | 明文帧：SETTINGS/HEADERS/DATA/GOAWAY/PING 等（基础；HPACK 未解码） |
 | 应用层 | DHCP | 完整 DHCPv4 消息类型、常用 option、Option Overload、Relay Agent、Classless Routes |
 | 应用层 | NTP | 版本、模式、Stratum、时间戳、扩展字段/MAC |
-| 应用层 | SNMP v1/v2c | GET/GETNEXT/GETBULK/SET/RESPONSE/TRAP，BER/OID/值（基础） |
+| 应用层 | SNMP v1/v2c/v3 | 全部 PDU、v1 Trap、v2c Bulk、v3 USM 头/Scoped PDU、BER/OID/异常值 |
 | 应用层 | Syslog | RFC5424 与 BSD 格式，facility/severity |
 | 应用层 | STUN | Binding/Allocate 等方法、ERROR-CODE、XOR-PEER/RELAYED、ICE、Integrity 等属性 |
 | 应用层 | MQTT | 全部 14 种报文、CONNECT/Will/用户名密码、QoS、SUBSCRIBE 选项、v5 Properties |
-| 应用层 | Redis | RESP 数组/内联命令，常见命令与参数 |
+| 应用层 | Redis | RESP2/RESP3 数组、Map、Set、Push、Double、Bool、BigNum、Verbatim、Blob Error；内联命令 |
 | 应用层 | PostgreSQL | Startup/SSL/Cancel、Auth、Query/Parse/Bind、RowDescription/DataRow、Error/Notice、Notify、Copy |
 | 应用层 | BGP-4 | OPEN capabilities、UPDATE withdrawn/Path Attributes/NLRI、MP_REACH/UNREACH、Notification/Route-Refresh |
-| 应用层 | SSH | 版本标识、明文消息类型；加密后的内容不解密 |
+| 应用层 | SSH | 版本标识、KEXINIT 算法列表、KEX、用户认证、Global/Channel 明文消息；加密内容标记 |
 | 应用层 | SSDP | M-SEARCH/NOTIFY/响应与常用 Header |
-| 应用层 | SIP | INVITE/REGISTER/BYE 等请求与响应（基础） |
+| 应用层 | SIP | 请求/响应、完整 Header、Compact Header、Call-ID/CSeq/From/To、SDP 媒体与属性 |
 | 应用层 | WireGuard | 握手 Initiation/Response/Cookie 完整字段、Transport 头部；载荷加密 |
 
 **过滤器**：新增协议同样支持协议谓词，例如 `mqtt`、`redis`、`vxlan`、`bgp`、
@@ -584,6 +584,27 @@ curl -s -b /tmp/ebpfshark.cookie \
 - 不内置 TLS；公网访问请使用 HTTPS 反向代理并启用 `-secure-cookie`。
 - 登录限流按 TCP 源 IP 统计；在反向代理后请确保代理正确传递客户端地址，否则所有
   用户会共享同一个限流计数。
+
+### 协议解析已知问题
+
+- **MQTT**：v4/v5 的 Properties 主要依据报文内“属性长度 + 已知属性 ID”启发式识别，
+  未按连接持久化协议版本；v4 PUBLISH 载荷以 `0x00` 开头时可能被误判为 v5 空属性。
+- **PostgreSQL**：`'D'`（DataRow/Describe）、`'E'`（ErrorResponse/Execute）、
+  `'S'`（ParameterStatus/Sync）在前端与后端含义不同，当前按报文结构启发式区分；
+  SASL 认证只展开消息类型，不解析 SASL 机制载荷。
+- **BGP**：AS_PATH 的 2/4 字节 ASN 依据属性长度推断；未根据 Add-Path capability
+  自动启用 Path ID；MP_REACH 只展开基础 next-hop/NLRI，未做完整 VPN/EVPN 解析。
+- **SNMP v3**：只解析明文 Scoped PDU；加密 PDU 仅显示密文；USM 认证/加密参数
+  只展示，不校验认证码，也不解密 privacy。
+- **SIP**：一个 TCP 段按一条 SIP 消息解析，未做多消息边界/流水线重组；SDP 只展开
+  常用字段，不解析完整 SDP 协商；multipart body 未展开。
+- **SSH**：密钥交换后的包为加密载荷，只能显示长度与密文；`31/32/33/34` 在不同
+  KEX 方法中含义重叠，按载荷结构启发式区分。
+- **Redis**：RESP3 的 chunked string（`;`）与 attribute（`|`）只做有限展开；
+  顶层 reply 与命令的区分依赖已知命令表。
+- **DNS/DHCP**：DNS 未覆盖全部 RR 类型；DHCP 未实现全部 255 个 option。
+- **TLS/HTTP/2/QUIC**：TLS 证书链/ALPN、HTTP/2 HPACK、QUIC Initial 解密仍未完成；
+  没有 `SSLKEYLOGFILE` 时无法解密应用数据。
 
 ## Roadmap
 

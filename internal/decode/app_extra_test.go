@@ -430,3 +430,99 @@ func TestBGPOpenAndUpdate(t *testing.T) {
 		t.Fatalf("info=%q", c.appInfo)
 	}
 }
+
+func testTLV(tag byte, v []byte) []byte {
+	if len(v) < 128 {
+		return append([]byte{tag, byte(len(v))}, v...)
+	}
+	return append([]byte{tag, 0x82, byte(len(v) >> 8), byte(len(v))}, v...)
+}
+
+func TestSNMPv1AndV3(t *testing.T) {
+	ent := testTLV(0x06, []byte{0x2b, 6, 1, 4, 1, 9})
+	agent := testTLV(0x40, []byte{192, 0, 2, 1})
+	v1pdu := testTLV(0xA4, append(append(append(append(ent, agent...), testTLV(0x02, []byte{0})...), testTLV(0x02, []byte{1})...), append(testTLV(0x43, []byte{0}), testTLV(0x30, nil)...)...))
+	v1 := testTLV(0x30, append(append(testTLV(0x02, []byte{0}), testTLV(0x04, []byte("public"))...), v1pdu...))
+	c := appCtx(v1)
+	if !c.dissectSNMP(v1, 0) || !strings.Contains(c.appInfo, "TRAP-V1") {
+		t.Fatalf("v1 info=%q", c.appInfo)
+	}
+	if !containsLabel(fieldLabels(c.roots), "Generic Trap: coldStart (0)") {
+		t.Fatal("missing v1 trap field")
+	}
+
+	usm := testTLV(0x30, append(append(append(append(append(testTLV(0x04, []byte{0x80, 0, 0, 1}), testTLV(0x02, []byte{1})...), testTLV(0x02, []byte{2})...), testTLV(0x04, []byte("alice"))...), testTLV(0x04, nil)...), testTLV(0x04, nil)...))
+	header := testTLV(0x30, append(append(append(testTLV(0x02, []byte{1}), testTLV(0x02, []byte{0xff, 0xff})...), testTLV(0x04, []byte{0})...), testTLV(0x02, []byte{3})...))
+	v3pdu := testTLV(0xA0, append(append(append(testTLV(0x02, []byte{1}), testTLV(0x02, []byte{0})...), testTLV(0x02, []byte{0})...), testTLV(0x30, nil)...))
+	data := testTLV(0x30, append(append(testTLV(0x04, []byte{0x80}), testTLV(0x04, nil)...), v3pdu...))
+	v3 := testTLV(0x30, append(append(append(testTLV(0x02, []byte{3}), header...), testTLV(0x04, usm)...), data...))
+	c = appCtx(v3)
+	if !c.dissectSNMP(v3, 0) || !strings.Contains(c.appInfo, "user=alice") {
+		t.Fatalf("v3 info=%q", c.appInfo)
+	}
+	if !containsLabel(fieldLabels(c.roots), "PDU: GET-REQUEST (0xa0)") {
+		t.Fatal("missing v3 scoped PDU")
+	}
+}
+
+func TestSIPWithSDP(t *testing.T) {
+	msg := "INVITE sip:bob@example.com SIP/2.0\r\nVia: SIP/2.0/UDP 192.0.2.1;branch=z9hG4bK\r\nFrom: <sip:alice@example.com>;tag=1\r\nTo: <sip:bob@example.com>\r\nCall-ID: abc@example.com\r\nCSeq: 1 INVITE\r\nContent-Type: application/sdp\r\nContent-Length: 120\r\n\r\nv=0\r\no=alice 1 1 IN IP4 192.0.2.1\r\ns=-\r\nc=IN IP4 192.0.2.1\r\nt=0 0\r\nm=audio 49170 RTP/AVP 0\r\na=rtpmap:0 PCMU/8000\r\n"
+	b := []byte(msg)
+	c := appCtx(b)
+	if !c.dissectSIP(b, 0) || !strings.Contains(c.appInfo, "Call-ID=abc@example.com") {
+		t.Fatalf("info=%q", c.appInfo)
+	}
+	labels := fieldLabels(c.roots)
+	for _, want := range []string{"Media: audio", "Attribute: rtpmap", "Connection Address: 192.0.2.1"} {
+		if !containsLabel(labels, want) {
+			t.Fatalf("missing %q", want)
+		}
+	}
+}
+
+func sshTestList(s string) []byte {
+	b := make([]byte, 4+len(s))
+	binary.BigEndian.PutUint32(b, uint32(len(s)))
+	copy(b[4:], s)
+	return b
+}
+
+func TestSSHKEXINIT(t *testing.T) {
+	payload := []byte{20}
+	payload = append(payload, make([]byte, 16)...)
+	for i := 0; i < 10; i++ {
+		v := "none"
+		if i == 0 {
+			v = "curve25519-sha256,ecdh-sha2-nistp256"
+		}
+		if i == 1 {
+			v = "ssh-ed25519,rsa-sha2-256"
+		}
+		payload = append(payload, sshTestList(v)...)
+	}
+	payload = append(payload, 0, 0, 0, 0, 0)
+	pad := 4
+	pktLen := 1 + len(payload) + pad
+	b := make([]byte, 4+pktLen)
+	binary.BigEndian.PutUint32(b, uint32(pktLen))
+	b[4] = byte(pad)
+	copy(b[5:], payload)
+	c := appCtx(b)
+	if !c.dissectSSH(b, 0) || !strings.Contains(c.appInfo, "KEX") {
+		t.Fatalf("info=%q", c.appInfo)
+	}
+	if !containsLabel(fieldLabels(c.roots), "Key Exchange Algorithms: curve25519-sha256, ecdh-sha2-nistp256") {
+		t.Fatal("missing KEX algorithm list")
+	}
+}
+
+func TestRedisRESP3(t *testing.T) {
+	b := []byte("%2\r\n$4\r\nkey1\r\n:1\r\n$4\r\nkey2\r\n#t\r\n")
+	c := appCtx(b)
+	if !c.dissectRedis(b, 0) || !strings.Contains(c.appInfo, "Redis reply") {
+		t.Fatalf("info=%q", c.appInfo)
+	}
+	if !containsLabel(fieldLabels(c.roots), "Response Type: %") {
+		t.Fatal("missing RESP3 type")
+	}
+}
