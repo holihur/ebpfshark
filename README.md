@@ -194,7 +194,7 @@ make go-build
 
 ## 协议支持
 
-> 标注“基础”的协议目前解析头部/控制字段，不做完整应用层重组；加密内容不做解密。
+> 标注“基础”的协议仍有消息类型/字段待补全，或受加密/压缩限制；加密内容不做解密。
 
 | 层次 | 协议 | 说明 |
 | --- | --- | --- |
@@ -207,7 +207,7 @@ make go-build
 | 网络层 | IPv4 | 选项、分片、TTL、校验和 |
 | 网络层 | IPv6 | 扩展头、Hop Limit |
 | 网络层 | ICMP / ICMPv6 | Echo、不可达、TTL 超时等；ICMPv6 含校验和 |
-| 网络层 | IGMP | Membership Query / Report / Leave（基础） |
+| 网络层 | IGMP | v1/v2/v3，Query/Report/Leave，完整源列表 |
 | 网络层 | GRE | Checksum/Key/Sequence，递归解析 IPv4/IPv6/ARP/以太网 |
 | 网络层 | IP-in-IP | IPv4/IPv6 隧道递归解析 |
 | 隧道 | VXLAN | VNI + 内层以太网完整解析 |
@@ -215,14 +215,14 @@ make go-build
 | 传输层 | UDP | 端口、长度、校验和 |
 | 传输层 | TLS | 记录层、Handshake、ClientHello/SNI、Alert、Application Data 长度 |
 | 传输层 | QUIC | Long/Short Header、版本、连接 ID、包类型（基础，不解密） |
-| 应用层 | DNS | A/AAAA/CNAME/NS/PTR/MX/TXT/SOA；含 mDNS 5353、LLMNR 5355 |
+| 应用层 | DNS | A/AAAA/CNAME/NS/PTR/MX/TXT/SOA/SRV/CAA/NAPTR/TLSA/SVCB/HTTPS；EDNS0/DNSSEC 标志；mDNS/LLMNR |
 | 应用层 | HTTP/1.x | 请求行/状态行、Header、Body 预览 |
 | 应用层 | HTTP/2 | 明文帧：SETTINGS/HEADERS/DATA/GOAWAY/PING 等（基础；HPACK 未解码） |
-| 应用层 | DHCP | Discover/Offer/Request/ACK 等，常用选项 |
-| 应用层 | NTP | 版本、模式、Stratum、时间戳 |
+| 应用层 | DHCP | 完整 DHCPv4 消息类型、常用 option、Option Overload、Relay Agent、Classless Routes |
+| 应用层 | NTP | 版本、模式、Stratum、时间戳、扩展字段/MAC |
 | 应用层 | SNMP v1/v2c | GET/GETNEXT/GETBULK/SET/RESPONSE/TRAP，BER/OID/值（基础） |
 | 应用层 | Syslog | RFC5424 与 BSD 格式，facility/severity |
-| 应用层 | STUN | Binding/Allocate 等方法、USERNAME/XOR-MAPPED-ADDRESS 等属性 |
+| 应用层 | STUN | Binding/Allocate 等方法、ERROR-CODE、XOR-PEER/RELAYED、ICE、Integrity 等属性 |
 | 应用层 | MQTT | CONNECT/PUBLISH/SUBSCRIBE 等（基础） |
 | 应用层 | Redis | RESP 数组/内联命令，常见命令与参数 |
 | 应用层 | PostgreSQL | Startup、Query、ErrorResponse、CommandComplete 等（基础） |
@@ -230,7 +230,7 @@ make go-build
 | 应用层 | SSH | 版本标识、明文消息类型；加密后的内容不解密 |
 | 应用层 | SSDP | M-SEARCH/NOTIFY/响应与常用 Header |
 | 应用层 | SIP | INVITE/REGISTER/BYE 等请求与响应（基础） |
-| 应用层 | WireGuard | 握手/Transport Data 头部 |
+| 应用层 | WireGuard | 握手 Initiation/Response/Cookie 完整字段、Transport 头部；载荷加密 |
 
 **过滤器**：新增协议同样支持协议谓词，例如 `mqtt`、`redis`、`vxlan`、`bgp`、
 `ssh`、`quic`、`http2`、`postgresql`、`igmp`、`wireguard`。

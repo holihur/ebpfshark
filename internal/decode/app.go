@@ -156,6 +156,8 @@ func (c *ctx) dissectDNS(msg []byte, base int, tcp bool) bool {
 		newField(fmt.Sprintf("Truncated: %d", boolInt(flags&0x0200 != 0)), "", dnsBase+2, 1),
 		newField(fmt.Sprintf("Recursion desired: %d", boolInt(flags&0x0100 != 0)), "", dnsBase+2, 1),
 		newField(fmt.Sprintf("Recursion available: %d", boolInt(flags&0x0080 != 0)), "", dnsBase+3, 1),
+		newField(fmt.Sprintf("Authentic data: %d", boolInt(flags&0x0020 != 0)), "", dnsBase+3, 1),
+		newField(fmt.Sprintf("Checking disabled: %d", boolInt(flags&0x0010 != 0)), "", dnsBase+3, 1),
 		newField(fmt.Sprintf("Reply code: %s (%d)", dnsRcodeName(rcode), rcode), "", dnsBase+3, 1),
 	)
 	root.add(
@@ -214,8 +216,42 @@ func (c *ctx) dissectDNS(msg []byte, base int, tcp bool) bool {
 			newField(fmt.Sprintf("Data length: %d", rdlen), "", dnsBase+next+8, 2),
 			newField(dnsTypeName(rtype)+": "+val, "", dnsBase+next+10, rdlen),
 		)
+		if rtype == 41 { // EDNS0 OPT pseudo-record
+			extRcode := uint16((ttl >> 24) & 0xff)
+			version := (ttl >> 16) & 0xff
+			do := ttl&0x8000 != 0
+			f.Label = fmt.Sprintf("OPT (EDNS0): UDP payload %d, extended RCODE %d, version %d, DO %d", rclass, extRcode, version, boolInt(do))
+			f.add(
+				newField(fmt.Sprintf("UDP Payload Size: %d", rclass), "", dnsBase+next+2, 2),
+				newField(fmt.Sprintf("Extended RCODE: %d", extRcode), "", dnsBase+next+4, 1),
+				newField(fmt.Sprintf("EDNS Version: %d", version), "", dnsBase+next+5, 1),
+				newField(fmt.Sprintf("DNSSEC OK: %d", boolInt(do)), "", dnsBase+next+6, 1),
+			)
+			for p := 0; p+4 <= len(rdata); {
+				ocode := be16(rdata[p : p+2])
+				olen := int(be16(rdata[p+2 : p+4]))
+				if p+4+olen > len(rdata) {
+					break
+				}
+				oval := rdata[p+4 : p+4+olen]
+				oname := fmt.Sprintf("EDNS Option %d", ocode)
+				switch ocode {
+				case 8:
+					oname = "Client Subnet"
+				case 10:
+					oname = "Cookie"
+				case 12:
+					oname = "Padding"
+				case 15:
+					oname = "Extended DNS Error"
+				}
+				f.add(newField(fmt.Sprintf("%s (%d bytes): %s", oname, olen, hexPreview(oval, 32)), "", dnsBase+next+10+p, 4+olen))
+				p += 4 + olen
+			}
+		} else {
+			answers = append(answers, dnsTypeName(rtype)+" "+val)
+		}
 		rr.add(f)
-		answers = append(answers, dnsTypeName(rtype)+" "+val)
 		off = next + 10 + rdlen
 	}
 	if len(rr.Children) > 0 {
@@ -322,6 +358,53 @@ func dnsRDataString(msg []byte, rtype uint16, rdata []byte, off int) string {
 				return n + " " + n2 + fmt.Sprintf(" serial %d", be32(msg[next2:]))
 			}
 		}
+	case 33: // SRV
+		if len(rdata) >= 6 {
+			if n, _, ok := dnsReadName(msg, off+6, 0); ok {
+				return fmt.Sprintf("priority %d weight %d port %d target %s", be16(rdata[0:2]), be16(rdata[2:4]), be16(rdata[4:6]), n)
+			}
+		}
+	case 35: // NAPTR
+		if len(rdata) >= 4 {
+			p := 4
+			readStr := func() string {
+				if p >= len(rdata) {
+					return ""
+				}
+				l := int(rdata[p])
+				p++
+				if p+l > len(rdata) {
+					return ""
+				}
+				s := string(rdata[p : p+l])
+				p += l
+				return s
+			}
+			flags := readStr()
+			service := readStr()
+			regexp := readStr()
+			repl, _, ok := dnsReadName(msg, off+p, 0)
+			if ok {
+				return fmt.Sprintf("order %d pref %d flags %q service %q regexp %q replacement %s", be16(rdata[0:2]), be16(rdata[2:4]), flags, service, regexp, repl)
+			}
+		}
+	case 52: // TLSA
+		if len(rdata) >= 3 {
+			return fmt.Sprintf("usage %d selector %d matching %d %s", rdata[0], rdata[1], rdata[2], hexPreview(rdata[3:], 32))
+		}
+	case 64, 65: // SVCB / HTTPS
+		if len(rdata) >= 3 {
+			if n, _, ok := dnsReadName(msg, off+2, 0); ok {
+				return fmt.Sprintf("priority %d target %s params %s", be16(rdata[0:2]), n, hexPreview(rdata[3:], 32))
+			}
+		}
+	case 257: // CAA
+		if len(rdata) >= 2 {
+			l := int(rdata[1])
+			if 2+l <= len(rdata) {
+				return fmt.Sprintf("flags %d tag %s value %s", rdata[0], string(rdata[2:2+l]), string(rdata[2+l:]))
+			}
+		}
 	case 16:
 		if len(rdata) > 1 {
 			l := int(rdata[0])
@@ -389,6 +472,8 @@ func dnsTypeName(t uint16) string {
 		return "AAAA"
 	case 33:
 		return "SRV"
+	case 35:
+		return "NAPTR"
 	case 41:
 		return "OPT"
 	case 43:
@@ -397,10 +482,18 @@ func dnsTypeName(t uint16) string {
 		return "RRSIG"
 	case 47:
 		return "NSEC"
+	case 52:
+		return "TLSA"
+	case 64:
+		return "SVCB"
 	case 65:
 		return "HTTPS"
 	case 255:
 		return "ANY"
+	case 256:
+		return "URI"
+	case 257:
+		return "CAA"
 	}
 	return fmt.Sprintf("TYPE%d", t)
 }
@@ -872,75 +965,6 @@ func tlsGroupName(g uint16) string {
 
 func isDHCP(sport, dport uint16) bool {
 	return (sport == 67 && dport == 68) || (sport == 68 && dport == 67)
-}
-
-func (c *ctx) dissectDHCP(b []byte, base int) bool {
-	if len(b) < 240 {
-		return false
-	}
-	if b[0] != 1 && b[0] != 2 {
-		return false
-	}
-	msgType := uint8(0)
-	var hostname, requestedIP string
-	for off := 240; off < len(b); {
-		opt := b[off]
-		if opt == 255 {
-			break
-		}
-		if opt == 0 {
-			off++
-			continue
-		}
-		if off+1 >= len(b) {
-			break
-		}
-		l := int(b[off+1])
-		if off+2+l > len(b) {
-			break
-		}
-		v := b[off+2 : off+2+l]
-		switch opt {
-		case 53:
-			if l >= 1 {
-				msgType = v[0]
-			}
-		case 12:
-			hostname = string(v)
-		case 50:
-			if l == 4 {
-				requestedIP = netip.AddrFrom4([4]byte{v[0], v[1], v[2], v[3]}).String()
-			}
-		}
-		off += 2 + l
-	}
-
-	c.addLayer("dhcp")
-	c.proto = "dhcp"
-	root := newNode(fmt.Sprintf("Dynamic Host Configuration Protocol (%s)", dhcpTypeName(msgType)), base, len(b))
-	root.add(
-		newField(fmt.Sprintf("Message type: %s (%d)", dhcpTypeName(msgType), msgType), "", base, 1),
-		newField("Hardware type: "+arpHwName(be16(b[1:3])), "", base+1, 1),
-		newField(fmt.Sprintf("Hardware address length: %d", b[2]), "", base+2, 1),
-		newField(fmt.Sprintf("Transaction ID: 0x%08x", be32(b[4:8])), "", base+4, 4),
-		newField(fmt.Sprintf("Client IP address: %s", ip4String(be32(b[12:16]))), "", base+12, 4),
-		newField(fmt.Sprintf("Your (client) IP address: %s", ip4String(be32(b[16:20]))), "", base+16, 4),
-		newField(fmt.Sprintf("Next server IP address: %s", ip4String(be32(b[20:24]))), "", base+20, 4),
-		newField(fmt.Sprintf("Client MAC address: %s", macString(b[28:34])), "", base+28, 6),
-	)
-	if hostname != "" {
-		root.add(newField("Host Name: "+hostname, "", 0, 0))
-	}
-	if requestedIP != "" {
-		root.add(newField("Requested IP Address: "+requestedIP, "", 0, 0))
-	}
-	c.addRoot(root)
-
-	c.appInfo = dhcpTypeName(msgType)
-	if hostname != "" {
-		c.appInfo += " (" + hostname + ")"
-	}
-	return true
 }
 
 func dhcpTypeName(t uint8) string {

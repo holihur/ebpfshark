@@ -244,3 +244,123 @@ func TestGRE(t *testing.T) {
 		t.Fatalf("proto=%q srcport=%d info=%q", c.proto, c.m.SrcPort, c.appInfo)
 	}
 }
+
+func fieldLabels(fields []*Field) []string {
+	var out []string
+	for _, f := range fields {
+		out = append(out, f.Label)
+		out = append(out, fieldLabels(f.Children)...)
+	}
+	return out
+}
+
+func containsLabel(labels []string, needle string) bool {
+	for _, l := range labels {
+		if strings.Contains(l, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestDHCPFullOptions(t *testing.T) {
+	b := make([]byte, 240)
+	b[0] = 1 // BOOTREQUEST
+	b[1] = 1
+	b[2] = 6
+	binary.BigEndian.PutUint32(b[4:8], 0x12345678)
+	copy(b[28:34], []byte{2, 0, 0, 0, 0, 1})
+	binary.BigEndian.PutUint32(b[236:240], 0x63825363)
+	opts := []byte{
+		53, 1, 3,
+		12, 4, 'h', 'o', 's', 't',
+		50, 4, 10, 0, 0, 5,
+		55, 3, 1, 3, 6,
+		3, 4, 10, 0, 0, 1,
+		6, 8, 8, 8, 8, 8, 1, 1, 1, 1,
+		255,
+	}
+	b = append(b, opts...)
+	c := appCtx(b)
+	if !c.dissectDHCP(b, 0) {
+		t.Fatal("DHCP not recognized")
+	}
+	if !strings.Contains(c.appInfo, "DHCP Request") || !strings.Contains(c.appInfo, "host") || !strings.Contains(c.appInfo, "requested=10.0.0.5") {
+		t.Fatalf("info=%q", c.appInfo)
+	}
+	labels := fieldLabels(c.roots)
+	for _, want := range []string{"DHCP Message Type", "Host Name", "Parameter Request List", "Domain Name Server"} {
+		if !containsLabel(labels, want) {
+			t.Errorf("missing option %q in %v", want, labels)
+		}
+	}
+}
+
+func TestIGMPv3Report(t *testing.T) {
+	b := make([]byte, 24)
+	b[0] = 0x22
+	binary.BigEndian.PutUint16(b[6:8], 1)
+	b[8] = 1 // MODE_IS_INCLUDE
+	b[9] = 0
+	binary.BigEndian.PutUint16(b[10:12], 1)
+	copy(b[12:16], []byte{224, 0, 0, 1})
+	copy(b[16:20], []byte{10, 0, 0, 1})
+	c := appCtx(b)
+	c.dissectIGMP(b, 0)
+	if c.proto != "igmp" || !strings.Contains(c.appInfo, "records=1") {
+		t.Fatalf("info=%q", c.appInfo)
+	}
+	if !containsLabel(fieldLabels(c.roots), "MODE_IS_INCLUDE") {
+		t.Fatal("missing group record")
+	}
+}
+
+func TestNTPExtension(t *testing.T) {
+	b := make([]byte, 48)
+	b[0] = 0x1b
+	ext := []byte{0x01, 0x04, 0, 8, 'a', 'b', 'c', 'd'}
+	b = append(b, ext...)
+	c := appCtx(b)
+	if !c.dissectNTP(b, 0) {
+		t.Fatal("NTP not recognized")
+	}
+	if !containsLabel(fieldLabels(c.roots), "RATE") {
+		t.Fatal("missing NTP extension field")
+	}
+}
+
+func TestWireGuardHandshake(t *testing.T) {
+	b := make([]byte, 148)
+	b[0] = 1
+	binary.BigEndian.PutUint32(b[4:8], 7)
+	c := appCtx(b)
+	if !c.dissectWireGuard(b, 0) {
+		t.Fatal("WireGuard not recognized")
+	}
+	if !strings.Contains(c.appInfo, "handshake initiation") {
+		t.Fatalf("info=%q", c.appInfo)
+	}
+	if !containsLabel(fieldLabels(c.roots), "Sender Index") || !containsLabel(fieldLabels(c.roots), "MAC1") {
+		t.Fatal("missing WireGuard handshake fields")
+	}
+}
+
+func TestSTUNError(t *testing.T) {
+	b := make([]byte, 20)
+	binary.BigEndian.PutUint16(b[0:2], 0x0111) // Binding error response
+	binary.BigEndian.PutUint32(b[4:8], stunMagic)
+	copy(b[8:20], []byte("0123456789ab"))
+	attr := []byte{0, 9, 0, 8, 0, 0, 4, 4, 'd', 'e', 'n', 'y'}
+	binary.BigEndian.PutUint16(b[2:4], 12)
+	b = append(b, attr...)
+	c := appCtx(b)
+	if !c.dissectSTUN(b, 0) {
+		t.Fatal("STUN not recognized")
+	}
+	if !strings.Contains(c.appInfo, "error response") {
+		t.Fatalf("info=%q", c.appInfo)
+	}
+	if !containsLabel(fieldLabels(c.roots), "Error: 404") {
+		t.Fatal("missing STUN error code")
+	}
+}
