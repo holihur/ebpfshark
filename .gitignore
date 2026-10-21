@@ -1,0 +1,11 @@
+/bin/
+/web/node_modules/
+/web/dist/
+/web/.vite/
+/web/*.tsbuildinfo
+/internal/server/webdist/*
+!/internal/server/webdist/.keep
+*.log
+.DS_Store
+
+.env.local
