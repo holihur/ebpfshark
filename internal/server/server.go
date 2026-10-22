@@ -460,7 +460,7 @@ func (s *Server) cachedDetail(key detailKey) ([]*decode.Field, bool) {
 		return nil, false
 	}
 	s.detailLRU.MoveToFront(el)
-	return el.Value.(*detailEntry).fields, true
+	return decode.CloneFields(el.Value.(*detailEntry).fields), true
 }
 
 func (s *Server) putDetail(key detailKey, fields []*decode.Field) {
@@ -502,8 +502,9 @@ func (s *Server) handlePacketDetail(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		res := decode.Decode(p.Data, p.LinkType, int(p.WireLen))
 		fields = res.Fields
-		s.putDetail(key, fields)
+		s.putDetail(key, decode.CloneFields(fields))
 	}
+	defer decode.ReleaseFields(fields)
 	writeJSON(w, http.StatusOK, detailResponse{
 		Packet:   toPacketJSON(p),
 		Fields:   fields,

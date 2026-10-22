@@ -250,6 +250,27 @@ func newNode(label string, off, length int) *Field {
 	return allocField(label, "", off, length)
 }
 
+// CloneFields returns an independent copy of a protocol tree. It is used by
+// caches that hand fields to concurrent HTTP handlers.
+func CloneFields(fields []*Field) []*Field {
+	if len(fields) == 0 {
+		return nil
+	}
+	out := make([]*Field, 0, len(fields))
+	for _, f := range fields {
+		if f == nil {
+			continue
+		}
+		cp := &Field{
+			Label: f.Label, Value: f.Value, Offset: f.Offset,
+			Length: f.Length, Severity: f.Severity,
+		}
+		cp.Children = CloneFields(f.Children)
+		out = append(out, cp)
+	}
+	return out
+}
+
 // ReleaseFields returns a protocol tree to the decoder's pool. Callers that
 // only need Summary/Meta (the ingest path) use this to cut GC pressure.
 func ReleaseFields(fields []*Field) {
