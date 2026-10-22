@@ -114,11 +114,25 @@ func TestHTTP3Stream(t *testing.T) {
 	frame = append(frame, block...)
 	c := appCtx(nil)
 	root := c.newNode("STREAM", 0, 0)
-	if !c.parseHTTP3Stream(frame, 0, root) {
+	if !c.parseHTTP3StreamCompat(frame, 0, root) {
 		t.Fatal("HTTP/3 stream not parsed")
 	}
 	labels := fieldLabels(root.Children)
 	if !containsLabel(labels, ":method: GET") || !containsLabel(labels, ":path: /") {
 		t.Fatalf("missing headers: %v", labels)
+	}
+}
+
+func TestQPACKDynamicTable(t *testing.T) {
+	c := appCtx(nil)
+	q := qpackFor(c)
+	q.capacity = 4096
+	q.feedEncoder([]byte{0x46, 'x', '-', 't', 'e', 's', 't', 0x01, 'v'})
+	fields, err := q.decodeFieldSection([]byte{2, 0, 0x80})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fields) != 1 || fields[0].Name != "x-test" || fields[0].Value != "v" {
+		t.Fatalf("fields=%+v", fields)
 	}
 }

@@ -4,6 +4,7 @@ package decode
 
 import (
 	"fmt"
+	"sync"
 
 	"golang.org/x/net/http2/hpack"
 )
@@ -275,9 +276,27 @@ func http3FrameName(t uint64) string {
 	return fmt.Sprintf("HTTP/3 Frame 0x%x", t)
 }
 
-func (c *ctx) parseHTTP3Stream(data []byte, base int, parent *Field) bool {
+func (c *ctx) parseHTTP3Stream(data []byte, base int, parent *Field, streamID uint64) bool {
 	off := 0
 	parsed := 0
+	q := qpackFor(c)
+	if streamID&0x3 >= 2 {
+		st, n, ok := quicVarint(data, 0)
+		if !ok {
+			return false
+		}
+		off = n
+		switch st {
+		case 0x02: // QPACK encoder stream
+			q.feedEncoder(data[off:])
+			return true
+		case 0x03: // QPACK decoder stream
+			return true
+		case 0x00: // control stream; continue with HTTP/3 frames
+		default:
+			return false
+		}
+	}
 	for off < len(data) {
 		typ, n, ok := quicVarint(data, off)
 		if !ok {
@@ -296,7 +315,7 @@ func (c *ctx) parseHTTP3Stream(data []byte, base int, parent *Field) bool {
 		case 0:
 			f.Value = printablePreview(payload, 160)
 		case 1:
-			fields, err := decodeQPACK(payload)
+			fields, err := q.decodeFieldSection(payload)
 			if err != nil {
 				f.add(c.newField("QPACK error: "+err.Error(), hexPreview(payload, 48), base+n2, len(payload)))
 			} else {
@@ -315,6 +334,13 @@ func (c *ctx) parseHTTP3Stream(data []byte, base int, parent *Field) bool {
 					break
 				}
 				f.add(c.newField(fmt.Sprintf("Setting 0x%x: %d", id, val), "", base+n2+p, nv-p))
+				if id == 1 {
+					q.Lock()
+					if int(val) > q.maxCapacity {
+						q.maxCapacity = int(val)
+					}
+					q.Unlock()
+				}
 				p = nv
 			}
 		case 7:
@@ -332,4 +358,276 @@ func (c *ctx) parseHTTP3Stream(data []byte, base int, parent *Field) bool {
 		parsed++
 	}
 	return parsed > 0
+}
+
+type qpackEntry struct {
+	name, value string
+	size        int
+}
+
+type qpackState struct {
+	sync.Mutex
+	capacity    int
+	maxCapacity int
+	entries     []qpackEntry
+	size        int
+	inserts     uint64
+	streams     map[uint64][]byte
+	encoderBuf  []byte
+}
+
+var qpackFlows flowStore[*qpackState]
+
+func init() { qpackFlows.max = 1024 }
+
+func qpackFor(c *ctx) *qpackState {
+	key := tlsFlowKey(c)
+	return qpackFlows.GetOrCreate(key, func() *qpackState {
+		return &qpackState{maxCapacity: 4096, streams: make(map[uint64][]byte)}
+	})
+}
+
+func (q *qpackState) evictLocked(add int) {
+	for q.capacity > 0 && q.size+add > q.capacity && len(q.entries) > 0 {
+		q.size -= q.entries[0].size
+		q.entries = q.entries[1:]
+	}
+}
+
+func (q *qpackState) addLocked(name, value string) {
+	size := len(name) + len(value) + 32
+	if size > q.capacity {
+		return
+	}
+	q.evictLocked(size)
+	q.entries = append(q.entries, qpackEntry{name: name, value: value, size: size})
+	q.size += size
+	q.inserts++
+}
+
+func (q *qpackState) abs(abs uint64) (qpackEntry, bool) {
+	if abs >= q.inserts {
+		return qpackEntry{}, false
+	}
+	// Absolute index 0 is the oldest retained entry. Entries before the
+	// current window have already been evicted.
+	base := q.inserts - uint64(len(q.entries))
+	if abs < base {
+		return qpackEntry{}, false
+	}
+	return q.entries[abs-base], true
+}
+
+func (q *qpackState) relative(rel uint64) (qpackEntry, bool) {
+	if rel >= q.inserts {
+		return qpackEntry{}, false
+	}
+	return q.abs(q.inserts - 1 - rel)
+}
+
+func (q *qpackState) fieldSection(base, index uint64, post bool) (qpackEntry, bool) {
+	if post {
+		return q.abs(base + index)
+	}
+	if index >= base {
+		return qpackEntry{}, false
+	}
+	return q.abs(base - 1 - index)
+}
+
+func qpackInsertName(q *qpackState, static, idx uint64) string {
+	if static != 0 {
+		return qpackFieldName(idx)
+	}
+	e, ok := q.relative(idx)
+	if !ok {
+		return fmt.Sprintf(":dynamic%d", idx)
+	}
+	return e.name
+}
+
+func (q *qpackState) feedEncoder(data []byte) {
+	q.Lock()
+	defer q.Unlock()
+	q.encoderBuf = append(q.encoderBuf, data...)
+	off := q.parseEncoderLocked(q.encoderBuf)
+	if off > 0 {
+		q.encoderBuf = append([]byte(nil), q.encoderBuf[off:]...)
+	}
+}
+
+func (q *qpackState) parseEncoderLocked(data []byte) int {
+	off := 0
+	for off < len(data) {
+		first := data[off]
+		switch {
+		case first&0x80 != 0: // insert with name reference
+			idx, next, ok := qpackInt(data, off, 6)
+			if !ok {
+				return off
+			}
+			off = next
+			val, next, ok := qpackString(data, off)
+			if !ok {
+				return off
+			}
+			off = next
+			q.addLocked(qpackInsertName(q, uint64(first&0x40), idx), val)
+		case first&0x40 != 0: // insert with literal name
+			name, next, ok := qpackStringBits(data, off, 5, 0x20)
+			if !ok {
+				return off
+			}
+			off = next
+			val, next, ok := qpackString(data, off)
+			if !ok {
+				return off
+			}
+			off = next
+			q.addLocked(name, val)
+		case first&0x20 != 0: // set capacity
+			capv, next, ok := qpackInt(data, off, 5)
+			if !ok {
+				return off
+			}
+			if int(capv) <= q.maxCapacity {
+				q.capacity = int(capv)
+				q.evictLocked(0)
+			}
+			off = next
+		default: // duplicate
+			idx, next, ok := qpackInt(data, off, 5)
+			if !ok {
+				return off
+			}
+			off = next
+			if e, ok := q.relative(idx); ok {
+				q.addLocked(e.name, e.value)
+			}
+		}
+	}
+	return off
+}
+
+func (q *qpackState) decodeFieldSection(b []byte) ([]hpack.HeaderField, error) {
+	q.Lock()
+	defer q.Unlock()
+	if len(b) < 2 {
+		return nil, fmt.Errorf("short QPACK block")
+	}
+	encRIC, off, ok := qpackInt(b, 0, 8)
+	if !ok {
+		return nil, fmt.Errorf("bad required insert count")
+	}
+	if off >= len(b) {
+		return nil, fmt.Errorf("missing delta base")
+	}
+	sign := b[off]&0x80 != 0
+	delta, off2, ok := qpackInt(b, off, 7)
+	if !ok {
+		return nil, fmt.Errorf("bad delta base")
+	}
+	off = off2
+	maxEntries := uint64(q.maxCapacity / 32)
+	ric := uint64(0)
+	if encRIC != 0 && maxEntries > 0 {
+		fullRange := 2 * maxEntries
+		maxValue := q.inserts + maxEntries
+		maxWrapped := (maxValue / fullRange) * fullRange
+		ric = maxWrapped + encRIC - 1
+		if ric > maxValue {
+			if ric <= fullRange {
+				return nil, fmt.Errorf("invalid required insert count")
+			}
+			ric -= fullRange
+		}
+	}
+	base := ric + delta
+	if sign {
+		if ric <= delta {
+			return nil, fmt.Errorf("invalid negative base")
+		}
+		base = ric - delta - 1
+	}
+	var out []hpack.HeaderField
+	for off < len(b) {
+		first := b[off]
+		switch {
+		case first&0x80 != 0: // indexed
+			idx, next, ok := qpackInt(b, off, 6)
+			if !ok {
+				return out, fmt.Errorf("bad indexed field")
+			}
+			off = next
+			if first&0x40 != 0 {
+				out = append(out, hpack.HeaderField{Name: qpackFieldName(idx), Value: qpackFieldValue(idx)})
+			} else if e, ok := q.fieldSection(base, idx, false); ok {
+				out = append(out, hpack.HeaderField{Name: e.name, Value: e.value})
+			} else {
+				out = append(out, hpack.HeaderField{Name: fmt.Sprintf(":dynamic%d", idx)})
+			}
+		case first&0x40 != 0: // literal name reference
+			idx, next, ok := qpackInt(b, off, 4)
+			if !ok {
+				return out, fmt.Errorf("bad name reference")
+			}
+			off = next
+			val, next, ok := qpackString(b, off)
+			if !ok {
+				return out, fmt.Errorf("bad literal value")
+			}
+			off = next
+			name := fmt.Sprintf(":dynamic%d", idx)
+			if first&0x10 != 0 {
+				name = qpackFieldName(idx)
+			} else if e, ok := q.fieldSection(base, idx, false); ok {
+				name = e.name
+			}
+			out = append(out, hpack.HeaderField{Name: name, Value: val})
+		case first&0x20 != 0: // literal with literal name
+			name, next, ok := qpackStringBits(b, off, 3, 0x08)
+			if !ok {
+				return out, fmt.Errorf("bad literal name")
+			}
+			off = next
+			val, next, ok := qpackString(b, off)
+			if !ok {
+				return out, fmt.Errorf("bad literal value")
+			}
+			off = next
+			out = append(out, hpack.HeaderField{Name: name, Value: val})
+		case first&0x10 != 0: // post-base indexed
+			idx, next, ok := qpackInt(b, off, 4)
+			if !ok {
+				return out, fmt.Errorf("bad post-base index")
+			}
+			off = next
+			if e, ok := q.fieldSection(base, idx, true); ok {
+				out = append(out, hpack.HeaderField{Name: e.name, Value: e.value})
+			} else {
+				out = append(out, hpack.HeaderField{Name: fmt.Sprintf(":postbase%d", idx)})
+			}
+		default: // post-base name reference
+			idx, next, ok := qpackInt(b, off, 3)
+			if !ok {
+				return out, fmt.Errorf("bad post-base name")
+			}
+			off = next
+			val, next, ok := qpackString(b, off)
+			if !ok {
+				return out, fmt.Errorf("bad post-base value")
+			}
+			off = next
+			name := fmt.Sprintf(":postbase%d", idx)
+			if e, ok := q.fieldSection(base, idx, true); ok {
+				name = e.name
+			}
+			out = append(out, hpack.HeaderField{Name: name, Value: val})
+		}
+	}
+	return out, nil
+}
+
+func (c *ctx) parseHTTP3StreamCompat(data []byte, base int, parent *Field) bool {
+	return c.parseHTTP3Stream(data, base, parent, 0)
 }
