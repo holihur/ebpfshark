@@ -272,3 +272,14 @@ func TestDecodeSummarySkipsFields(t *testing.T) {
 		}
 	}
 }
+
+func TestIPv4ShortTotalLength(t *testing.T) {
+	frame := make([]byte, 14+20)
+	binary.BigEndian.PutUint16(frame[12:14], 0x0800)
+	ip := frame[14:]
+	ip[0] = 0x45
+	binary.BigEndian.PutUint16(ip[2:4], 19)
+	ip[9] = 6
+	// Must not panic even though total length is shorter than the header.
+	Decode(frame, packet.LinkEthernet, len(frame))
+}

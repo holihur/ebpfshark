@@ -56,6 +56,10 @@ func (c *ctx) dissectIPv4(b []byte, base int) {
 		// TSO/GSO packets can report a larger length than what is captured.
 		totalLen = len(b)
 	}
+	if totalLen < ihl {
+		// Malformed total length: keep the header slice valid.
+		totalLen = ihl
+	}
 
 	src := netip.AddrFrom4([4]byte{b[12], b[13], b[14], b[15]})
 	dst := netip.AddrFrom4([4]byte{b[16], b[17], b[18], b[19]})
