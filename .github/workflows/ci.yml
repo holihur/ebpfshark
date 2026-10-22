@@ -35,7 +35,9 @@ jobs:
           # linux-tools-common provides a wrapper that looks for a kernel-matched
           # bpftool. Runners often use a different kernel flavour, so point it at
           # the generic tools we just installed.
-          sudo ln -sf "$(find /usr/lib/linux-tools -name bpftool -type f | sort | tail -1)" /usr/local/bin/bpftool
+          BPFTOOL=$(find /usr/lib/linux-tools -name bpftool | sort | tail -1)
+          test -n "$BPFTOOL"
+          sudo ln -sf "$(readlink -f "$BPFTOOL")" /usr/local/bin/bpftool
           bpftool version
 
       - name: Generate eBPF objects
