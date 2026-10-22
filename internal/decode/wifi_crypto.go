@@ -2,10 +2,14 @@ package decode
 
 import (
 	"crypto/aes"
+	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/sha1"
 	"crypto/subtle"
 	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
+	"os"
 	"sync"
 
 	"golang.org/x/crypto/pbkdf2"
@@ -21,7 +25,7 @@ var wifiKeys = struct {
 type wifiSession struct {
 	ssid           string
 	anonce, snonce []byte
-	ptk, tk        []byte
+	pmk, ptk, tk   []byte
 }
 
 // LoadWiFiPSK enables WPA2-PSK/CCMP decryption. SSID and 4-way nonces must be
@@ -76,7 +80,10 @@ func wifiDerive(s *wifiSession, ap, sta string) {
 	if psk == "" || ssid == "" || len(s.anonce) != 32 || len(s.snonce) != 32 {
 		return
 	}
-	pmk := wifiPMK(psk, ssid)
+	pmk := s.pmk
+	if len(pmk) == 0 {
+		pmk = wifiPMK(psk, ssid)
+	}
 	a, b := ap, sta
 	if a > b {
 		a, b = b, a
@@ -116,6 +123,20 @@ func wifiHandshake(ap, sta string, keyInfo uint16, nonce []byte) {
 	if len(s.anonce) == 32 && len(s.snonce) == 32 {
 		wifiDerive(s, ap, sta)
 	}
+}
+
+func aesGCMOpen(key, nonce, aad, ct, tag []byte) ([]byte, bool) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, false
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil || len(nonce) != gcm.NonceSize() {
+		return nil, false
+	}
+	buf := append(append([]byte(nil), ct...), tag...)
+	pt, err := gcm.Open(nil, nonce, buf, aad)
+	return pt, err == nil
 }
 
 func wifiTK(ap, sta string) []byte {
@@ -211,20 +232,30 @@ func wifiDecryptFrame(b []byte, hdr int, fc uint16, addr1, addr2, addr3 string) 
 	}
 	ccmp := b[hdr : hdr+8]
 	pn := []byte{ccmp[0], ccmp[1], ccmp[4], ccmp[5], ccmp[6], ccmp[7]}
-	nonce := make([]byte, 13)
-	// A2 is the transmitter address.
-	copy(nonce[1:7], macBytes(addr2))
-	copy(nonce[7:13], pn)
 	aad := append([]byte(nil), b[:hdr]...)
-	// CCMP AAD clears the Retry bit.
-	aad[1] &^= 0x08
-	ct := b[hdr+8 : len(b)-8]
-	tag := b[len(b)-8:]
-	pt, ok := aesCCMOpen(tk, nonce, aad, ct, tag)
-	if !ok {
-		return nil, "", false
+	aad[1] &^= 0x08 // Retry bit is cleared in the AAD.
+	// CCMP: 8-byte tag, nonce = priority || A2 || PN.
+	if len(b) >= hdr+8+8 {
+		nonce := append([]byte{0}, macBytes(addr2)...)
+		nonce = append(nonce, pn...)
+		if pt, ok := aesCCMOpen(tk, nonce, aad, b[hdr+8:len(b)-8], b[len(b)-8:]); ok {
+			return pt, ap, true
+		}
 	}
-	return pt, ap, true
+	// GCMP: 16-byte tag, nonce = A2 || PN.
+	if len(b) >= hdr+8+16 {
+		nonce := append(macBytes(addr2), pn...)
+		keys := [][]byte{tk}
+		if len(tk) >= 32 {
+			keys = append(keys, tk[:32])
+		}
+		for _, key := range keys {
+			if pt, ok := aesGCMOpen(key, nonce, aad, b[hdr+8:len(b)-16], b[len(b)-16:]); ok {
+				return pt, ap, true
+			}
+		}
+	}
+	return nil, "", false
 }
 
 func macBytes(s string) []byte {
@@ -258,4 +289,51 @@ func allZero(b []byte) bool {
 		}
 	}
 	return true
+}
+
+type wifiKeyFile struct {
+	Sessions []struct {
+		AP     string `json:"ap"`
+		STA    string `json:"sta"`
+		SSID   string `json:"ssid"`
+		PMK    string `json:"pmk"`
+		PTK    string `json:"ptk"`
+		ANonce string `json:"anonce"`
+		SNonce string `json:"snonce"`
+	} `json:"sessions"`
+}
+
+func LoadWiFiKeys(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var kf wifiKeyFile
+	if err := json.Unmarshal(data, &kf); err != nil {
+		return err
+	}
+	wifiKeys.Lock()
+	defer wifiKeys.Unlock()
+	for _, x := range kf.Sessions {
+		s := &wifiSession{ssid: x.SSID}
+		if b, err := hex.DecodeString(x.PMK); err == nil {
+			s.pmk = b
+		}
+		if b, err := hex.DecodeString(x.PTK); err == nil {
+			s.ptk = b
+			n := 16
+			if len(b) < n {
+				n = len(b)
+			}
+			s.tk = b[:n]
+		}
+		if b, err := hex.DecodeString(x.ANonce); err == nil {
+			s.anonce = b
+		}
+		if b, err := hex.DecodeString(x.SNonce); err == nil {
+			s.snonce = b
+		}
+		wifiKeys.sessions[wifiKey(x.AP, x.STA)] = s
+	}
+	return nil
 }
