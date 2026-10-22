@@ -519,12 +519,35 @@ func (c *ctx) quicDecryptWithSecrets(b []byte, base int, root *Field, flow *tlsF
 		header[0] = uf
 		copy(header[pnOffset:], upn)
 		ct := b[pnOffset+pnLen : packetEnd]
-		startPN := quicPacketNumber(upn)
-		for n := uint64(0); n < 64; n++ {
-			pn := startPN + n
+		truncated := quicPacketNumber(upn)
+		dir := 0
+		if c.m.SrcPort == 443 {
+			dir = 1
+		}
+		var candidates []uint64
+		if !long {
+			if expected := flow.quicNext(dir); expected > 0 {
+				window := uint64(1) << (uint(pnLen) * 8)
+				base := expected & ^(window - 1)
+				candidates = append(candidates, base|truncated)
+				if base >= window {
+					candidates = append(candidates, (base-window)|truncated)
+				}
+				candidates = append(candidates, (base+window)|truncated)
+			}
+		}
+		if len(candidates) == 0 {
+			for n := uint64(0); n < 64; n++ {
+				candidates = append(candidates, truncated+n)
+			}
+		}
+		for _, pn := range candidates {
 			pt, ok := quicOpen(sec.value, header, ct, pn)
 			if !ok {
 				continue
+			}
+			if !long {
+				flow.setQUICNext(dir, pn)
 			}
 			root.add(c.newField(fmt.Sprintf("Packet Number: %d", pn), "", base+pnOffset, pnLen), c.newField("Key Log Label: "+sec.label, "", 0, 0))
 			fn := c.newNode(fmt.Sprintf("Decrypted QUIC Payload (%d bytes)", len(pt)), base+pnOffset+pnLen, len(pt))

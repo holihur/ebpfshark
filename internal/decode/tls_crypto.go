@@ -78,6 +78,7 @@ type tlsFlow struct {
 	appSeqC, appSeqS   uint64
 	appActive          [2]bool
 	seq12C, seq12S     uint64
+	quicRTT            [2]uint64
 	cache              map[string]tlsCached
 }
 
@@ -142,6 +143,18 @@ func (f *tlsFlow) getVersion() uint16 {
 	f.Lock()
 	defer f.Unlock()
 	return f.version
+}
+
+func (f *tlsFlow) quicNext(dir int) uint64 {
+	f.Lock()
+	defer f.Unlock()
+	return f.quicRTT[dir&1]
+}
+
+func (f *tlsFlow) setQUICNext(dir int, pn uint64) {
+	f.Lock()
+	f.quicRTT[dir&1] = pn + 1
+	f.Unlock()
 }
 
 func (f *tlsFlow) randomCopy() []byte {

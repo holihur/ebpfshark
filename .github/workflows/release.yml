@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          check-latest: true
+          cache: true
+      - name: Install eBPF build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm libbpf-dev linux-tools-common linux-tools-generic
+          BPFTOOL=$(find /usr/lib/linux-tools -name bpftool | sort | tail -1)
+          test -n "$BPFTOOL"
+          sudo ln -sf "$(readlink -f "$BPFTOOL")" /usr/local/bin/bpftool
+      - name: Generate eBPF objects
+        run: make generate
+      - name: Build core
+        run: make go-build && cp bin/ebpfshark bin/ebpfshark-core
+      - name: Build full
+        run: make go-build-full && cp bin/ebpfshark bin/ebpfshark-full
+      - name: Checksums and SBOM
+        run: |
+          sha256sum bin/ebpfshark-core bin/ebpfshark-full > checksums.txt
+          go version -m bin/ebpfshark-full > sbom.txt
+      - uses: sigstore/cosign-installer@v4
+      - name: Sign checksums
+        run: |
+          cosign sign-blob --yes \
+            --output-signature checksums.sig \
+            --output-certificate checksums.pem \
+            checksums.txt
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            bin/ebpfshark-core bin/ebpfshark-full \
+            checksums.txt checksums.sig checksums.pem sbom.txt \
+            --generate-notes
