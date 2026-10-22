@@ -16,7 +16,7 @@ permissions:
 jobs:
   test:
     name: Core + full protocol tests
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -25,7 +25,8 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          go-version: stable
+          check-latest: true
           cache: true
 
       - name: Install eBPF build tools
@@ -76,12 +77,13 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
         with:
-          version: 9
+          version: latest
 
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: latest
+          check-latest: true
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
 
