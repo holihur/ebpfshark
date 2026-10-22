@@ -28,6 +28,8 @@ const (
 	LinkRaw       LinkType = 101 // LINKTYPE_RAW
 	LinkLinuxSLL  LinkType = 113 // LINKTYPE_LINUX_SLL
 	LinkLinuxSLL2 LinkType = 276 // LINKTYPE_LINUX_SLL2
+	LinkIEEE80211 LinkType = 105 // LINKTYPE_IEEE802_11
+	LinkRadiotap  LinkType = 127 // LINKTYPE_IEEE802_11_RADIOTAP
 )
 
 // LayerMask is a compact bitset of protocol layers present in a packet.
@@ -67,6 +69,8 @@ const (
 	LayerSIP
 	LayerWireGuard
 	LayerWebSocket
+	LayerWiFi
+	LayerRadiotap
 	LayerMySQL
 	LayerRADIUS
 	LayerNetFlow
@@ -84,7 +88,7 @@ var layerBits = map[string]LayerMask{
 	"ntp": LayerNTP, "snmp": LayerSNMP, "syslog": LayerSyslog, "stun": LayerSTUN,
 	"mqtt": LayerMQTT, "redis": LayerRedis, "postgresql": LayerPostgreSQL,
 	"postgres": LayerPostgreSQL, "bgp": LayerBGP, "ssh": LayerSSH, "ssdp": LayerSSDP,
-	"sip": LayerSIP, "wireguard": LayerWireGuard, "wg": LayerWireGuard, "websocket": LayerWebSocket,
+	"sip": LayerSIP, "wireguard": LayerWireGuard, "wg": LayerWireGuard, "websocket": LayerWebSocket, "wifi": LayerWiFi, "radiotap": LayerRadiotap,
 	"mysql": LayerMySQL, "radius": LayerRADIUS, "netflow": LayerNetFlow, "rtp": LayerRTP, "rtcp": LayerRTCP, "data": LayerData,
 	"ip6": LayerIPv6, "icmp6": LayerICMPv6,
 }

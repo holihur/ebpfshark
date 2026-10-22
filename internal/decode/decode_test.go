@@ -294,3 +294,29 @@ func TestSCTPBasic(t *testing.T) {
 		t.Fatalf("proto=%q info=%q", c.proto, c.appInfo)
 	}
 }
+
+func TestIEEE80211Beacon(t *testing.T) {
+	b := make([]byte, 36)
+	binary.LittleEndian.PutUint16(b[0:2], 0x0080) // beacon
+	copy(b[4:10], []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff})
+	copy(b[10:16], []byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55})
+	copy(b[16:22], []byte{0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb})
+	b = append(b, 0, 4, 'w', 'i', 'f', 'i')
+	res := Decode(b, packet.LinkIEEE80211, len(b))
+	if res.Summary.Protocol != "WIFI" || !strings.Contains(res.Summary.Info, "SSID=wifi") {
+		t.Fatalf("protocol=%q info=%q", res.Summary.Protocol, res.Summary.Info)
+	}
+	if !res.Meta.HasLayer("wifi") {
+		t.Fatal("wifi layer missing")
+	}
+}
+
+func TestRadiotap80211(t *testing.T) {
+	b := []byte{0, 0, 8, 0, 0, 0, 0, 0}
+	b = append(b, make([]byte, 24)...)
+	binary.LittleEndian.PutUint16(b[8:10], 0x00d4) // ACK/control-ish
+	res := Decode(b, packet.LinkRadiotap, len(b))
+	if !res.Meta.HasLayer("radiotap") || !res.Meta.HasLayer("wifi") {
+		t.Fatalf("layers=%v", res.Meta.Layers)
+	}
+}

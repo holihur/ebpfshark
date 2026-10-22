@@ -52,3 +52,12 @@ func TestNetFlowV5(t *testing.T) {
 		t.Fatalf("info=%q", c.appInfo)
 	}
 }
+
+func TestRTPPaddingSafe(t *testing.T) {
+	// Padding length larger than the packet must not produce a negative slice.
+	b := []byte{0xa0, 0x60, 0, 1, 0, 0, 0, 1, 1, 2, 3, 4, 255}
+	c := appCtx(b)
+	if !c.dissectRTP(b, 0) {
+		t.Fatal("RTP not recognized")
+	}
+}

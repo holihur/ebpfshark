@@ -77,6 +77,7 @@ type Manager struct {
 	// ifaceNames maps ifindex to name for the current session. It is written
 	// before the reader goroutine starts and never mutated while it runs.
 	ifaceNames map[uint32]string
+	linkTypes  map[uint32]packet.LinkType
 }
 
 // NewManager creates a capture manager feeding packets into st.
@@ -149,6 +150,7 @@ func (m *Manager) Start(opts Options) error {
 	var links []link.Link
 	var attachErrors []string
 	ifaceNames := make(map[uint32]string, len(opts.Interfaces))
+	linkTypes := make(map[uint32]packet.LinkType, len(opts.Interfaces))
 	for _, name := range opts.Interfaces {
 		ifi, err := net.InterfaceByName(name)
 		if err != nil {
@@ -156,6 +158,7 @@ func (m *Manager) Start(opts Options) error {
 			continue
 		}
 		ifaceNames[uint32(ifi.Index)] = name
+		linkTypes[uint32(ifi.Index)] = LinkTypeForInterface(name)
 		for _, dir := range []struct {
 			prog   *ebpf.Program
 			attach ebpf.AttachType
@@ -221,6 +224,7 @@ func (m *Manager) Start(opts Options) error {
 	m.lastError = ""
 	m.lastKernelPackets, m.lastKernelBytes, m.lastKernelSkipped, m.lastKernelFiltered = 0, 0, 0, 0
 	m.ifaceNames = ifaceNames
+	m.linkTypes = linkTypes
 	m.mu.Unlock()
 
 	m.wg.Add(1)
@@ -311,11 +315,18 @@ func (m *Manager) readLoop(rd *ringbuf.Reader) {
 			WireLen:   wireLen,
 			CapLen:    capLen,
 			Truncated: flags&1 != 0,
-			LinkType:  packet.LinkEthernet,
+			LinkType:  m.linkType(ifIndex),
 			Data:      data,
 		}
 		m.store.Add(p)
 	}
+}
+
+func (m *Manager) linkType(idx uint32) packet.LinkType {
+	if lt, ok := m.linkTypes[idx]; ok {
+		return lt
+	}
+	return packet.LinkEthernet
 }
 
 func (m *Manager) ifaceName(idx uint32) string {

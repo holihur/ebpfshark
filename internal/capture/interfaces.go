@@ -7,6 +7,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"ebpfshark/internal/packet"
 )
 
 // Interface describes a capture-capable network interface.
@@ -67,8 +69,10 @@ func interfaceKind(ifi net.Interface) string {
 		return "bridge"
 	case strings.HasPrefix(name, "bond"):
 		return "bond"
-	case strings.HasPrefix(name, "wlan"), strings.HasPrefix(name, "wlp"):
+	case strings.HasPrefix(name, "wlan"), strings.HasPrefix(name, "wlp"), strings.HasPrefix(name, "mon"):
 		return "wireless"
+	case strings.Contains(name, "."):
+		return "vlan"
 	}
 	if _, err := os.Stat("/sys/class/net/" + name + "/device"); err == nil {
 		return "ethernet"
@@ -157,4 +161,22 @@ func ResolveIndexes(names []string) (map[string]int, error) {
 		out[n] = ifi.Index
 	}
 	return out, nil
+}
+
+// LinkTypeForInterface maps a Linux ARPHRD type to the pcap link type used by
+// userspace dissection. Monitor-mode wireless interfaces commonly report
+// ARPHRD_IEEE80211 or ARPHRD_IEEE80211_RADIOTAP.
+func LinkTypeForInterface(name string) packet.LinkType {
+	if data, err := os.ReadFile("/sys/class/net/" + name + "/type"); err == nil {
+		switch strings.TrimSpace(string(data)) {
+		case "803":
+			return packet.LinkRadiotap
+		case "801", "802":
+			return packet.LinkIEEE80211
+		}
+	}
+	if strings.HasPrefix(name, "mon") {
+		return packet.LinkIEEE80211
+	}
+	return packet.LinkEthernet
 }

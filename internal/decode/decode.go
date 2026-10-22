@@ -78,6 +78,10 @@ func decode(data []byte, linkType packet.LinkType, wireLen, depth int, noFields 
 		c.dissectSLL(false)
 	case packet.LinkLinuxSLL2:
 		c.dissectSLL(true)
+	case packet.LinkRadiotap:
+		c.dissectRadiotap(data, 0)
+	case packet.LinkIEEE80211:
+		c.dissectDot11(data, 0)
 	default:
 		c.dissectEthernet()
 	}

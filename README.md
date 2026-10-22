@@ -216,6 +216,7 @@ go test -tags full ./...
 | 链路层 | 802.1Q / QinQ VLAN | 最多 4 层 VLAN 标签 |
 | 链路层 | ARP / RARP | 请求/响应、发送方/目标地址 |
 | 链路层 | MPLS | 标签栈、TTL，递归解析内层 IPv4/IPv6 |
+| 链路层 | Radiotap / IEEE 802.11 | 无线 monitor 帧、Beacon/Probe/Assoc、SSID/BSSID、数据帧 LLC/SNAP |
 | 链路层 | Linux SLL / SLL2 | pcap/pcapng 导入的 cooked capture |
 | 链路层 | Raw IP | wg/tun 等无二层头接口自动识别 |
 | 网络层 | IPv4 | 选项、分片、TTL、校验和 |
@@ -253,7 +254,7 @@ go test -tags full ./...
 | 应用层 | WireGuard | 握手 Initiation/Response/Cookie 完整字段、Transport 头部；载荷加密 |
 
 **过滤器**：新增协议同样支持协议谓词，例如 `mqtt`、`redis`、`vxlan`、`bgp`、
-`ssh`、`quic`、`http2`、`postgresql`、`mysql`、`radius`、`netflow`、`rtp`、`rtcp`、`websocket`、`sctp`、`igmp`、`wireguard`。
+`ssh`、`quic`、`http2`、`postgresql`、`mysql`、`radius`、`netflow`、`rtp`、`rtcp`、`websocket`、`sctp`、`wifi`、`radiotap`、`igmp`、`wireguard`。
 
 **尚未支持**：TLS CCM 解密、gRPC/protobuf、LDAP/Kerberos、
 完整 NetFlow v9/IPFIX 模板展开、SCTP 分片重组。
@@ -613,6 +614,8 @@ curl -s -b /tmp/ebpfshark.cookie \
 - 过滤器在用户态执行，不具备内核级过滤的性能优势。
 - TCX 需要内核 ≥ 6.6 且启用 BTF；旧内核暂不支持。
 - 隧道网卡（wg/tun）上没有二层头，解析器会自动识别裸 IP。
+- 无线 monitor 接口按 `ARPHRD_IEEE80211` / `ARPHRD_IEEE80211_RADIOTAP` 选择链路类型；VLAN 子接口会作为普通接口列出，可直接选择抓包。
+- 无线当前只解析 Radiotap/802.11 明文帧；WPA/WPA2/WPA3 加密载荷不解密，Radiotap 只展开常用字段。
 - 同时在 ingress/egress 抓同一个包会在 loopback 上看到重复记录（两个钩子各一次）。
 - 只有单用户认证，没有角色/多用户权限；会话存于内存，服务重启后失效。
 - 不内置 TLS；公网访问请使用 HTTPS 反向代理并启用 `-secure-cookie`。
