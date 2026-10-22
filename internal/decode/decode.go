@@ -271,6 +271,20 @@ func CloneFields(fields []*Field) []*Field {
 	return out
 }
 
+// FieldTreeSize estimates retained bytes for a protocol tree. It is used to
+// bound detail caches by memory as well as by entry count.
+func FieldTreeSize(fields []*Field) int {
+	n := 0
+	for _, f := range fields {
+		if f == nil {
+			continue
+		}
+		n += 64 + len(f.Label) + len(f.Value) + len(f.Severity)
+		n += FieldTreeSize(f.Children)
+	}
+	return n
+}
+
 // ReleaseFields returns a protocol tree to the decoder's pool. Callers that
 // only need Summary/Meta (the ingest path) use this to cut GC pressure.
 func ReleaseFields(fields []*Field) {

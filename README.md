@@ -590,7 +590,7 @@ curl -s -b /tmp/ebpfshark.cookie \
 - 十六进制预览改为查表输出，避免逐字节 `fmt.Fprintf`。
 - 相同过滤表达式的多个 SSE 订阅者只计算一次过滤结果。
 - flow 统计使用结构体 key，不再每包拼接 IP/端口字符串；flow 锁与 ring buffer 锁分离。
-- 详情字段树有 256 条 LRU 缓存，避免重复点击重复解码。
+- 详情字段树有 256 条 / 32 MiB LRU 缓存，避免重复点击重复解码。
 - SSE 批量 JSON 复用 buffer，减少 map/临时分配。
 - TCP 重组改为 owned chunk 列表，避免大流反复扩容拷贝。
 - X.509 证书按 DER SHA-256 缓存，重复证书不重复解析。
@@ -634,8 +634,8 @@ curl -s -b /tmp/ebpfshark.cookie \
   若抓包从握手中间开始，缺少 ClientHello/ServerHello/序列号状态时只能显示密文。
 - **TLS 证书**：只做 X.509 解析，不做证书链信任校验；证书消息必须完整捕获，
   snaplen 截断时只能显示部分 DER。
-- **HTTP/2 HPACK**：动态表按 TCP 流保存在有上限的 flow store 中；CONTINUATION 只在
-  同一 TCP 段内合并，跨段分片或从连接中间开始抓包时可能无法解析动态索引。
+- **HTTP/2 HPACK**：动态表按 TCP 流保存在有上限的 flow store 中；HEADERS 与
+  CONTINUATION 支持跨 TCP 段合并；从连接中间开始抓包时仍可能缺少动态表上下文。
 - **QUIC**：Initial 使用 RFC 9001 v1/v2 固定盐解密；Handshake/1-RTT 需要 keylog 且
   必须先捕获 ClientHello。Short Header 默认按 8 字节 DCID 解析；HTTP/3 QPACK
   尚未解码，只能看到 STREAM 明文帧。

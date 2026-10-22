@@ -53,6 +53,7 @@ type Server struct {
 	detailMu    sync.Mutex
 	detailLRU   *list.List
 	detailCache map[detailKey]*list.Element
+	detailBytes int
 }
 
 type detailKey struct {
@@ -63,6 +64,7 @@ type detailKey struct {
 type detailEntry struct {
 	key    detailKey
 	fields []*decode.Field
+	bytes  int
 }
 
 // SetSecureCookie forces the Secure attribute on session cookies. Use it when
@@ -471,14 +473,20 @@ func (s *Server) cachedDetail(key detailKey) ([]*decode.Field, bool) {
 
 func (s *Server) putDetail(key detailKey, fields []*decode.Field) {
 	const maxEntries = 256
+	const maxBytes = 32 << 20
+	size := decode.FieldTreeSize(fields)
 	s.detailMu.Lock()
 	defer s.detailMu.Unlock()
 	if el, ok := s.detailCache[key]; ok {
-		el.Value.(*detailEntry).fields = fields
+		old := el.Value.(*detailEntry)
+		s.detailBytes -= old.bytes
+		decode.ReleaseFields(old.fields)
+		old.fields, old.bytes = fields, size
+		s.detailBytes += size
 		s.detailLRU.MoveToFront(el)
 		return
 	}
-	for s.detailLRU.Len() >= maxEntries {
+	for s.detailLRU.Len() >= maxEntries || s.detailBytes+size > maxBytes {
 		old := s.detailLRU.Back()
 		if old == nil {
 			break
@@ -486,10 +494,12 @@ func (s *Server) putDetail(key detailKey, fields []*decode.Field) {
 		entry := old.Value.(*detailEntry)
 		delete(s.detailCache, entry.key)
 		s.detailLRU.Remove(old)
+		s.detailBytes -= entry.bytes
 		decode.ReleaseFields(entry.fields)
 	}
-	entry := &detailEntry{key: key, fields: fields}
+	entry := &detailEntry{key: key, fields: fields, bytes: size}
 	s.detailCache[key] = s.detailLRU.PushFront(entry)
+	s.detailBytes += size
 }
 
 func (s *Server) handlePacketDetail(w http.ResponseWriter, r *http.Request) {

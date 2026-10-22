@@ -2827,13 +2827,23 @@ func (c *ctx) dissectHTTP2(b []byte, base int) bool {
 				block = block[4:]
 				hdrOff = 4
 			}
-			if typ == 0 || typ == 9 {
+			if typ == 0 {
 				f.add(c.newField(fmt.Sprintf("Payload (%d bytes)", len(body)), printablePreview(body, 300), base+off+9, len(body)))
 				break
 			}
-			// HEADERS may be followed by CONTINUATION frames on the same stream.
+			seq, blockOff := c.m.TCPSeq, base+off+9+hdrOff
+			if typ == 9 {
+				combined, pseq, poff, ready := flow.continuePending(stream, block, flags&0x4 != 0)
+				if !ready {
+					f.add(c.newField(fmt.Sprintf("Header block fragment (%d bytes)", len(block)), hexPreview(block, 48), blockOff, len(block)))
+					break
+				}
+				block, seq, blockOff = combined, pseq, poff
+			}
+			// HEADERS may be followed by CONTINUATION frames in the same TCP segment.
 			if typ == 1 {
 				q := off + 9 + length
+				endSeen := flags&0x4 != 0
 				for q+9 <= len(b) && b[q+3] == 9 {
 					cl := int(b[q])<<16 | int(b[q+1])<<8 | int(b[q+2])
 					cs := be32(b[q+5:q+9]) & 0x7fffffff
@@ -2841,12 +2851,20 @@ func (c *ctx) dissectHTTP2(b []byte, base int) bool {
 						break
 					}
 					block = append(block, b[q+9:q+9+cl]...)
+					if b[q+4]&0x4 != 0 {
+						endSeen = true
+					}
 					f.add(c.newField(fmt.Sprintf("CONTINUATION (length %d)", cl), "", base+q, 9+cl))
 					q += 9 + cl
 				}
 				consumed = q - off
+				if !endSeen {
+					flow.startPending(stream, block, c.m.TCPSeq, blockOff)
+					f.add(c.newField(fmt.Sprintf("Header block fragment (%d bytes)", len(block)), hexPreview(block, 48), blockOff, len(block)))
+					break
+				}
 			}
-			fields, err := flow.decodeHeaders(c, block, c.m.TCPSeq, base+off+9+hdrOff)
+			fields, err := flow.decodeHeaders(c, block, seq, blockOff)
 			if err != nil {
 				f.add(c.newField("HPACK decode error: "+err.Error(), hexPreview(block, 64), base+off+9+hdrOff, len(block)))
 				break

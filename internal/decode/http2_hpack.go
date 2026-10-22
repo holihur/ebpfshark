@@ -9,11 +9,18 @@ import (
 	"golang.org/x/net/http2/hpack"
 )
 
+type h2Pending struct {
+	block []byte
+	seq   uint32
+	off   int
+}
+
 type h2Flow struct {
 	sync.Mutex
 	clientEP, serverEP string
 	decC, decS         *hpack.Decoder
 	cache              map[string][]hpack.HeaderField
+	pending            map[uint32]*h2Pending
 }
 
 var h2Flows = flowStore[*h2Flow]{max: 2048}
@@ -73,4 +80,29 @@ func (f *h2Flow) decodeHeaders(c *ctx, block []byte, seq uint32, off int) ([]hpa
 	}
 	f.cache[cacheKey] = fields
 	return fields, nil
+}
+
+func (f *h2Flow) startPending(stream uint32, block []byte, seq uint32, off int) {
+	f.Lock()
+	defer f.Unlock()
+	if p, ok := f.pending[stream]; ok && p.seq == seq && p.off == off {
+		return
+	}
+	f.pending[stream] = &h2Pending{block: append([]byte(nil), block...), seq: seq, off: off}
+}
+
+func (f *h2Flow) continuePending(stream uint32, fragment []byte, end bool) ([]byte, uint32, int, bool) {
+	f.Lock()
+	defer f.Unlock()
+	p, ok := f.pending[stream]
+	if !ok {
+		return nil, 0, 0, false
+	}
+	p.block = append(p.block, fragment...)
+	if !end {
+		return nil, 0, 0, false
+	}
+	block, seq, off := p.block, p.seq, p.off
+	delete(f.pending, stream)
+	return block, seq, off, true
 }

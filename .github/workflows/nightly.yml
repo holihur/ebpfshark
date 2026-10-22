@@ -1,0 +1,36 @@
+name: Nightly fuzz
+
+on:
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          check-latest: true
+          cache: true
+      - name: Install eBPF build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm libbpf-dev linux-tools-common linux-tools-generic
+          BPFTOOL=$(find /usr/lib/linux-tools -name bpftool | sort | tail -1)
+          test -n "$BPFTOOL"
+          sudo ln -sf "$(readlink -f "$BPFTOOL")" /usr/local/bin/bpftool
+      - name: Generate eBPF objects
+        run: make generate
+      - name: Fuzz decode
+        run: go test -run=^$ -fuzz=FuzzDecode -fuzztime=90s ./internal/decode
+      - name: Fuzz protocol payloads
+        run: go test -run=^$ -fuzz=FuzzProtocolPayloads -fuzztime=90s ./internal/decode
+      - name: Fuzz full decode
+        run: go test -tags full -run=^$ -fuzz=FuzzDecode -fuzztime=90s ./internal/decode

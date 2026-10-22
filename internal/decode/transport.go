@@ -139,33 +139,35 @@ func (c *ctx) dissectTCP(b []byte, base int, src, dst netip.Addr, l4len int) {
 	c.m.TCPPayload = payload
 	c.m.Payload = payload
 
-	root := c.newNode(fmt.Sprintf("Transmission Control Protocol, Src Port: %d, Dst Port: %d, Seq: %d, Len: %d", sport, dport, seq, len(payload)), base, min(l4len, len(b)))
-	root.add(
-		c.newField(fmt.Sprintf("Source Port: %d", sport), "", base, 2),
-		c.newField(fmt.Sprintf("Destination Port: %d", dport), "", base+2, 2),
-		c.newField(fmt.Sprintf("Sequence Number (raw): %d", seq), "", base+4, 4),
-		c.newField(fmt.Sprintf("Acknowledgment Number (raw): %d", ack), "", base+8, 4),
-		c.newField(fmt.Sprintf("Header Length: %d bytes (%d)", doff, b[12]>>4), "", base+12, 1),
-	)
+	if !c.noFields {
+		root := c.newNode(fmt.Sprintf("Transmission Control Protocol, Src Port: %d, Dst Port: %d, Seq: %d, Len: %d", sport, dport, seq, len(payload)), base, min(l4len, len(b)))
+		root.add(
+			c.newField(fmt.Sprintf("Source Port: %d", sport), "", base, 2),
+			c.newField(fmt.Sprintf("Destination Port: %d", dport), "", base+2, 2),
+			c.newField(fmt.Sprintf("Sequence Number (raw): %d", seq), "", base+4, 4),
+			c.newField(fmt.Sprintf("Acknowledgment Number (raw): %d", ack), "", base+8, 4),
+			c.newField(fmt.Sprintf("Header Length: %d bytes (%d)", doff, b[12]>>4), "", base+12, 1),
+		)
 
-	flagNode := c.newField(fmt.Sprintf("Flags: 0x%03x", int(b[12]&1)<<8|int(flags)), "", base+12, 2)
-	for _, f := range tcpFlagDefs {
-		flagNode.add(c.newField(fmt.Sprintf("%s: %d", f.name, boolInt(flags&f.bit != 0)), "", base+13, 1))
-	}
-	root.add(flagNode,
-		c.newField(fmt.Sprintf("Window: %d", win), "", base+14, 2),
-		c.transportChecksum(b, base, sport, dport, 6, l4len, 16),
-		c.newField(fmt.Sprintf("Urgent Pointer: %d", be16(b[18:20])), "", base+18, 2),
-	)
+		flagNode := c.newField(fmt.Sprintf("Flags: 0x%03x", int(b[12]&1)<<8|int(flags)), "", base+12, 2)
+		for _, f := range tcpFlagDefs {
+			flagNode.add(c.newField(fmt.Sprintf("%s: %d", f.name, boolInt(flags&f.bit != 0)), "", base+13, 1))
+		}
+		root.add(flagNode,
+			c.newField(fmt.Sprintf("Window: %d", win), "", base+14, 2),
+			c.transportChecksum(b, base, sport, dport, 6, l4len, 16),
+			c.newField(fmt.Sprintf("Urgent Pointer: %d", be16(b[18:20])), "", base+18, 2),
+		)
 
-	if doff > 20 && len(b) >= doff {
-		root.add(c.tcpOptions(b[20:doff], base+20))
+		if doff > 20 && len(b) >= doff {
+			root.add(c.tcpOptions(b[20:doff], base+20))
+		}
+		if len(payload) > 0 {
+			p := c.newField(fmt.Sprintf("TCP payload (%d bytes)", len(payload)), hexPreview(payload, 32), base+doff, len(payload))
+			root.add(p)
+		}
+		c.addRoot(root)
 	}
-	if len(payload) > 0 {
-		p := c.newField(fmt.Sprintf("TCP payload (%d bytes)", len(payload)), hexPreview(payload, 32), base+doff, len(payload))
-		root.add(p)
-	}
-	c.addRoot(root)
 
 	srcPort, dstPort := sport, dport
 	info := fmt.Sprintf("%d → %d [%s]", srcPort, dstPort, strings.Join(tcpFlagNames(flags), ", "))
@@ -270,21 +272,23 @@ func (c *ctx) dissectUDP(b []byte, base int, src, dst netip.Addr, l4len int) {
 	payload := b[8:udpLen]
 	c.m.Payload = payload
 
-	root := c.newNode(fmt.Sprintf("User Datagram Protocol, Src Port: %d, Dst Port: %d", sport, dport), base, udpLen)
-	root.add(
-		c.newField(fmt.Sprintf("Source Port: %d", sport), "", base, 2),
-		c.newField(fmt.Sprintf("Destination Port: %d", dport), "", base+2, 2),
-		c.newField(fmt.Sprintf("Length: %d", udpLen), "", base+4, 2),
-		c.transportChecksum(b, base, sport, dport, 17, udpLen, 6),
-	)
-	if len(payload) > 0 {
-		root.add(c.newField(fmt.Sprintf("UDP payload (%d bytes)", len(payload)), hexPreview(payload, 32), base+8, len(payload)))
+	if !c.noFields {
+		root := c.newNode(fmt.Sprintf("User Datagram Protocol, Src Port: %d, Dst Port: %d", sport, dport), base, udpLen)
+		root.add(
+			c.newField(fmt.Sprintf("Source Port: %d", sport), "", base, 2),
+			c.newField(fmt.Sprintf("Destination Port: %d", dport), "", base+2, 2),
+			c.newField(fmt.Sprintf("Length: %d", udpLen), "", base+4, 2),
+			c.transportChecksum(b, base, sport, dport, 17, udpLen, 6),
+		)
+		if len(payload) > 0 {
+			root.add(c.newField(fmt.Sprintf("UDP payload (%d bytes)", len(payload)), hexPreview(payload, 32), base+8, len(payload)))
+		}
+		c.addRoot(root)
 	}
-	c.addRoot(root)
 
 	c.appInfo = fmt.Sprintf("%d → %d Len=%d", sport, dport, len(payload))
 
-	if !c.dissectUDPPayload(payload, base+8, sport, dport) && len(payload) > 0 {
+	if !c.dissectUDPPayload(payload, base+8, sport, dport) && len(payload) > 0 && !c.noFields {
 		c.addLayer("data")
 		c.addRoot(c.newField(fmt.Sprintf("Data (%d bytes)", len(payload)), hexPreview(payload, 64), base+8, len(payload)))
 	}

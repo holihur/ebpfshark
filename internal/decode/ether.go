@@ -76,19 +76,24 @@ func (c *ctx) dissectEthernet() {
 	src := macString(c.data[6:12])
 	et := be16(c.data[12:14])
 
-	root := c.newNode(fmt.Sprintf("Ethernet II, Src: %s, Dst: %s", src, dst), 0, 14)
-	root.add(
-		c.newField("Destination: "+dst, "", 0, 6),
-		c.newField("Source: "+src, "", 6, 6),
-		c.newField(fmt.Sprintf("Type: %s (0x%04x)", etherTypeName(et), et), "", 12, 2),
-	)
+	var root *Field
+	if !c.noFields {
+		root = c.newNode(fmt.Sprintf("Ethernet II, Src: %s, Dst: %s", src, dst), 0, 14)
+		root.add(
+			c.newField("Destination: "+dst, "", 0, 6),
+			c.newField("Source: "+src, "", 6, 6),
+			c.newField(fmt.Sprintf("Type: %s (0x%04x)", etherTypeName(et), et), "", 12, 2),
+		)
+	}
 	c.m.EthSrc, c.m.EthDst = src, dst
 	c.addLayer("eth")
 
 	off := 14
 	for et == 0x8100 || et == 0x88a8 || et == 0x9100 {
 		if len(c.data) < off+4 {
-			root.add(c.newField("VLAN (truncated)", "", off, len(c.data)-off))
+			if !c.noFields {
+				root.add(c.newField("VLAN (truncated)", "", off, len(c.data)-off))
+			}
 			c.m.EthType = et
 			c.addRoot(root)
 			return
@@ -97,10 +102,12 @@ func (c *ctx) dissectEthernet() {
 		vid := tci & 0x0fff
 		c.m.VLAN = int(vid)
 		c.addLayer("vlan")
-		root.add(c.newField(
-			fmt.Sprintf("802.1Q Virtual LAN, PRI: %d, DEI: %d, ID: %d", tci>>13, (tci>>12)&1, vid),
-			"", off, 4,
-		))
+		if !c.noFields {
+			root.add(c.newField(
+				fmt.Sprintf("802.1Q Virtual LAN, PRI: %d, DEI: %d, ID: %d", tci>>13, (tci>>12)&1, vid),
+				"", off, 4,
+			))
+		}
 		et = be16(c.data[off+2 : off+4])
 		off += 4
 	}
@@ -120,7 +127,9 @@ func (c *ctx) dissectEthernet() {
 		c.dissectMPLS(payload, off)
 	default:
 		if len(payload) > 0 {
-			c.addRoot(c.newNode(fmt.Sprintf("Data (%d bytes)", len(payload)), off, len(payload)))
+			if !c.noFields {
+				c.addRoot(c.newNode(fmt.Sprintf("Data (%d bytes)", len(payload)), off, len(payload)))
+			}
 			c.addLayer("data")
 			c.m.Payload = payload
 		}
