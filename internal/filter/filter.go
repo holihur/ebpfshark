@@ -118,6 +118,20 @@ func (n layerNode) Match(m *packet.Meta) bool {
 		return m.HasLayer("igmp")
 	case "wireguard", "wg":
 		return m.HasLayer("wireguard")
+	case "sctp":
+		return m.HasLayer("sctp")
+	case "mysql":
+		return m.HasLayer("mysql")
+	case "radius":
+		return m.HasLayer("radius")
+	case "netflow":
+		return m.HasLayer("netflow")
+	case "rtp":
+		return m.HasLayer("rtp")
+	case "rtcp":
+		return m.HasLayer("rtcp")
+	case "websocket":
+		return m.HasLayer("websocket")
 	case "vlan":
 		return m.HasLayer("vlan")
 	case "eth":

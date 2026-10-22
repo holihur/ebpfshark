@@ -2374,6 +2374,10 @@ func sshAddStrings(c *ctx, f *Field, b []byte, off int, labels []string) {
 }
 
 func (c *ctx) dissectSSH(b []byte, base int) bool {
+	sshFlow := sshFlowFor(c)
+	if plain, ok := sshFlow.decryptPacket(c, b); ok {
+		b = plain
+	}
 	if bytes.HasPrefix(b, []byte("SSH-")) {
 		line, _, ok := bytes.Cut(b, []byte("\n"))
 		if !ok {
@@ -2697,6 +2701,9 @@ func (c *ctx) dissectSSH(b []byte, base int) bool {
 		info = "SSH encrypted/unknown payload"
 	}
 	c.addRoot(root)
+	if code == 21 {
+		sshFlow.markNewKeys(c)
+	}
 	c.appInfo = shorten(info, 140)
 	return true
 }

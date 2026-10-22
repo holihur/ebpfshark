@@ -55,6 +55,7 @@ func main() {
 	mcpToken := flag.String("mcp-token", env("EBPFSHARK_MCP_TOKEN", ""), "bearer token for the HTTP MCP endpoint (empty = generate)")
 	pprofAddr := flag.String("pprof-addr", env("EBPFSHARK_PPROF_ADDR", ""), "optional local profiling address, e.g. 127.0.0.1:6060")
 	tlsKeylog := flag.String("tls-keylog", env("EBPFSHARK_TLS_KEYLOG", env("SSLKEYLOGFILE", "")), "NSS SSLKEYLOGFILE for TLS 1.2/1.3 decryption")
+	sshKeys := flag.String("ssh-keys", env("EBPFSHARK_SSH_KEYS", ""), "JSON session keys for opt-in SSH AES-CTR decryption")
 	noMCP := flag.Bool("no-mcp", false, "disable the HTTP MCP endpoint")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
@@ -71,6 +72,13 @@ func main() {
 				log.Error("pprof server stopped", "err", err)
 			}
 		}()
+	}
+	if *sshKeys != "" {
+		if err := decode.LoadSSHKeys(*sshKeys); err != nil {
+			log.Warn("load SSH keys failed", "path", *sshKeys, "err", err)
+		} else {
+			log.Info("loaded SSH session keys", "path", *sshKeys)
+		}
 	}
 	if *tlsKeylog != "" {
 		if err := decode.LoadKeyLog(*tlsKeylog); err != nil {

@@ -144,6 +144,8 @@ func (c *ctx) dissectIPv4(b []byte, base int) {
 		c.dissectIPv6(l4, l4base)
 	case 47:
 		c.dissectGRE(l4, l4base)
+	case 132:
+		c.dissectSCTP(l4, l4base)
 	default:
 		c.dissectData(l4, l4base)
 	}

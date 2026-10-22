@@ -283,3 +283,14 @@ func TestIPv4ShortTotalLength(t *testing.T) {
 	// Must not panic even though total length is shorter than the header.
 	Decode(frame, packet.LinkEthernet, len(frame))
 }
+
+func TestSCTPBasic(t *testing.T) {
+	b := make([]byte, 12)
+	binary.BigEndian.PutUint16(b[0:2], 5000)
+	binary.BigEndian.PutUint16(b[2:4], 5001)
+	c := appCtx(b)
+	c.dissectSCTP(b, 0)
+	if c.proto != "sctp" || !strings.Contains(c.appInfo, "5000") {
+		t.Fatalf("proto=%q info=%q", c.proto, c.appInfo)
+	}
+}

@@ -226,6 +226,7 @@ go test -tags full ./...
 | 隧道 | VXLAN | VNI + 内层以太网完整解析 |
 | 传输层 | TCP | 端口、序列号、标志位、窗口、常用选项、校验和 |
 | 传输层 | UDP | 端口、长度、校验和 |
+| 传输层 | SCTP | 端口、Verification Tag、DATA/INIT/SACK/HEARTBEAT 等 chunk |
 | 传输层 | TLS | 记录层、ClientHello/ServerHello、SNI/ALPN、X.509 证书链、Alert；SSLKEYLOGFILE 解密 TLS 1.3 AES-GCM、TLS 1.2 AES-GCM/CBC |
 | 传输层 | QUIC | Long/Short Header、Initial 解密、帧解析、CRYPTO/TLS SNI；HTTP/3 帧 + QPACK 静态/动态表；keylog 解密 Handshake/1-RTT |
 | 应用层 | DNS | A/AAAA/CNAME/NS/PTR/MX/TXT/SOA/SRV/CAA/NAPTR/TLSA/SVCB/HTTPS；EDNS0/DNSSEC 标志；mDNS/LLMNR |
@@ -236,6 +237,11 @@ go test -tags full ./...
 | 应用层 | SNMP v1/v2c/v3 | 全部 PDU、v1 Trap、v2c Bulk、v3 USM 头/Scoped PDU、BER/OID/异常值 |
 | 应用层 | Syslog | RFC5424 与 BSD 格式，facility/severity |
 | 应用层 | STUN | Binding/Allocate 等方法、ERROR-CODE、XOR-PEER/RELAYED、ICE、Integrity 等属性 |
+| 应用层 | MySQL | Handshake、OK/ERR、COM_QUERY/INIT_DB/STMT_PREPARE/EXECUTE |
+| 应用层 | RADIUS | Access/Accounting 报文、常用属性、EAP/Message-Authenticator |
+| 应用层 | NetFlow / IPFIX | v5 流记录、v9/IPFIX FlowSet/Set 概览 |
+| 应用层 | RTP / RTCP | RTP 头、CSRC/扩展、RTCP SR/RR/SDES/BYE/APP |
+| 应用层 | WebSocket | Text/Binary/Ping/Pong/Close 帧、掩码、长度 |
 | 应用层 | MQTT | 全部 14 种报文、CONNECT/Will/用户名密码、QoS、SUBSCRIBE 选项、v5 Properties |
 | 应用层 | Redis | RESP2/RESP3 数组、Map、Set、Push、Double、Bool、BigNum、Verbatim、Blob Error；内联命令 |
 | 应用层 | PostgreSQL | Startup/SSL/Cancel、Auth、Query/Parse/Bind、RowDescription/DataRow、Error/Notice、Notify、Copy |
@@ -246,10 +252,10 @@ go test -tags full ./...
 | 应用层 | WireGuard | 握手 Initiation/Response/Cookie 完整字段、Transport 头部；载荷加密 |
 
 **过滤器**：新增协议同样支持协议谓词，例如 `mqtt`、`redis`、`vxlan`、`bgp`、
-`ssh`、`quic`、`http2`、`postgresql`、`igmp`、`wireguard`。
+`ssh`、`quic`、`http2`、`postgresql`、`mysql`、`radius`、`netflow`、`rtp`、`rtcp`、`websocket`、`sctp`、`igmp`、`wireguard`。
 
-**尚未支持**：QUIC QPACK 动态表、TLS CCM 解密、WebSocket/gRPC、
-SCTP、MySQL、RADIUS/LDAP/Kerberos、RTP/RTCP、NetFlow/IPFIX。
+**尚未支持**：TLS CCM 解密、gRPC/protobuf、LDAP/Kerberos、
+完整 NetFlow v9/IPFIX 模板展开、SCTP 分片重组。
 
 ## 过滤器构造器
 

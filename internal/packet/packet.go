@@ -41,6 +41,7 @@ const (
 	LayerIPv6
 	LayerTCP
 	LayerUDP
+	LayerSCTP
 	LayerICMP
 	LayerICMPv6
 	LayerIGMP
@@ -65,19 +66,26 @@ const (
 	LayerSSDP
 	LayerSIP
 	LayerWireGuard
+	LayerWebSocket
+	LayerMySQL
+	LayerRADIUS
+	LayerNetFlow
+	LayerRTP
+	LayerRTCP
 	LayerData
 )
 
 var layerBits = map[string]LayerMask{
 	"eth": LayerEth, "vlan": LayerVLAN, "arp": LayerARP, "ip": LayerIPv4,
-	"ipv6": LayerIPv6, "tcp": LayerTCP, "udp": LayerUDP, "icmp": LayerICMP,
+	"ipv6": LayerIPv6, "tcp": LayerTCP, "udp": LayerUDP, "sctp": LayerSCTP, "icmp": LayerICMP,
 	"icmpv6": LayerICMPv6, "igmp": LayerIGMP, "gre": LayerGRE, "mpls": LayerMPLS,
 	"vxlan": LayerVXLAN, "dns": LayerDNS, "http": LayerHTTP, "http2": LayerHTTP2,
 	"tls": LayerTLS, "ssl": LayerTLS, "dhcp": LayerDHCP, "quic": LayerQUIC,
 	"ntp": LayerNTP, "snmp": LayerSNMP, "syslog": LayerSyslog, "stun": LayerSTUN,
 	"mqtt": LayerMQTT, "redis": LayerRedis, "postgresql": LayerPostgreSQL,
 	"postgres": LayerPostgreSQL, "bgp": LayerBGP, "ssh": LayerSSH, "ssdp": LayerSSDP,
-	"sip": LayerSIP, "wireguard": LayerWireGuard, "wg": LayerWireGuard, "data": LayerData,
+	"sip": LayerSIP, "wireguard": LayerWireGuard, "wg": LayerWireGuard, "websocket": LayerWebSocket,
+	"mysql": LayerMySQL, "radius": LayerRADIUS, "netflow": LayerNetFlow, "rtp": LayerRTP, "rtcp": LayerRTCP, "data": LayerData,
 	"ip6": LayerIPv6, "icmp6": LayerICMPv6,
 }
 
