@@ -71,6 +71,7 @@ const (
 	LayerWebSocket
 	LayerWiFi
 	LayerRadiotap
+	LayerEAPOL
 	LayerMySQL
 	LayerRADIUS
 	LayerNetFlow
@@ -88,7 +89,7 @@ var layerBits = map[string]LayerMask{
 	"ntp": LayerNTP, "snmp": LayerSNMP, "syslog": LayerSyslog, "stun": LayerSTUN,
 	"mqtt": LayerMQTT, "redis": LayerRedis, "postgresql": LayerPostgreSQL,
 	"postgres": LayerPostgreSQL, "bgp": LayerBGP, "ssh": LayerSSH, "ssdp": LayerSSDP,
-	"sip": LayerSIP, "wireguard": LayerWireGuard, "wg": LayerWireGuard, "websocket": LayerWebSocket, "wifi": LayerWiFi, "radiotap": LayerRadiotap,
+	"sip": LayerSIP, "wireguard": LayerWireGuard, "wg": LayerWireGuard, "websocket": LayerWebSocket, "wifi": LayerWiFi, "radiotap": LayerRadiotap, "eapol": LayerEAPOL,
 	"mysql": LayerMySQL, "radius": LayerRADIUS, "netflow": LayerNetFlow, "rtp": LayerRTP, "rtcp": LayerRTCP, "data": LayerData,
 	"ip6": LayerIPv6, "icmp6": LayerICMPv6,
 }

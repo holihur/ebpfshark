@@ -320,3 +320,22 @@ func TestRadiotap80211(t *testing.T) {
 		t.Fatalf("layers=%v", res.Meta.Layers)
 	}
 }
+
+func TestIEEE80211EAPOLKey(t *testing.T) {
+	b := make([]byte, 24)
+	binary.LittleEndian.PutUint16(b[0:2], 0x0008) // data
+	copy(b[4:10], []byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55})
+	copy(b[10:16], []byte{0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb})
+	copy(b[16:22], []byte{0xcc, 0xdd, 0xee, 0xff, 0x00, 0x11})
+	b = append(b, 0xaa, 0xaa, 0x03, 0, 0, 0, 0x88, 0x8e)
+	eapol := make([]byte, 99)
+	eapol[0], eapol[1] = 2, 3
+	binary.BigEndian.PutUint16(eapol[2:4], 99)
+	eapol[4] = 2
+	binary.BigEndian.PutUint16(eapol[5:7], 0x008a)
+	b = append(b, eapol...)
+	res := Decode(b, packet.LinkIEEE80211, len(b))
+	if !res.Meta.HasLayer("eapol") || !strings.Contains(res.Summary.Info, "EAPOL-Key") {
+		t.Fatalf("layers=%v info=%q", res.Meta.Layers, res.Summary.Info)
+	}
+}
