@@ -31,7 +31,12 @@ jobs:
       - name: Install eBPF build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm libbpf-dev bpftool
+          sudo apt-get install -y clang llvm libbpf-dev linux-tools-common linux-tools-generic
+          # linux-tools-common provides a wrapper that looks for a kernel-matched
+          # bpftool. Runners often use a different kernel flavour, so point it at
+          # the generic tools we just installed.
+          sudo ln -sf "$(find /usr/lib/linux-tools -name bpftool -type f | sort | tail -1)" /usr/local/bin/bpftool
+          bpftool version
 
       - name: Generate eBPF objects
         run: make generate
