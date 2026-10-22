@@ -14,6 +14,8 @@ import (
 	"os"
 	"strings"
 	"sync"
+
+	"golang.org/x/crypto/chacha20poly1305"
 )
 
 // keylogData maps client_random (lower-case hex) to keylog label -> secret.
@@ -162,6 +164,8 @@ func tls13Suite(suite uint16) (keyLen int, hashLen int, ok bool) {
 		return 16, 32, true
 	case 0x1302:
 		return 32, 48, true
+	case 0x1303:
+		return 32, 32, true
 	}
 	return 0, 0, false
 }
@@ -197,6 +201,17 @@ func tls13Keys(secret []byte, suite uint16) ([]byte, []byte, bool) {
 	return hkdfExpandLabel(secret, "key", nil, keyLen), hkdfExpandLabel(secret, "iv", nil, 12), true
 }
 
+func tls13AEAD(key []byte, suite uint16) (cipher.AEAD, error) {
+	if suite == 0x1303 {
+		return chacha20poly1305.New(key)
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	return cipher.NewGCM(block)
+}
+
 func xorSeq(iv []byte, seq uint64) []byte {
 	n := append([]byte(nil), iv...)
 	for i := 0; i < 8; i++ {
@@ -210,11 +225,7 @@ func tls13Open(secret []byte, suite uint16, seq uint64, header, body []byte) ([]
 	if !ok || len(body) < 17 {
 		return nil, 0, false
 	}
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, 0, false
-	}
-	aead, err := cipher.NewGCM(block)
+	aead, err := tls13AEAD(key, suite)
 	if err != nil {
 		return nil, 0, false
 	}
@@ -260,22 +271,35 @@ func hmacSum(hf func() hash.Hash, key, data []byte) []byte {
 }
 
 func tls12GCMKeys(master, clientRandom, serverRandom []byte, suite uint16) (ck, sk, civ, siv []byte, ok bool) {
-	var keyLen int
+	var keyLen, ivLen int
 	switch suite {
 	case 0x009c, 0xc02f, 0xc02b:
-		keyLen = 16
+		keyLen, ivLen = 16, 4
 	case 0x009d, 0xc030, 0xc02c:
-		keyLen = 32
+		keyLen, ivLen = 32, 4
+	case 0xcca8, 0xcca9:
+		keyLen, ivLen = 32, 12
 	default:
 		return nil, nil, nil, nil, false
 	}
 	hf, _ := tls12Hash(suite)
 	seed := append(append([]byte(nil), serverRandom...), clientRandom...)
-	kb := tls12PRF(master, "key expansion", seed, 2*keyLen+8, hf)
-	return kb[:keyLen], kb[keyLen : 2*keyLen], kb[2*keyLen : 2*keyLen+4], kb[2*keyLen+4 : 2*keyLen+8], true
+	kb := tls12PRF(master, "key expansion", seed, 2*keyLen+2*ivLen, hf)
+	return kb[:keyLen], kb[keyLen : 2*keyLen], kb[2*keyLen : 2*keyLen+ivLen], kb[2*keyLen+ivLen : 2*keyLen+2*ivLen], true
 }
 
-func tls12Open(key, fixedIV []byte, seq uint64, header, body []byte) ([]byte, bool) {
+func tls12Open(key, fixedIV []byte, suite uint16, seq uint64, header, body []byte) ([]byte, bool) {
+	aad := make([]byte, 8+len(header))
+	binary.BigEndian.PutUint64(aad, seq)
+	copy(aad[8:], header)
+	if suite == 0xcca8 || suite == 0xcca9 {
+		aead, err := chacha20poly1305.New(key)
+		if err != nil {
+			return nil, false
+		}
+		pt, err := aead.Open(nil, xorSeq(fixedIV, seq), body, aad)
+		return pt, err == nil
+	}
 	if len(body) < 8+16 {
 		return nil, false
 	}
@@ -290,9 +314,6 @@ func tls12Open(key, fixedIV []byte, seq uint64, header, body []byte) ([]byte, bo
 		return nil, false
 	}
 	nonce := append(append([]byte(nil), fixedIV...), explicit...)
-	aad := make([]byte, 8+len(header))
-	binary.BigEndian.PutUint64(aad, seq)
-	copy(aad[8:], header)
 	pt, err := aead.Open(nil, nonce, ct, aad)
 	if err != nil {
 		return nil, false
@@ -382,7 +403,7 @@ func (f *tlsFlow) decryptRecord(c *ctx, header, body []byte) ([]byte, byte, stri
 			start := *seqp
 			for n := uint64(0); n < 128; n++ {
 				seq := start + n
-				if pt, ok := tls12Open(key, iv, seq, header, body); ok {
+				if pt, ok := tls12Open(key, iv, f.suite, seq, header, body); ok {
 					*seqp = seq + 1
 					f.cache[cacheKey] = tlsCached{append([]byte(nil), pt...), 23, "CLIENT_RANDOM"}
 					return pt, 23, "CLIENT_RANDOM", true

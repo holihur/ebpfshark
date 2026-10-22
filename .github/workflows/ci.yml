@@ -50,6 +50,12 @@ jobs:
       - name: Vet full
         run: go vet -tags full ./...
 
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Vulnerability scan
+        run: govulncheck ./...
+
       - name: Test core with race detector
         run: go test -race ./...
 

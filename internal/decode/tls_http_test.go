@@ -96,3 +96,29 @@ func TestQUICInitialDecrypt(t *testing.T) {
 	}
 	_ = packet
 }
+
+func TestQPACKStaticFields(t *testing.T) {
+	block := []byte{0, 0, 0xd1, 0xc1, 0xd7} // :method GET, :path /, :scheme https
+	fields, err := decodeQPACK(block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fields) != 3 || fields[0].Name != ":method" || fields[0].Value != "GET" {
+		t.Fatalf("fields=%+v", fields)
+	}
+}
+
+func TestHTTP3Stream(t *testing.T) {
+	block := []byte{0, 0, 0xd1, 0xc1, 0xd7}
+	frame := []byte{1, byte(len(block))}
+	frame = append(frame, block...)
+	c := appCtx(nil)
+	root := c.newNode("STREAM", 0, 0)
+	if !c.parseHTTP3Stream(frame, 0, root) {
+		t.Fatal("HTTP/3 stream not parsed")
+	}
+	labels := fieldLabels(root.Children)
+	if !containsLabel(labels, ":method: GET") || !containsLabel(labels, ":path: /") {
+		t.Fatalf("missing headers: %v", labels)
+	}
+}

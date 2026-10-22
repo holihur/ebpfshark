@@ -198,3 +198,35 @@ func TestTLS12CBCDecrypt(t *testing.T) {
 	}
 	_ = hf
 }
+
+func TestTLS13ChaChaDecrypt(t *testing.T) {
+	cr := bytes.Repeat([]byte{0x51}, 32)
+	secret := bytes.Repeat([]byte{0x22}, 32)
+	key, iv, ok := tls13Keys(secret, 0x1303)
+	if !ok {
+		t.Fatal("chacha keys")
+	}
+	aead, err := tls13AEAD(key, 0x1303)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inner := append([]byte("hello chacha"), 23)
+	header := []byte{23, 0x03, 0x03, 0, 0}
+	binary.BigEndian.PutUint16(header[3:], uint16(len(inner)+16))
+	rec := append(header, aead.Seal(nil, iv, inner, header)...)
+	keylogData.Lock()
+	keylogData.m[hexString(cr)] = map[string][]byte{"CLIENT_TRAFFIC_SECRET_0": secret}
+	keylogData.Unlock()
+	c := appCtx(rec)
+	flow := tlsFlowFor(c)
+	flow.observeClientHello(c, cr)
+	flow.Lock()
+	flow.version, flow.suite = 0x0304, 0x1303
+	flow.Unlock()
+	if !c.dissectTLS(rec, 0) {
+		t.Fatal("chacha record not recognized")
+	}
+	if string(c.m.Payload) != "hello chacha" {
+		t.Fatalf("payload=%q", c.m.Payload)
+	}
+}
