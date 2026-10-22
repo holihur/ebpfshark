@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { startTransition, useCallback, useEffect, useRef, useState } from "react"
 import { api } from "@/lib/api"
 import type { Packet, StatusResponse } from "@/lib/types"
 
@@ -89,12 +89,14 @@ export function useCapture() {
       try {
         const payload = JSON.parse(event.data) as { packets: Packet[] }
         if (!Array.isArray(payload.packets) || payload.packets.length === 0) return
-        setPackets((prev) => {
-          const lastID = prev.length > 0 ? prev[prev.length - 1].id : 0
-          const fresh = payload.packets.filter((p) => p.id > lastID)
-          if (fresh.length === 0) return prev
-          const next = prev.concat(fresh)
-          return next.length > MAX_UI_PACKETS ? next.slice(next.length - MAX_UI_PACKETS) : next
+        startTransition(() => {
+          setPackets((prev) => {
+            const lastID = prev.length > 0 ? prev[prev.length - 1].id : 0
+            const fresh = payload.packets.filter((p) => p.id > lastID)
+            if (fresh.length === 0) return prev
+            const next = prev.concat(fresh)
+            return next.length > MAX_UI_PACKETS ? next.slice(next.length - MAX_UI_PACKETS) : next
+          })
         })
       } catch {
         /* ignore malformed frame */

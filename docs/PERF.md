@@ -44,3 +44,21 @@ go tool pprof -http=:0 /tmp/store.cpu
 - Summary path now skips Ethernet/IP/TCP/UDP field construction and its allocation
   count dropped from 132 to 67 in the CI smoke run. Remaining summary cost is mostly
   app-layer field formatting and packet metadata strings.
+
+## Runtime profiling
+
+Start the server with a local-only pprof listener:
+
+```bash
+./bin/ebpfshark -pprof-addr 127.0.0.1:6060 ...
+```
+
+Then capture CPU / heap / mutex profiles:
+
+```bash
+go tool pprof -http=:0 http://127.0.0.1:6060/debug/pprof/profile?seconds=30
+go tool pprof -http=:0 http://127.0.0.1:6060/debug/pprof/heap
+go tool pprof -http=:0 http://127.0.0.1:6060/debug/pprof/mutex
+```
+
+Do not expose the pprof listener on a public interface.

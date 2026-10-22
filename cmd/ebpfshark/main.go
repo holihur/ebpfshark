@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"strconv"
@@ -52,6 +53,7 @@ func main() {
 	secureCookie := flag.Bool("secure-cookie", false, "set Secure on the session cookie (use behind HTTPS)")
 	noAuth := flag.Bool("no-auth", false, "disable authentication (NOT recommended)")
 	mcpToken := flag.String("mcp-token", env("EBPFSHARK_MCP_TOKEN", ""), "bearer token for the HTTP MCP endpoint (empty = generate)")
+	pprofAddr := flag.String("pprof-addr", env("EBPFSHARK_PPROF_ADDR", ""), "optional local profiling address, e.g. 127.0.0.1:6060")
 	tlsKeylog := flag.String("tls-keylog", env("EBPFSHARK_TLS_KEYLOG", env("SSLKEYLOGFILE", "")), "NSS SSLKEYLOGFILE for TLS 1.2/1.3 decryption")
 	noMCP := flag.Bool("no-mcp", false, "disable the HTTP MCP endpoint")
 	showVersion := flag.Bool("version", false, "print version and exit")
@@ -61,6 +63,14 @@ func main() {
 	if *showVersion {
 		fmt.Printf("ebpfshark %s\n", server.Version)
 		return
+	}
+	if *pprofAddr != "" {
+		go func() {
+			log.Warn("pprof endpoint enabled", "addr", *pprofAddr)
+			if err := http.ListenAndServe(*pprofAddr, nil); err != nil {
+				log.Error("pprof server stopped", "err", err)
+			}
+		}()
 	}
 	if *tlsKeylog != "" {
 		if err := decode.LoadKeyLog(*tlsKeylog); err != nil {

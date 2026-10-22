@@ -131,6 +131,7 @@ sudo ./bin/ebpfshark -capture eth0,lo -snaplen 2048 -sample-rate 1
 -mcp-token ""            HTTP MCP 的 Bearer Token（留空则启动时生成）
 -no-mcp                  关闭 HTTP MCP 端点
 -tls-keylog ""           NSS SSLKEYLOGFILE，用于 TLS 1.2/1.3 与 QUIC 解密
+-pprof-addr ""           可选本地 profiling 地址，例如 127.0.0.1:6060
 -auto-update            自动更新开关（默认 true）
 -update-interval 10m    自动更新检查间隔
 -update-url ""          自动更新 manifest URL
@@ -141,7 +142,7 @@ sudo ./bin/ebpfshark -capture eth0,lo -snaplen 2048 -sample-rate 1
 环境变量：`EBPFSHARK_ADDR`、`EBPFSHARK_MAX_PACKETS`、`EBPFSHARK_IFACE`、`EBPFSHARK_WEB_DIR`、
 `EBPFSHARK_LOG_LEVEL`、`EBPFSHARK_AUTH_USER`、`EBPFSHARK_AUTH_PASS`、
 `EBPFSHARK_STREAM_BUDGET`、`EBPFSHARK_MCP_TOKEN`、`EBPFSHARK_AUTO_UPDATE`、
-`EBPFSHARK_UPDATE_INTERVAL`、`EBPFSHARK_UPDATE_URL`、`EBPFSHARK_TLS_KEYLOG`。
+`EBPFSHARK_UPDATE_INTERVAL`、`EBPFSHARK_UPDATE_URL`、`EBPFSHARK_TLS_KEYLOG`、`EBPFSHARK_PPROF_ADDR`。
 `SSLKEYLOGFILE` 也会作为 `-tls-keylog` 的默认值。
 
 ### 开发模式
