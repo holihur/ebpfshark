@@ -576,6 +576,8 @@ curl -s -b /tmp/ebpfshark.cookie \
 
 ## 性能与资源
 
+基准与 profiling 方法见 **[docs/PERF.md](docs/PERF.md)**。
+
 - ringbuffer 默认 32 MiB；报文缓冲默认 100,000 条（`-max-packets`）；TCP 重组默认
   64 MiB 预算（`-stream-budget`）。按 snaplen 2048 B 估算，总内存约 150–250 MB。
 - 每条报文在 Go 侧做一次协议解析，SSE 每 50 ms 批量推送（最多 512 条/批）。
