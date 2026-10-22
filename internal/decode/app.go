@@ -52,26 +52,26 @@ func (c *ctx) dissectDNS(msg []byte, base int, tcp bool) bool {
 	c.m.DNSID = id
 	c.m.DNSResponse = qr
 
-	root := newNode(fmt.Sprintf("Domain Name System (%s)", dnsOpcodeName(opcode, qr)), dnsBase, len(data))
-	flagNode := newField(fmt.Sprintf("Flags: 0x%04x", flags), "", dnsBase+2, 2)
+	root := c.newNode(fmt.Sprintf("Domain Name System (%s)", dnsOpcodeName(opcode, qr)), dnsBase, len(data))
+	flagNode := c.newField(fmt.Sprintf("Flags: 0x%04x", flags), "", dnsBase+2, 2)
 	flagNode.add(
-		newField(fmt.Sprintf("Response: %d", boolInt(qr)), "", dnsBase+2, 1),
-		newField(fmt.Sprintf("Opcode: %s (%d)", dnsOpcodeName(opcode, false), opcode), "", dnsBase+2, 1),
-		newField(fmt.Sprintf("Authoritative: %d", boolInt(flags&0x0400 != 0)), "", dnsBase+2, 1),
-		newField(fmt.Sprintf("Truncated: %d", boolInt(flags&0x0200 != 0)), "", dnsBase+2, 1),
-		newField(fmt.Sprintf("Recursion desired: %d", boolInt(flags&0x0100 != 0)), "", dnsBase+2, 1),
-		newField(fmt.Sprintf("Recursion available: %d", boolInt(flags&0x0080 != 0)), "", dnsBase+3, 1),
-		newField(fmt.Sprintf("Authentic data: %d", boolInt(flags&0x0020 != 0)), "", dnsBase+3, 1),
-		newField(fmt.Sprintf("Checking disabled: %d", boolInt(flags&0x0010 != 0)), "", dnsBase+3, 1),
-		newField(fmt.Sprintf("Reply code: %s (%d)", dnsRcodeName(rcode), rcode), "", dnsBase+3, 1),
+		c.newField(fmt.Sprintf("Response: %d", boolInt(qr)), "", dnsBase+2, 1),
+		c.newField(fmt.Sprintf("Opcode: %s (%d)", dnsOpcodeName(opcode, false), opcode), "", dnsBase+2, 1),
+		c.newField(fmt.Sprintf("Authoritative: %d", boolInt(flags&0x0400 != 0)), "", dnsBase+2, 1),
+		c.newField(fmt.Sprintf("Truncated: %d", boolInt(flags&0x0200 != 0)), "", dnsBase+2, 1),
+		c.newField(fmt.Sprintf("Recursion desired: %d", boolInt(flags&0x0100 != 0)), "", dnsBase+2, 1),
+		c.newField(fmt.Sprintf("Recursion available: %d", boolInt(flags&0x0080 != 0)), "", dnsBase+3, 1),
+		c.newField(fmt.Sprintf("Authentic data: %d", boolInt(flags&0x0020 != 0)), "", dnsBase+3, 1),
+		c.newField(fmt.Sprintf("Checking disabled: %d", boolInt(flags&0x0010 != 0)), "", dnsBase+3, 1),
+		c.newField(fmt.Sprintf("Reply code: %s (%d)", dnsRcodeName(rcode), rcode), "", dnsBase+3, 1),
 	)
 	root.add(
-		newField(fmt.Sprintf("Transaction ID: 0x%04x", id), "", dnsBase, 2),
+		c.newField(fmt.Sprintf("Transaction ID: 0x%04x", id), "", dnsBase, 2),
 		flagNode,
-		newField(fmt.Sprintf("Questions: %d", qd), "", dnsBase+4, 2),
-		newField(fmt.Sprintf("Answer RRs: %d", an), "", dnsBase+6, 2),
-		newField(fmt.Sprintf("Authority RRs: %d", ns), "", dnsBase+8, 2),
-		newField(fmt.Sprintf("Additional RRs: %d", ar), "", dnsBase+10, 2),
+		c.newField(fmt.Sprintf("Questions: %d", qd), "", dnsBase+4, 2),
+		c.newField(fmt.Sprintf("Answer RRs: %d", an), "", dnsBase+6, 2),
+		c.newField(fmt.Sprintf("Authority RRs: %d", ns), "", dnsBase+8, 2),
+		c.newField(fmt.Sprintf("Additional RRs: %d", ar), "", dnsBase+10, 2),
 	)
 
 	off := 12
@@ -86,17 +86,17 @@ func (c *ctx) dissectDNS(msg []byte, base int, tcp bool) bool {
 		qclass := be16(data[next+2 : next+4])
 		qNames = append(qNames, name)
 		qTypes = append(qTypes, qtype)
-		q := newField(fmt.Sprintf("Queries: %s: type %s, class %s", name, dnsTypeName(qtype), dnsClassName(qclass)), "", dnsBase+off, next+4-off)
+		q := c.newField(fmt.Sprintf("Queries: %s: type %s, class %s", name, dnsTypeName(qtype), dnsClassName(qclass)), "", dnsBase+off, next+4-off)
 		q.add(
-			newField("Name: "+name, "", dnsBase+off, next-off),
-			newField(fmt.Sprintf("Type: %s (%d)", dnsTypeName(qtype), qtype), "", dnsBase+next, 2),
-			newField(fmt.Sprintf("Class: %s (0x%04x)", dnsClassName(qclass), qclass), "", dnsBase+next+2, 2),
+			c.newField("Name: "+name, "", dnsBase+off, next-off),
+			c.newField(fmt.Sprintf("Type: %s (%d)", dnsTypeName(qtype), qtype), "", dnsBase+next, 2),
+			c.newField(fmt.Sprintf("Class: %s (0x%04x)", dnsClassName(qclass), qclass), "", dnsBase+next+2, 2),
 		)
 		root.add(q)
 		off = next + 4
 	}
 
-	rr := newField("Answers", "", 0, 0)
+	rr := c.newField("Answers", "", 0, 0)
 	var answers []string
 	for i := 0; i < an && off < len(data); i++ {
 		name, next, ok := dnsReadName(data, off, 0)
@@ -112,14 +112,14 @@ func (c *ctx) dissectDNS(msg []byte, base int, tcp bool) bool {
 		}
 		rdata := data[next+10 : next+10+rdlen]
 		val := dnsRDataString(data, rtype, rdata, next+10)
-		f := newField(fmt.Sprintf("%s: type %s, class %s, ttl %d, %s", name, dnsTypeName(rtype), dnsClassName(rclass), ttl, val), "", dnsBase+off, next+10+rdlen-off)
+		f := c.newField(fmt.Sprintf("%s: type %s, class %s, ttl %d, %s", name, dnsTypeName(rtype), dnsClassName(rclass), ttl, val), "", dnsBase+off, next+10+rdlen-off)
 		f.add(
-			newField("Name: "+name, "", dnsBase+off, next-off),
-			newField(fmt.Sprintf("Type: %s (%d)", dnsTypeName(rtype), rtype), "", dnsBase+next, 2),
-			newField(fmt.Sprintf("Class: %s", dnsClassName(rclass)), "", dnsBase+next+2, 2),
-			newField(fmt.Sprintf("Time to live: %d (seconds)", ttl), "", dnsBase+next+4, 4),
-			newField(fmt.Sprintf("Data length: %d", rdlen), "", dnsBase+next+8, 2),
-			newField(dnsTypeName(rtype)+": "+val, "", dnsBase+next+10, rdlen),
+			c.newField("Name: "+name, "", dnsBase+off, next-off),
+			c.newField(fmt.Sprintf("Type: %s (%d)", dnsTypeName(rtype), rtype), "", dnsBase+next, 2),
+			c.newField(fmt.Sprintf("Class: %s", dnsClassName(rclass)), "", dnsBase+next+2, 2),
+			c.newField(fmt.Sprintf("Time to live: %d (seconds)", ttl), "", dnsBase+next+4, 4),
+			c.newField(fmt.Sprintf("Data length: %d", rdlen), "", dnsBase+next+8, 2),
+			c.newField(dnsTypeName(rtype)+": "+val, "", dnsBase+next+10, rdlen),
 		)
 		if rtype == 41 { // EDNS0 OPT pseudo-record
 			extRcode := uint16((ttl >> 24) & 0xff)
@@ -127,10 +127,10 @@ func (c *ctx) dissectDNS(msg []byte, base int, tcp bool) bool {
 			do := ttl&0x8000 != 0
 			f.Label = fmt.Sprintf("OPT (EDNS0): UDP payload %d, extended RCODE %d, version %d, DO %d", rclass, extRcode, version, boolInt(do))
 			f.add(
-				newField(fmt.Sprintf("UDP Payload Size: %d", rclass), "", dnsBase+next+2, 2),
-				newField(fmt.Sprintf("Extended RCODE: %d", extRcode), "", dnsBase+next+4, 1),
-				newField(fmt.Sprintf("EDNS Version: %d", version), "", dnsBase+next+5, 1),
-				newField(fmt.Sprintf("DNSSEC OK: %d", boolInt(do)), "", dnsBase+next+6, 1),
+				c.newField(fmt.Sprintf("UDP Payload Size: %d", rclass), "", dnsBase+next+2, 2),
+				c.newField(fmt.Sprintf("Extended RCODE: %d", extRcode), "", dnsBase+next+4, 1),
+				c.newField(fmt.Sprintf("EDNS Version: %d", version), "", dnsBase+next+5, 1),
+				c.newField(fmt.Sprintf("DNSSEC OK: %d", boolInt(do)), "", dnsBase+next+6, 1),
 			)
 			for p := 0; p+4 <= len(rdata); {
 				ocode := be16(rdata[p : p+2])
@@ -150,7 +150,7 @@ func (c *ctx) dissectDNS(msg []byte, base int, tcp bool) bool {
 				case 15:
 					oname = "Extended DNS Error"
 				}
-				f.add(newField(fmt.Sprintf("%s (%d bytes): %s", oname, olen, hexPreview(oval, 32)), "", dnsBase+next+10+p, 4+olen))
+				f.add(c.newField(fmt.Sprintf("%s (%d bytes): %s", oname, olen, hexPreview(oval, 32)), "", dnsBase+next+10+p, 4+olen))
 				p += 4 + olen
 			}
 		} else {
@@ -488,7 +488,7 @@ func (c *ctx) dissectHTTP(b []byte, base int) bool {
 		}
 	}
 
-	root := newNode("Hypertext Transfer Protocol", base, headerEnd)
+	root := c.newNode("Hypertext Transfer Protocol", base, headerEnd)
 	headers := map[string]string{}
 	var headerOrder []string
 	off := nl + 1
@@ -509,14 +509,14 @@ func (c *ctx) dissectHTTP(b []byte, base int) bool {
 				headerOrder = append(headerOrder, k)
 			}
 			headers[k] = v
-			root.add(newField(fmt.Sprintf("%s: %s", canonicalHeader(k), v), "", base+off, next))
+			root.add(c.newField(fmt.Sprintf("%s: %s", canonicalHeader(k), v), "", base+off, next))
 		}
 		off += next + 1
 	}
 
 	body := b[headerEnd:]
 	if len(body) > 0 {
-		root.add(newField(fmt.Sprintf("Body (%d bytes)", len(body)), hexPreview(body, 32), base+headerEnd, len(body)))
+		root.add(c.newField(fmt.Sprintf("Body (%d bytes)", len(body)), hexPreview(body, 32), base+headerEnd, len(body)))
 	}
 
 	if isRequest {
@@ -528,11 +528,11 @@ func (c *ctx) dissectHTTP(b []byte, base int) bool {
 		c.m.HTTPURI = uri
 		c.m.HTTPHost = headers["host"]
 		root.add(
-			newField("Request Method: "+method, "", base, len(parts[0])),
-			newField("Request URI: "+uri, "", base+len(parts[0])+1, len(parts[1])),
+			c.newField("Request Method: "+method, "", base, len(parts[0])),
+			c.newField("Request URI: "+uri, "", base+len(parts[0])+1, len(parts[1])),
 		)
 		if version != "" {
-			root.add(newField("Request Version: "+version, "", base, 0))
+			root.add(c.newField("Request Version: "+version, "", base, 0))
 		}
 		c.appInfo = fmt.Sprintf("%s %s", method, uri)
 		if v := headers["host"]; v != "" {
@@ -550,8 +550,8 @@ func (c *ctx) dissectHTTP(b []byte, base int) bool {
 		}
 		c.m.HTTPCode = code
 		root.add(
-			newField("Response Version: "+parts[0], "", base, len(parts[0])),
-			newField(fmt.Sprintf("Status Code: %d", code), "", base+len(parts[0])+1, len(parts[1])),
+			c.newField("Response Version: "+parts[0], "", base, len(parts[0])),
+			c.newField(fmt.Sprintf("Status Code: %d", code), "", base+len(parts[0])+1, len(parts[1])),
 		)
 		c.appInfo = fmt.Sprintf("%s %s", parts[1], strings.Join(parts[2:], " "))
 		if v := headers["content-type"]; v != "" && len(body) > 0 {
@@ -560,7 +560,7 @@ func (c *ctx) dissectHTTP(b []byte, base int) bool {
 	}
 
 	// Prepend a line field for the start line (offset points at the line).
-	root.Children = append([]*Field{newField(firstLine, "", base, nl)}, root.Children...)
+	root.Children = append([]*Field{c.newField(firstLine, "", base, nl)}, root.Children...)
 	c.addRoot(root)
 	return true
 }
@@ -668,11 +668,11 @@ func (c *ctx) dissectTLS(b []byte, base int) bool {
 	c.addLayer("tls")
 	c.proto = "tls"
 
-	root := newNode(fmt.Sprintf("Transport Layer Security (%s)", tlsContentTypeName(ct)), base, 5+recLen)
+	root := c.newNode(fmt.Sprintf("Transport Layer Security (%s)", tlsContentTypeName(ct)), base, 5+recLen)
 	root.add(
-		newField(fmt.Sprintf("Content Type: %s (%d)", tlsContentTypeName(ct), ct), "", base, 1),
-		newField(fmt.Sprintf("Version: %s (0x%04x)", tlsVersionName(ver), ver), "", base+1, 2),
-		newField(fmt.Sprintf("Length: %d", recLen), "", base+3, 2),
+		c.newField(fmt.Sprintf("Content Type: %s (%d)", tlsContentTypeName(ct), ct), "", base, 1),
+		c.newField(fmt.Sprintf("Version: %s (0x%04x)", tlsVersionName(ver), ver), "", base+1, 2),
+		c.newField(fmt.Sprintf("Length: %d", recLen), "", base+3, 2),
 	)
 
 	body := b[5 : 5+recLen]
@@ -681,6 +681,8 @@ func (c *ctx) dissectTLS(b []byte, base int) bool {
 
 	if ct == 22 && len(body) >= 4 {
 		off := 0
+		sawHS := false
+		firstHT := byte(0)
 		for off+4 <= len(body) {
 			ht := body[off]
 			hl := int(body[off+1])<<16 | int(body[off+2])<<8 | int(body[off+3])
@@ -688,21 +690,31 @@ func (c *ctx) dissectTLS(b []byte, base int) bool {
 			if end > len(body) {
 				end = len(body)
 			}
+			if !sawHS {
+				sawHS, firstHT = true, ht
+			}
 			c.parseTLSHandshakeMessage(ht, body[off+4:end], base+5+off+4, root, flow)
 			off = end
 		}
-		if len(root.Children) > 0 {
-			c.appInfo = tlsHandshakeName(body[0])
+		if sawHS {
+			c.appInfo = tlsHandshakeName(firstHT)
 			if c.m.TLSSNI != "" {
 				c.appInfo += " (SNI=" + c.m.TLSSNI + ")"
 			}
 		}
 	} else if ct == 23 {
-		root.add(newField(fmt.Sprintf("Encrypted Application Data (%d bytes)", len(body)), hexPreview(body, 32), base+5, len(body)))
+		root.add(c.newField(fmt.Sprintf("Encrypted Application Data (%d bytes)", len(body)), hexPreview(body, 32), base+5, len(body)))
+		if c.noFields {
+			// Summary mode only needs the record metadata; decryption is
+			// deferred until the packet detail is opened.
+			c.appInfo = fmt.Sprintf("Application Data (%d bytes)", len(body))
+			c.addRoot(root)
+			return true
+		}
 		if pt, inner, label, ok := flow.decryptRecord(c, b[:5], body); ok {
-			dn := newNode(fmt.Sprintf("Decrypted TLS Record (%s)", tlsContentTypeName(inner)), base+5, recLen)
-			dn.add(newField("Key Log Label: "+label, "", 0, 0))
-			dn.add(newField(fmt.Sprintf("Inner Content Type: %s (%d)", tlsContentTypeName(inner), inner), "", 0, 0))
+			dn := c.newNode(fmt.Sprintf("Decrypted TLS Record (%s)", tlsContentTypeName(inner)), base+5, recLen)
+			dn.add(c.newField("Key Log Label: "+label, "", 0, 0))
+			dn.add(c.newField(fmt.Sprintf("Inner Content Type: %s (%d)", tlsContentTypeName(inner), inner), "", 0, 0))
 			switch inner {
 			case 22:
 				off := 0
@@ -717,19 +729,19 @@ func (c *ctx) dissectTLS(b []byte, base int) bool {
 					off = end
 				}
 			case 23:
-				dn.add(newField(fmt.Sprintf("Decrypted Application Data (%d bytes)", len(pt)), printablePreview(pt, 300), 0, len(pt)))
+				dn.add(c.newField(fmt.Sprintf("Decrypted Application Data (%d bytes)", len(pt)), printablePreview(pt, 300), 0, len(pt)))
 				c.m.Payload = pt
 				c.dissectDecryptedApp(pt, base+5)
 				c.appInfo = fmt.Sprintf("Decrypted Application Data (%d bytes)", len(pt))
 			case 21:
 				if len(pt) >= 2 {
-					dn.add(newField(fmt.Sprintf("Alert Level: %d, Description: %d", pt[0], pt[1]), "", 0, 2))
+					dn.add(c.newField(fmt.Sprintf("Alert Level: %d, Description: %d", pt[0], pt[1]), "", 0, 2))
 				}
 			}
 			root.add(dn)
 		}
 	} else if ct == 21 && len(body) >= 2 {
-		root.add(newField(fmt.Sprintf("Alert Level: %d, Description: %d", body[0], body[1]), "", base+5, 2))
+		root.add(c.newField(fmt.Sprintf("Alert Level: %d, Description: %d", body[0], body[1]), "", base+5, 2))
 		c.appInfo = fmt.Sprintf("Alert (level %d, description %d)", body[0], body[1])
 	}
 
@@ -758,7 +770,7 @@ func printablePreview(b []byte, n int) string {
 
 func (c *ctx) parseTLSHandshakeMessage(ht byte, b []byte, base int, root *Field, flow *tlsFlow) {
 	hl := len(b)
-	hsNode := newNode(fmt.Sprintf("%s (length %d)", tlsHandshakeName(ht), hl), base-4, min(hl+4, len(b)+4))
+	hsNode := c.newNode(fmt.Sprintf("%s (length %d)", tlsHandshakeName(ht), hl), base-4, min(hl+4, len(b)+4))
 	switch ht {
 	case 1:
 		c.parseClientHello(b, base, hsNode, flow)
@@ -770,16 +782,16 @@ func (c *ctx) parseTLSHandshakeMessage(ht byte, b []byte, base int, root *Field,
 		c.parseTLSExtensionsMessage(b, base, hsNode, flow, false)
 	case 4: // NewSessionTicket
 		if len(b) >= 4 {
-			hsNode.add(newField(fmt.Sprintf("Ticket Lifetime: %d s", be32(b[0:4])), "", base, 4))
+			hsNode.add(c.newField(fmt.Sprintf("Ticket Lifetime: %d s", be32(b[0:4])), "", base, 4))
 			if len(b) >= 8 {
-				hsNode.add(newField(fmt.Sprintf("Ticket Age Add: %d", be32(b[4:8])), "", base+4, 4))
+				hsNode.add(c.newField(fmt.Sprintf("Ticket Age Add: %d", be32(b[4:8])), "", base+4, 4))
 			}
 		}
 	case 15: // CertificateVerify
 		if len(b) >= 4 {
-			hsNode.add(newField(fmt.Sprintf("Signature Algorithm: 0x%04x", be16(b[0:2])), "", base, 2))
+			hsNode.add(c.newField(fmt.Sprintf("Signature Algorithm: 0x%04x", be16(b[0:2])), "", base, 2))
 			if len(b) > 4 {
-				hsNode.add(newField("Signature: "+hexPreview(b[4:], 64), "", base+4, len(b)-4))
+				hsNode.add(c.newField("Signature: "+hexPreview(b[4:], 64), "", base+4, len(b)-4))
 			}
 		}
 	}
@@ -794,7 +806,7 @@ func (c *ctx) parseTLSExtensionsMessage(b []byte, base int, node *Field, flow *t
 	if 2+l > len(b) {
 		l = len(b) - 2
 	}
-	node.add(newField(fmt.Sprintf("Extensions Length: %d", l), "", base, 2))
+	node.add(c.newField(fmt.Sprintf("Extensions Length: %d", l), "", base, 2))
 	c.parseTLSExtensions(b[2:2+l], base+2, node, flow, server)
 }
 
@@ -821,8 +833,8 @@ func (c *ctx) parseClientHello(b []byte, base int, node *Field, flow *tlsFlow) {
 	ver := be16(b[0:2])
 	random := b[2:34]
 	node.add(
-		newField(fmt.Sprintf("Version: %s (0x%04x)", tlsVersionName(ver), ver), "", base, 2),
-		newField("Random: "+hexPreview(random, 32), "", base+2, 32),
+		c.newField(fmt.Sprintf("Version: %s (0x%04x)", tlsVersionName(ver), ver), "", base, 2),
+		c.newField("Random: "+hexPreview(random, 32), "", base+2, 32),
 	)
 	flow.observeClientHello(c, random)
 
@@ -834,7 +846,7 @@ func (c *ctx) parseClientHello(b []byte, base int, node *Field, flow *tlsFlow) {
 	if off+1+sidLen > len(b) {
 		return
 	}
-	node.add(newField(fmt.Sprintf("Session ID (%d bytes): %s", sidLen, hexPreview(b[off+1:off+1+sidLen], 24)), "", base+off, 1+sidLen))
+	node.add(c.newField(fmt.Sprintf("Session ID (%d bytes): %s", sidLen, hexPreview(b[off+1:off+1+sidLen], 24)), "", base+off, 1+sidLen))
 	off += 1 + sidLen
 	if off+2 > len(b) {
 		return
@@ -848,13 +860,13 @@ func (c *ctx) parseClientHello(b []byte, base int, node *Field, flow *tlsFlow) {
 	for q := off + 2; q+2 <= csEnd; q += 2 {
 		suites = append(suites, tlsCipherName(be16(b[q:q+2])))
 	}
-	node.add(newField(fmt.Sprintf("Cipher Suites (%d): %s", len(suites), strings.Join(suites, ", ")), "", base+off, 2+csLen))
+	node.add(c.newField(fmt.Sprintf("Cipher Suites (%d): %s", len(suites), strings.Join(suites, ", ")), "", base+off, 2+csLen))
 	off = csEnd
 	if off >= len(b) {
 		return
 	}
 	compLen := int(b[off])
-	node.add(newField(fmt.Sprintf("Compression Methods: %d", compLen), "", base+off, 1+compLen))
+	node.add(c.newField(fmt.Sprintf("Compression Methods: %d", compLen), "", base+off, 1+compLen))
 	off += 1 + compLen
 	if off+2 > len(b) {
 		return
@@ -866,7 +878,7 @@ func (c *ctx) parseClientHello(b []byte, base int, node *Field, flow *tlsFlow) {
 		end = len(b)
 	}
 	if end > off {
-		node.add(newField(fmt.Sprintf("Extensions (%d bytes)", extTotal), "", base+off-2, 2+end-off))
+		node.add(c.newField(fmt.Sprintf("Extensions (%d bytes)", extTotal), "", base+off-2, 2+end-off))
 		c.parseTLSExtensions(b[off:end], base+off, node, flow, false)
 	}
 }
@@ -878,20 +890,20 @@ func (c *ctx) parseServerHello(b []byte, base int, node *Field, flow *tlsFlow) {
 	legacy := be16(b[0:2])
 	random := b[2:34]
 	node.add(
-		newField(fmt.Sprintf("Legacy Version: %s (0x%04x)", tlsVersionName(legacy), legacy), "", base, 2),
-		newField("Random: "+hexPreview(random, 32), "", base+2, 32),
+		c.newField(fmt.Sprintf("Legacy Version: %s (0x%04x)", tlsVersionName(legacy), legacy), "", base, 2),
+		c.newField("Random: "+hexPreview(random, 32), "", base+2, 32),
 	)
 	off := 34
 	sidLen := int(b[off])
 	if off+1+sidLen+3 > len(b) {
 		return
 	}
-	node.add(newField(fmt.Sprintf("Session ID (%d bytes): %s", sidLen, hexPreview(b[off+1:off+1+sidLen], 24)), "", base+off, 1+sidLen))
+	node.add(c.newField(fmt.Sprintf("Session ID (%d bytes): %s", sidLen, hexPreview(b[off+1:off+1+sidLen], 24)), "", base+off, 1+sidLen))
 	off += 1 + sidLen
 	suite := be16(b[off : off+2])
-	node.add(newField(fmt.Sprintf("Cipher Suite: %s (0x%04x)", tlsCipherName(suite), suite), "", base+off, 2))
+	node.add(c.newField(fmt.Sprintf("Cipher Suite: %s (0x%04x)", tlsCipherName(suite), suite), "", base+off, 2))
 	off += 2
-	node.add(newField(fmt.Sprintf("Compression Method: %d", b[off]), "", base+off, 1))
+	node.add(c.newField(fmt.Sprintf("Compression Method: %d", b[off]), "", base+off, 1))
 	off++
 	version := legacy
 	if off+2 <= len(b) {
@@ -909,11 +921,14 @@ func (c *ctx) parseServerHello(b []byte, base int, node *Field, flow *tlsFlow) {
 			}
 		}
 	}
-	node.add(newField(fmt.Sprintf("Negotiated Version: %s", tlsVersionName(version)), "", base, 0))
+	node.add(c.newField(fmt.Sprintf("Negotiated Version: %s", tlsVersionName(version)), "", base, 0))
 	flow.observeServerHello(c, random, version, suite)
 }
 
 func (c *ctx) parseTLSCertificates(b []byte, base int, node *Field, flow *tlsFlow) {
+	if c.noFields {
+		return
+	}
 	off := 0
 	tlsVer := flow.getVersion()
 	if tlsVer == 0x0304 {
@@ -925,7 +940,7 @@ func (c *ctx) parseTLSCertificates(b []byte, base int, node *Field, flow *tlsFlo
 		if off+3 > len(b) {
 			return
 		}
-		node.add(newField(fmt.Sprintf("Certificate Request Context (%d bytes)", ctxLen), hexPreview(b[1:1+ctxLen], 24), base, 1+ctxLen))
+		node.add(c.newField(fmt.Sprintf("Certificate Request Context (%d bytes)", ctxLen), hexPreview(b[1:1+ctxLen], 24), base, 1+ctxLen))
 	}
 	if off+3 > len(b) {
 		return
@@ -936,7 +951,7 @@ func (c *ctx) parseTLSCertificates(b []byte, base int, node *Field, flow *tlsFlo
 	if end > len(b) {
 		end = len(b)
 	}
-	node.add(newField(fmt.Sprintf("Certificate List Length: %d", listLen), "", base+off-3, 3))
+	node.add(c.newField(fmt.Sprintf("Certificate List Length: %d", listLen), "", base+off-3, 3))
 	idx := 0
 	for off+3 <= end {
 		clen := int(b[off])<<16 | int(b[off+1])<<8 | int(b[off+2])
@@ -945,19 +960,19 @@ func (c *ctx) parseTLSCertificates(b []byte, base int, node *Field, flow *tlsFlo
 			break
 		}
 		der := b[off : off+clen]
-		cf := newNode(fmt.Sprintf("Certificate %d (%d bytes)", idx+1, clen), base+off, clen)
+		cf := c.newNode(fmt.Sprintf("Certificate %d (%d bytes)", idx+1, clen), base+off, clen)
 		if cert, err := x509.ParseCertificate(der); err == nil {
 			cf.add(
-				newField("Subject: "+cert.Subject.String(), "", 0, 0),
-				newField("Issuer: "+cert.Issuer.String(), "", 0, 0),
-				newField("Serial Number: "+cert.SerialNumber.String(), "", 0, 0),
-				newField("Not Before: "+cert.NotBefore.UTC().Format("2006-01-02 15:04:05 MST"), "", 0, 0),
-				newField("Not After: "+cert.NotAfter.UTC().Format("2006-01-02 15:04:05 MST"), "", 0, 0),
-				newField("Signature Algorithm: "+cert.SignatureAlgorithm.String(), "", 0, 0),
-				newField("Public Key Algorithm: "+cert.PublicKeyAlgorithm.String(), "", 0, 0),
+				c.newField("Subject: "+cert.Subject.String(), "", 0, 0),
+				c.newField("Issuer: "+cert.Issuer.String(), "", 0, 0),
+				c.newField("Serial Number: "+cert.SerialNumber.String(), "", 0, 0),
+				c.newField("Not Before: "+cert.NotBefore.UTC().Format("2006-01-02 15:04:05 MST"), "", 0, 0),
+				c.newField("Not After: "+cert.NotAfter.UTC().Format("2006-01-02 15:04:05 MST"), "", 0, 0),
+				c.newField("Signature Algorithm: "+cert.SignatureAlgorithm.String(), "", 0, 0),
+				c.newField("Public Key Algorithm: "+cert.PublicKeyAlgorithm.String(), "", 0, 0),
 			)
 			if len(cert.DNSNames) > 0 {
-				cf.add(newField("DNS Names: "+strings.Join(cert.DNSNames, ", "), "", 0, 0))
+				cf.add(c.newField("DNS Names: "+strings.Join(cert.DNSNames, ", "), "", 0, 0))
 				if c.m.TLSSNI == "" {
 					c.m.TLSSNI = cert.DNSNames[0]
 				}
@@ -967,10 +982,10 @@ func (c *ctx) parseTLSCertificates(b []byte, base int, node *Field, flow *tlsFlo
 				for _, ip := range cert.IPAddresses {
 					ips = append(ips, ip.String())
 				}
-				cf.add(newField("IP Addresses: "+strings.Join(ips, ", "), "", 0, 0))
+				cf.add(c.newField("IP Addresses: "+strings.Join(ips, ", "), "", 0, 0))
 			}
 		} else {
-			cf.add(newField("DER: "+hexPreview(der, 64), "", 0, 0), newField("Parse Error: "+err.Error(), "", 0, 0))
+			cf.add(c.newField("DER: "+hexPreview(der, 64), "", 0, 0), c.newField("Parse Error: "+err.Error(), "", 0, 0))
 		}
 		node.add(cf)
 		off += clen
@@ -992,7 +1007,7 @@ func (c *ctx) parseTLSExtensions(data []byte, base int, node *Field, flow *tlsFl
 		}
 		edata := data[off+4 : off+4+elen]
 		name := tlsExtensionName(etype)
-		f := newField(fmt.Sprintf("%s (%d bytes)", name, elen), "", base+off, 4+elen)
+		f := c.newField(fmt.Sprintf("%s (%d bytes)", name, elen), "", base+off, 4+elen)
 		switch etype {
 		case 0: // server_name
 			if len(edata) >= 5 {
@@ -1007,7 +1022,7 @@ func (c *ctx) parseTLSExtensions(data []byte, base int, node *Field, flow *tlsFl
 					if ntype == 0 {
 						sni := string(edata[p+3 : p+3+nlen])
 						c.m.TLSSNI = sni
-						f.add(newField("Server Name: "+sni, "", base+off+4+p+3, nlen))
+						f.add(c.newField("Server Name: "+sni, "", base+off+4+p+3, nlen))
 					}
 					p += 3 + nlen
 				}
@@ -1023,7 +1038,7 @@ func (c *ctx) parseTLSExtensions(data []byte, base int, node *Field, flow *tlsFl
 						break
 					}
 					proto := string(edata[p : p+l])
-					f.add(newField("ALPN Protocol: "+proto, "", base+off+4+p, l))
+					f.add(c.newField("ALPN Protocol: "+proto, "", base+off+4+p, l))
 					p += l
 				}
 			}
@@ -1034,7 +1049,7 @@ func (c *ctx) parseTLSExtensions(data []byte, base int, node *Field, flow *tlsFl
 				for q := 2; q+2 <= len(edata) && q < 2+l; q += 2 {
 					groups = append(groups, tlsGroupName(be16(edata[q:q+2])))
 				}
-				f.add(newField("Supported Groups: "+strings.Join(groups, ", "), "", base+off+4, len(edata)))
+				f.add(c.newField("Supported Groups: "+strings.Join(groups, ", "), "", base+off+4, len(edata)))
 			}
 		case 13: // signature_algorithms
 			if len(edata) >= 2 {
@@ -1043,14 +1058,14 @@ func (c *ctx) parseTLSExtensions(data []byte, base int, node *Field, flow *tlsFl
 				for q := 2; q+2 <= len(edata) && q < 2+l; q += 2 {
 					algs = append(algs, fmt.Sprintf("0x%04x", be16(edata[q:q+2])))
 				}
-				f.add(newField("Signature Algorithms: "+strings.Join(algs, ", "), "", base+off+4, len(edata)))
+				f.add(c.newField("Signature Algorithms: "+strings.Join(algs, ", "), "", base+off+4, len(edata)))
 			}
 		case 43: // supported_versions
 			if server {
 				if len(edata) >= 2 {
 					v := be16(edata[0:2])
 					flow.setVersion(v)
-					f.add(newField("Selected Version: "+tlsVersionName(v), "", base+off+4, 2))
+					f.add(c.newField("Selected Version: "+tlsVersionName(v), "", base+off+4, 2))
 				}
 			} else if len(edata) >= 1 {
 				l := int(edata[0])
@@ -1058,7 +1073,7 @@ func (c *ctx) parseTLSExtensions(data []byte, base int, node *Field, flow *tlsFl
 				for q := 1; q+2 <= len(edata) && q < 1+l; q += 2 {
 					vs = append(vs, tlsVersionName(be16(edata[q:q+2])))
 				}
-				f.add(newField("Supported Versions: "+strings.Join(vs, ", "), "", base+off+4, len(edata)))
+				f.add(c.newField("Supported Versions: "+strings.Join(vs, ", "), "", base+off+4, len(edata)))
 			}
 		case 51: // key_share
 			if server {
@@ -1066,7 +1081,7 @@ func (c *ctx) parseTLSExtensions(data []byte, base int, node *Field, flow *tlsFl
 					g := be16(edata[0:2])
 					l := int(be16(edata[2:4]))
 					if 4+l <= len(edata) {
-						f.add(newField("Selected Group: "+tlsGroupName(g), "", base+off+4, 2), newField("Key Exchange: "+hexPreview(edata[4:4+l], 48), "", base+off+6, l))
+						f.add(c.newField("Selected Group: "+tlsGroupName(g), "", base+off+4, 2), c.newField("Key Exchange: "+hexPreview(edata[4:4+l], 48), "", base+off+6, l))
 					}
 				}
 			} else if len(edata) >= 2 {
@@ -1078,7 +1093,7 @@ func (c *ctx) parseTLSExtensions(data []byte, base int, node *Field, flow *tlsFl
 					if p+4+l > len(edata) {
 						break
 					}
-					f.add(newField("Key Share "+tlsGroupName(g)+": "+hexPreview(edata[p+4:p+4+l], 48), "", base+off+4+p, 4+l))
+					f.add(c.newField("Key Share "+tlsGroupName(g)+": "+hexPreview(edata[p+4:p+4+l], 48), "", base+off+4+p, 4+l))
 					p += 4 + l
 				}
 			}

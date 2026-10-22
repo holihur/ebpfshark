@@ -251,3 +251,24 @@ func TestLayerMask(t *testing.T) {
 		}
 	}
 }
+
+func TestDecodeSummarySkipsFields(t *testing.T) {
+	cases := [][]byte{
+		buildEthernet(buildIPv4(6, buildTCP(49152, 80, 0x18, []byte("GET /a HTTP/1.1\r\nHost: example.com\r\n\r\n"))), 0x0800),
+		buildEthernet(buildIPv4(17, buildUDP(53123, 53, buildDNSQuery(0x1234, "example.com", 1))), 0x0800),
+		buildEthernet(buildIPv4(6, buildTCP(51000, 443, 0x18, buildClientHello("summary.example.com"))), 0x0800),
+	}
+	for i, frame := range cases {
+		full := Decode(frame, packet.LinkEthernet, len(frame))
+		sum, meta := DecodeSummary(frame, packet.LinkEthernet, len(frame))
+		if len(full.Fields) == 0 {
+			t.Fatalf("case %d full decode has no fields", i)
+		}
+		if sum.Protocol != full.Summary.Protocol || sum.Info != full.Summary.Info {
+			t.Fatalf("case %d summary mismatch: %q/%q vs %q/%q", i, sum.Protocol, sum.Info, full.Summary.Protocol, full.Summary.Info)
+		}
+		if meta.LayerMask == 0 {
+			t.Fatalf("case %d meta lost layers", i)
+		}
+	}
+}

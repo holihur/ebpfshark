@@ -114,11 +114,8 @@ func (s *Store) Capacity() int {
 // Add dissects and stores a packet, then fans it out to subscribers.
 func (s *Store) Add(p *packet.Packet) {
 	if p.Summary.Protocol == "" {
-		res := decode.Decode(p.Data, p.LinkType, int(p.WireLen))
-		p.Summary = res.Summary
-		p.Meta = res.Meta
-		p.LinkType = res.Meta.LinkType
-		decode.ReleaseFields(res.Fields)
+		p.Summary, p.Meta = decode.DecodeSummary(p.Data, p.LinkType, int(p.WireLen))
+		p.LinkType = p.Meta.LinkType
 	}
 	if p.Time.IsZero() {
 		p.Time = time.Now()

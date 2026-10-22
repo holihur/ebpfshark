@@ -60,7 +60,7 @@ func (c *ctx) dissectTCPPayload(b []byte, base int, sport, dport uint16) {
 		return
 	}
 	c.addLayer("data")
-	c.addRoot(newField(fmt.Sprintf("TCP payload (%d bytes)", len(b)), hexPreview(b, 64), base, len(b)))
+	c.addRoot(c.newField(fmt.Sprintf("TCP payload (%d bytes)", len(b)), hexPreview(b, 64), base, len(b)))
 }
 
 func (c *ctx) dissectDecryptedApp(b []byte, base int) {

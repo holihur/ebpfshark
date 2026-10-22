@@ -39,16 +39,16 @@ func (c *ctx) dissectIPv4(b []byte, base int) {
 	c.addLayer("ip")
 	c.m.IPVersion = 4
 	if len(b) < 20 {
-		c.addRoot(newNode("Internet Protocol Version 4 (truncated)", base, len(b)))
+		c.addRoot(c.newNode("Internet Protocol Version 4 (truncated)", base, len(b)))
 		return
 	}
 	if b[0]>>4 != 4 {
-		c.addRoot(newNode(fmt.Sprintf("Internet Protocol (version %d)", b[0]>>4), base, len(b)))
+		c.addRoot(c.newNode(fmt.Sprintf("Internet Protocol (version %d)", b[0]>>4), base, len(b)))
 		return
 	}
 	ihl := int(b[0]&0x0f) * 4
 	if ihl < 20 || ihl > len(b) {
-		c.addRoot(newNode("Internet Protocol Version 4 (bad header length)", base, len(b)))
+		c.addRoot(c.newNode("Internet Protocol Version 4 (bad header length)", base, len(b)))
 		return
 	}
 	totalLen := int(be16(b[2:4]))
@@ -81,21 +81,21 @@ func (c *ctx) dissectIPv4(b []byte, base int) {
 		flagNames = "None"
 	}
 
-	root := newNode(fmt.Sprintf("Internet Protocol Version 4, Src: %s, Dst: %s", src, dst), base, totalLen)
+	root := c.newNode(fmt.Sprintf("Internet Protocol Version 4, Src: %s, Dst: %s", src, dst), base, totalLen)
 	root.add(
-		newField(fmt.Sprintf("Version: %d", b[0]>>4), "", base, 1),
-		newField(fmt.Sprintf("Header Length: %d bytes (%d)", ihl, b[0]&0x0f), "", base, 1),
-		newField(fmt.Sprintf("Differentiated Services Field: 0x%02x (DSCP: %d, ECN: %d)", b[1], b[1]>>2, b[1]&0x3), "", base+1, 1),
-		newField(fmt.Sprintf("Total Length: %d", totalLen), "", base+2, 2),
-		newField(fmt.Sprintf("Identification: 0x%04x (%d)", be16(b[4:6]), be16(b[4:6])), "", base+4, 2),
-		newField(fmt.Sprintf("Flags: 0x%x, %s", flags, flagNames), "", base+6, 1),
-		newField(fmt.Sprintf("Fragment Offset: %d", fragOff*8), "", base+6, 2),
-		newField(fmt.Sprintf("Time to Live: %d", b[8]), "", base+8, 1),
-		newField(fmt.Sprintf("Protocol: %s (%d)", ipProtoName(b[9]), b[9]), "", base+9, 1),
+		c.newField(fmt.Sprintf("Version: %d", b[0]>>4), "", base, 1),
+		c.newField(fmt.Sprintf("Header Length: %d bytes (%d)", ihl, b[0]&0x0f), "", base, 1),
+		c.newField(fmt.Sprintf("Differentiated Services Field: 0x%02x (DSCP: %d, ECN: %d)", b[1], b[1]>>2, b[1]&0x3), "", base+1, 1),
+		c.newField(fmt.Sprintf("Total Length: %d", totalLen), "", base+2, 2),
+		c.newField(fmt.Sprintf("Identification: 0x%04x (%d)", be16(b[4:6]), be16(b[4:6])), "", base+4, 2),
+		c.newField(fmt.Sprintf("Flags: 0x%x, %s", flags, flagNames), "", base+6, 1),
+		c.newField(fmt.Sprintf("Fragment Offset: %d", fragOff*8), "", base+6, 2),
+		c.newField(fmt.Sprintf("Time to Live: %d", b[8]), "", base+8, 1),
+		c.newField(fmt.Sprintf("Protocol: %s (%d)", ipProtoName(b[9]), b[9]), "", base+9, 1),
 	)
 
 	sum := checksum(b[:ihl])
-	csField := newField(fmt.Sprintf("Header Checksum: 0x%04x", be16(b[10:12])), "", base+10, 2)
+	csField := c.newField(fmt.Sprintf("Header Checksum: 0x%04x", be16(b[10:12])), "", base+10, 2)
 	if sum == 0 {
 		csField.Value = "correct"
 	} else {
@@ -103,17 +103,17 @@ func (c *ctx) dissectIPv4(b []byte, base int) {
 		csField.Severity = "warn"
 	}
 	root.add(csField,
-		newField("Source Address: "+src.String(), "", base+12, 4),
-		newField("Destination Address: "+dst.String(), "", base+16, 4),
+		c.newField("Source Address: "+src.String(), "", base+12, 4),
+		c.newField("Destination Address: "+dst.String(), "", base+16, 4),
 	)
 
 	if ihl > 20 {
-		root.add(newField(fmt.Sprintf("Options (%d bytes)", ihl-20), hexBytes(b[20:ihl], 64), base+20, ihl-20))
+		root.add(c.newField(fmt.Sprintf("Options (%d bytes)", ihl-20), hexBytes(b[20:ihl], 64), base+20, ihl-20))
 	}
 	c.addRoot(root)
 
 	if fragOff != 0 {
-		c.addRoot(newField(fmt.Sprintf("IPv4 fragment (offset %d)", fragOff*8), "", base+6, 2))
+		c.addRoot(c.newField(fmt.Sprintf("IPv4 fragment (offset %d)", fragOff*8), "", base+6, 2))
 		c.appInfo = fmt.Sprintf("Fragmented IP protocol (offset=%d)", fragOff*8)
 		return
 	}
@@ -149,7 +149,7 @@ func (c *ctx) dissectIPv6(b []byte, base int) {
 	c.addLayer("ipv6")
 	c.m.IPVersion = 6
 	if len(b) < 40 {
-		c.addRoot(newNode("Internet Protocol Version 6 (truncated)", base, len(b)))
+		c.addRoot(c.newNode("Internet Protocol Version 6 (truncated)", base, len(b)))
 		return
 	}
 	payloadLen := int(be16(b[4:6]))
@@ -169,16 +169,16 @@ func (c *ctx) dissectIPv6(b []byte, base int) {
 	}
 	c.m.IPLen = totalLen
 
-	root := newNode(fmt.Sprintf("Internet Protocol Version 6, Src: %s, Dst: %s", src, dst), base, totalLen)
+	root := c.newNode(fmt.Sprintf("Internet Protocol Version 6, Src: %s, Dst: %s", src, dst), base, totalLen)
 	root.add(
-		newField("Version: 6", "", base, 1),
-		newField(fmt.Sprintf("Traffic Class: 0x%02x", (be16(b[0:2])>>4)&0xff), "", base, 2),
-		newField(fmt.Sprintf("Flow Label: 0x%05x", be32(b[0:4])&0xfffff), "", base, 4),
-		newField(fmt.Sprintf("Payload Length: %d", payloadLen), "", base+4, 2),
-		newField(fmt.Sprintf("Next Header: %s (%d)", ipProtoName(next), next), "", base+6, 1),
-		newField(fmt.Sprintf("Hop Limit: %d", hop), "", base+7, 1),
-		newField("Source Address: "+src.String(), "", base+8, 16),
-		newField("Destination Address: "+dst.String(), "", base+24, 16),
+		c.newField("Version: 6", "", base, 1),
+		c.newField(fmt.Sprintf("Traffic Class: 0x%02x", (be16(b[0:2])>>4)&0xff), "", base, 2),
+		c.newField(fmt.Sprintf("Flow Label: 0x%05x", be32(b[0:4])&0xfffff), "", base, 4),
+		c.newField(fmt.Sprintf("Payload Length: %d", payloadLen), "", base+4, 2),
+		c.newField(fmt.Sprintf("Next Header: %s (%d)", ipProtoName(next), next), "", base+6, 1),
+		c.newField(fmt.Sprintf("Hop Limit: %d", hop), "", base+7, 1),
+		c.newField("Source Address: "+src.String(), "", base+8, 16),
+		c.newField("Destination Address: "+dst.String(), "", base+24, 16),
 	)
 	c.addRoot(root)
 
@@ -191,7 +191,7 @@ func (c *ctx) dissectIPv6(b []byte, base int) {
 		case 44: // fragment header
 			fragOff := be16(b[off+2:off+4]) >> 3
 			more := be16(b[off+2:off+4])&1 != 0
-			c.addRoot(newField(fmt.Sprintf("IPv6 Fragment Header (offset=%d, more=%t)", fragOff*8, more), "", base+off, 8))
+			c.addRoot(c.newField(fmt.Sprintf("IPv6 Fragment Header (offset=%d, more=%t)", fragOff*8, more), "", base+off, 8))
 			if fragOff != 0 {
 				c.appInfo = fmt.Sprintf("IPv6 fragment (offset=%d)", fragOff*8)
 				return

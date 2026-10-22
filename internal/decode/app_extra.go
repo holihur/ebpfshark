@@ -55,24 +55,24 @@ func (c *ctx) dissectNTP(b []byte, base int) bool {
 
 	c.addLayer("ntp")
 	c.proto = "ntp"
-	root := newNode(fmt.Sprintf("Network Time Protocol (%s, v%d)", ntpMode(mode), vn), base, len(b))
+	root := c.newNode(fmt.Sprintf("Network Time Protocol (%s, v%d)", ntpMode(mode), vn), base, len(b))
 	root.add(
-		newField(fmt.Sprintf("Leap Indicator: %d", li), "", base, 1),
-		newField(fmt.Sprintf("Version: %d", vn), "", base, 1),
-		newField(fmt.Sprintf("Mode: %d (%s)", mode, ntpMode(mode)), "", base, 1),
-		newField(fmt.Sprintf("Stratum: %d", stratum), "", base+1, 1),
-		newField(fmt.Sprintf("Poll: %d seconds", poll), "", base+2, 1),
-		newField(fmt.Sprintf("Precision: %d", precision), "", base+3, 1),
-		newField(fmt.Sprintf("Root Delay: %.6f s", float64(be32(b[4:8]))/65536), "", base+4, 4),
-		newField(fmt.Sprintf("Root Dispersion: %.6f s", float64(be32(b[8:12]))/65536), "", base+8, 4),
-		newField(fmt.Sprintf("Reference ID: 0x%08x", be32(b[12:16])), "", base+12, 4),
-		newField("Reference Timestamp: "+ntpTimestamp(b[16:24]), "", base+16, 8),
-		newField("Origin Timestamp: "+ntpTimestamp(b[24:32]), "", base+24, 8),
-		newField("Receive Timestamp: "+ntpTimestamp(b[32:40]), "", base+32, 8),
-		newField("Transmit Timestamp: "+ntpTimestamp(b[40:48]), "", base+40, 8),
+		c.newField(fmt.Sprintf("Leap Indicator: %d", li), "", base, 1),
+		c.newField(fmt.Sprintf("Version: %d", vn), "", base, 1),
+		c.newField(fmt.Sprintf("Mode: %d (%s)", mode, ntpMode(mode)), "", base, 1),
+		c.newField(fmt.Sprintf("Stratum: %d", stratum), "", base+1, 1),
+		c.newField(fmt.Sprintf("Poll: %d seconds", poll), "", base+2, 1),
+		c.newField(fmt.Sprintf("Precision: %d", precision), "", base+3, 1),
+		c.newField(fmt.Sprintf("Root Delay: %.6f s", float64(be32(b[4:8]))/65536), "", base+4, 4),
+		c.newField(fmt.Sprintf("Root Dispersion: %.6f s", float64(be32(b[8:12]))/65536), "", base+8, 4),
+		c.newField(fmt.Sprintf("Reference ID: 0x%08x", be32(b[12:16])), "", base+12, 4),
+		c.newField("Reference Timestamp: "+ntpTimestamp(b[16:24]), "", base+16, 8),
+		c.newField("Origin Timestamp: "+ntpTimestamp(b[24:32]), "", base+24, 8),
+		c.newField("Receive Timestamp: "+ntpTimestamp(b[32:40]), "", base+32, 8),
+		c.newField("Transmit Timestamp: "+ntpTimestamp(b[40:48]), "", base+40, 8),
 	)
 	if len(b) > 48 {
-		ext := newNode(fmt.Sprintf("Extension Fields / MAC (%d bytes)", len(b)-48), base+48, len(b)-48)
+		ext := c.newNode(fmt.Sprintf("Extension Fields / MAC (%d bytes)", len(b)-48), base+48, len(b)-48)
 		off := 48
 		for off+4 <= len(b) {
 			etype := be16(b[off : off+2])
@@ -93,11 +93,11 @@ func (c *ctx) dissectNTP(b []byte, base int) bool {
 			case 0x2007:
 				name = "NTS Authenticator and Encrypted Extension Fields"
 			}
-			ext.add(newField(fmt.Sprintf("%s (type 0x%04x, %d bytes)", name, etype, elen), hexPreview(b[off+4:off+elen], 48), base+off, elen))
+			ext.add(c.newField(fmt.Sprintf("%s (type 0x%04x, %d bytes)", name, etype, elen), hexPreview(b[off+4:off+elen], 48), base+off, elen))
 			off += (elen + 3) &^ 3
 		}
 		if off < len(b) {
-			ext.add(newField(fmt.Sprintf("MAC / trailing data (%d bytes)", len(b)-off), hexPreview(b[off:], 48), base+off, len(b)-off))
+			ext.add(c.newField(fmt.Sprintf("MAC / trailing data (%d bytes)", len(b)-off), hexPreview(b[off:], 48), base+off, len(b)-off))
 		}
 		if len(ext.Children) > 0 {
 			root.add(ext)
@@ -146,31 +146,31 @@ func (c *ctx) dissectSyslog(b []byte, base int) bool {
 	}
 
 	rest := b[end+1:]
-	root := newNode(fmt.Sprintf("Syslog (%s.%s)", facName, sevName), base, len(b))
-	root.add(newField(fmt.Sprintf("Priority: %d (%s.%s)", pri, facName, sevName), "", base, end+1))
+	root := c.newNode(fmt.Sprintf("Syslog (%s.%s)", facName, sevName), base, len(b))
+	root.add(c.newField(fmt.Sprintf("Priority: %d (%s.%s)", pri, facName, sevName), "", base, end+1))
 
 	info := fmt.Sprintf("syslog %s.%s", facName, sevName)
 	if len(rest) > 0 && rest[0] == '1' && len(rest) > 1 && rest[1] == ' ' {
 		fields := bytes.SplitN(rest[2:], []byte(" "), 7)
 		if len(fields) >= 6 {
 			root.add(
-				newField("Version: 1", "", base+end+1, 1),
-				newField("Timestamp: "+string(fields[0]), "", base, 0),
-				newField("Hostname: "+string(fields[1]), "", base, 0),
-				newField("App Name: "+string(fields[2]), "", base, 0),
-				newField("Process ID: "+string(fields[3]), "", base, 0),
-				newField("Message ID: "+string(fields[4]), "", base, 0),
+				c.newField("Version: 1", "", base+end+1, 1),
+				c.newField("Timestamp: "+string(fields[0]), "", base, 0),
+				c.newField("Hostname: "+string(fields[1]), "", base, 0),
+				c.newField("App Name: "+string(fields[2]), "", base, 0),
+				c.newField("Process ID: "+string(fields[3]), "", base, 0),
+				c.newField("Message ID: "+string(fields[4]), "", base, 0),
 			)
 			msg := ""
 			if len(fields) >= 7 {
 				msg = string(fields[6])
 			}
-			root.add(newField("Message: "+shorten(msg, 200), "", base, 0))
+			root.add(c.newField("Message: "+shorten(msg, 200), "", base, 0))
 			info = fmt.Sprintf("syslog %s.%s %s %s: %s", facName, sevName, fields[1], fields[2], shorten(msg, 80))
 		}
 	} else {
 		line := shorten(string(rest), 200)
-		root.add(newField("Message: "+line, "", base+end+1, len(rest)))
+		root.add(c.newField("Message: "+line, "", base+end+1, len(rest)))
 		info += " " + shorten(line, 80)
 	}
 	c.addLayer("syslog")
@@ -241,14 +241,14 @@ func (c *ctx) dissectSTUN(b []byte, base int) bool {
 
 	c.addLayer("stun")
 	c.proto = "stun"
-	root := newNode(fmt.Sprintf("Session Traversal Utilities for NAT (%s %s)", methodName, stunClassNames(class)), base, 20+length)
+	root := c.newNode(fmt.Sprintf("Session Traversal Utilities for NAT (%s %s)", methodName, stunClassNames(class)), base, 20+length)
 	root.add(
-		newField(fmt.Sprintf("Message Type: 0x%04x", msgType), "", base, 2),
-		newField(fmt.Sprintf("Method: %s (0x%03x)", methodName, method), "", base, 2),
-		newField(fmt.Sprintf("Class: %s", stunClassNames(class)), "", base, 2),
-		newField(fmt.Sprintf("Length: %d", length), "", base+2, 2),
-		newField("Magic Cookie: 0x2112A442", "", base+4, 4),
-		newField(fmt.Sprintf("Transaction ID: %x", b[8:20]), "", base+8, 12),
+		c.newField(fmt.Sprintf("Message Type: 0x%04x", msgType), "", base, 2),
+		c.newField(fmt.Sprintf("Method: %s (0x%03x)", methodName, method), "", base, 2),
+		c.newField(fmt.Sprintf("Class: %s", stunClassNames(class)), "", base, 2),
+		c.newField(fmt.Sprintf("Length: %d", length), "", base+2, 2),
+		c.newField("Magic Cookie: 0x2112A442", "", base+4, 4),
+		c.newField(fmt.Sprintf("Transaction ID: %x", b[8:20]), "", base+8, 12),
 	)
 
 	off := 20
@@ -265,37 +265,37 @@ func (c *ctx) dissectSTUN(b []byte, base int) bool {
 		if name == "" {
 			name = fmt.Sprintf("Attribute 0x%04x", atype)
 		}
-		f := newField(fmt.Sprintf("%s (length %d)", name, alen), "", base+off, 4+alen)
+		f := c.newField(fmt.Sprintf("%s (length %d)", name, alen), "", base+off, 4+alen)
 		switch atype {
 		case 0x0001:
 			mapped = stunAddress(value, nil)
-			f.add(newField("Address: "+mapped, "", base+off+4, alen))
+			f.add(c.newField("Address: "+mapped, "", base+off+4, alen))
 		case 0x0020:
 			mapped = stunAddress(value, b[8:20])
-			f.add(newField("XOR Address: "+mapped, "", base+off+4, alen))
+			f.add(c.newField("XOR Address: "+mapped, "", base+off+4, alen))
 		case 0x0006:
 			username = string(value)
-			f.add(newField("Username: "+username, "", base+off+4, alen))
+			f.add(c.newField("Username: "+username, "", base+off+4, alen))
 		case 0x8022:
 			software = string(value)
-			f.add(newField("Software: "+software, "", base+off+4, alen))
+			f.add(c.newField("Software: "+software, "", base+off+4, alen))
 		case 0x0014:
-			f.add(newField("Realm: "+string(value), "", base+off+4, alen))
+			f.add(c.newField("Realm: "+string(value), "", base+off+4, alen))
 		case 0x0015:
-			f.add(newField("Nonce: "+string(value), "", base+off+4, alen))
+			f.add(c.newField("Nonce: "+string(value), "", base+off+4, alen))
 		case 0x0012, 0x0016:
 			addr := stunAddress(value, b[8:20])
 			if atype == 0x0012 {
-				f.add(newField("XOR Peer Address: "+addr, "", base+off+4, alen))
+				f.add(c.newField("XOR Peer Address: "+addr, "", base+off+4, alen))
 			} else {
-				f.add(newField("XOR Relayed Address: "+addr, "", base+off+4, alen))
+				f.add(c.newField("XOR Relayed Address: "+addr, "", base+off+4, alen))
 			}
 		case 0x0009:
 			if len(value) >= 4 {
 				class := int(value[2] & 0x7)
 				number := int(value[3])
 				reason := string(value[4:])
-				f.add(newField(fmt.Sprintf("Error: %d%02d %s", class, number, reason), "", base+off+4, alen))
+				f.add(c.newField(fmt.Sprintf("Error: %d%02d %s", class, number, reason), "", base+off+4, alen))
 			}
 		case 0x0019:
 			if len(value) >= 1 {
@@ -303,30 +303,30 @@ func (c *ctx) dissectSTUN(b []byte, base int) bool {
 				if value[0] == 6 {
 					proto = "TCP"
 				}
-				f.add(newField(fmt.Sprintf("Transport: %s (%d)", proto, value[0]), "", base+off+4, alen))
+				f.add(c.newField(fmt.Sprintf("Transport: %s (%d)", proto, value[0]), "", base+off+4, alen))
 			}
 		case 0x0024:
 			if len(value) >= 4 {
-				f.add(newField(fmt.Sprintf("Priority: %d", be32(value[0:4])), "", base+off+4, alen))
+				f.add(c.newField(fmt.Sprintf("Priority: %d", be32(value[0:4])), "", base+off+4, alen))
 			}
 		case 0x0025:
-			f.add(newField("Use Candidate", "", base+off+4, alen))
+			f.add(c.newField("Use Candidate", "", base+off+4, alen))
 		case 0x802a, 0x802b:
-			f.add(newField("Tie-breaker: "+hexPreview(value, 8), "", base+off+4, alen))
+			f.add(c.newField("Tie-breaker: "+hexPreview(value, 8), "", base+off+4, alen))
 		case 0x8023:
 			if len(value) >= 4 {
-				f.add(newField(fmt.Sprintf("Fingerprint: 0x%08x", be32(value[0:4])), "", base+off+4, alen))
+				f.add(c.newField(fmt.Sprintf("Fingerprint: 0x%08x", be32(value[0:4])), "", base+off+4, alen))
 			}
 		case 0x0008, 0x8028:
-			f.add(newField("Integrity: "+hexPreview(value, 32), "", base+off+4, alen))
+			f.add(c.newField("Integrity: "+hexPreview(value, 32), "", base+off+4, alen))
 		case 0x000a:
 			var ids []string
 			for i := 0; i+2 <= len(value); i += 2 {
 				ids = append(ids, fmt.Sprintf("0x%04x", be16(value[i:i+2])))
 			}
-			f.add(newField("Unknown attributes: "+strings.Join(ids, ", "), "", base+off+4, alen))
+			f.add(c.newField("Unknown attributes: "+strings.Join(ids, ", "), "", base+off+4, alen))
 		default:
-			f.add(newField(hexPreview(value, 48), "", base+off+4, alen))
+			f.add(c.newField(hexPreview(value, 48), "", base+off+4, alen))
 		}
 		root.add(f)
 		off += 4 + ((alen + 3) &^ 3)
@@ -477,7 +477,7 @@ func mqttLooksLikeProps(b []byte, off int) bool {
 	return known
 }
 
-func mqttParseProps(b []byte, off int) ([]*Field, int) {
+func mqttParseProps(c *ctx, b []byte, off int) ([]*Field, int) {
 	var out []*Field
 	propsLen, next, ok := mqttVarint(b, off)
 	if !ok || next+propsLen > len(b) {
@@ -492,7 +492,7 @@ func mqttParseProps(b []byte, off int) ([]*Field, int) {
 		if !ok {
 			return out, end
 		}
-		f := newField(fmt.Sprintf("%s (id 0x%02x)", def.name, id), "", 0, 0)
+		f := c.newField(fmt.Sprintf("%s (id 0x%02x)", def.name, id), "", 0, 0)
 		switch def.kind {
 		case 1:
 			if p >= end {
@@ -648,11 +648,11 @@ func (c *ctx) dissectMQTT(b []byte, base int) bool {
 	body := b[off : off+rem]
 	c.addLayer("mqtt")
 	c.proto = "mqtt"
-	root := newNode(fmt.Sprintf("MQ Telemetry Transport (%s)", mqttTypeName(pktType)), base, off+rem)
+	root := c.newNode(fmt.Sprintf("MQ Telemetry Transport (%s)", mqttTypeName(pktType)), base, off+rem)
 	root.add(
-		newField(fmt.Sprintf("Packet Type: %s (%d)", mqttTypeName(pktType), pktType), "", base, 1),
-		newField(fmt.Sprintf("Flags: 0x%x", b[0]&0xf), "", base, 1),
-		newField(fmt.Sprintf("Remaining Length: %d", rem), "", base+1, hl-1),
+		c.newField(fmt.Sprintf("Packet Type: %s (%d)", mqttTypeName(pktType), pktType), "", base, 1),
+		c.newField(fmt.Sprintf("Flags: 0x%x", b[0]&0xf), "", base, 1),
+		c.newField(fmt.Sprintf("Remaining Length: %d", rem), "", base+1, hl-1),
 	)
 	info := "MQTT " + mqttTypeName(pktType)
 	p := 0
@@ -665,24 +665,24 @@ func (c *ctx) dissectMQTT(b []byte, base int) bool {
 			flags := body[n+1]
 			keepalive := be16(body[n+2 : n+4])
 			root.add(
-				newField("Protocol Name: "+proto, "", base+off, n),
-				newField(fmt.Sprintf("Protocol Level: %d", level), "", base+off+n, 1),
-				newField(fmt.Sprintf("Connect Flags: 0x%02x (username=%d password=%d willRetain=%d willQoS=%d will=%d cleanStart=%d)",
+				c.newField("Protocol Name: "+proto, "", base+off, n),
+				c.newField(fmt.Sprintf("Protocol Level: %d", level), "", base+off+n, 1),
+				c.newField(fmt.Sprintf("Connect Flags: 0x%02x (username=%d password=%d willRetain=%d willQoS=%d will=%d cleanStart=%d)",
 					flags, (flags>>7)&1, (flags>>6)&1, (flags>>5)&1, (flags>>3)&3, (flags>>2)&1, (flags>>1)&1), "", base+off+n+1, 1),
-				newField(fmt.Sprintf("Keep Alive: %d s", keepalive), "", base+off+n+2, 2),
+				c.newField(fmt.Sprintf("Keep Alive: %d s", keepalive), "", base+off+n+2, 2),
 			)
 			p = n + 4
 			if level >= 5 {
-				props, np := mqttParseProps(body, p)
+				props, np := mqttParseProps(c, body, p)
 				if len(props) > 0 {
-					pn := newField("Properties", "", 0, 0)
+					pn := c.newField("Properties", "", 0, 0)
 					pn.Children = props
 					root.add(pn)
 				}
 				p = np
 			}
 			if id, np, ok := mqttString(body, p); ok {
-				root.add(newField("Client ID: "+id, "", base+off+p, 2+len(id)))
+				root.add(c.newField("Client ID: "+id, "", base+off+p, 2+len(id)))
 				info += " client=" + id
 				p = np
 			}
@@ -690,16 +690,16 @@ func (c *ctx) dissectMQTT(b []byte, base int) bool {
 				wprops := []*Field(nil)
 				if level >= 5 {
 					var np int
-					wprops, np = mqttParseProps(body, p)
+					wprops, np = mqttParseProps(c, body, p)
 					p = np
 				}
 				wtopic, np, ok := mqttString(body, p)
 				if ok {
-					wf := newField("Will Topic: "+wtopic, "", base+off+p, 2+len(wtopic))
+					wf := c.newField("Will Topic: "+wtopic, "", base+off+p, 2+len(wtopic))
 					wf.Children = wprops
 					p = np
 					if wb, np2, ok := mqttBinary(body, p); ok {
-						wf.add(newField(fmt.Sprintf("Will Payload (%d bytes)", len(wb)), hexPreview(wb, 32), base+off+p, len(wb)))
+						wf.add(c.newField(fmt.Sprintf("Will Payload (%d bytes)", len(wb)), hexPreview(wb, 32), base+off+p, len(wb)))
 						p = np2
 					}
 					root.add(wf)
@@ -707,27 +707,27 @@ func (c *ctx) dissectMQTT(b []byte, base int) bool {
 			}
 			if flags&0x80 != 0 {
 				if u, np, ok := mqttString(body, p); ok {
-					root.add(newField("Username: "+u, "", base+off+p, 2+len(u)))
+					root.add(c.newField("Username: "+u, "", base+off+p, 2+len(u)))
 					info += " user=" + u
 					p = np
 				}
 			}
 			if flags&0x40 != 0 {
 				if pw, np, ok := mqttBinary(body, p); ok {
-					root.add(newField(fmt.Sprintf("Password (%d bytes)", len(pw)), hexPreview(pw, 24), base+off+p, len(pw)))
+					root.add(c.newField(fmt.Sprintf("Password (%d bytes)", len(pw)), hexPreview(pw, 24), base+off+p, len(pw)))
 					p = np
 				}
 			}
 		}
 	case 2: // CONNACK
 		if len(body) >= 2 {
-			root.add(newField(fmt.Sprintf("Session Present: %d", body[0]&1), "", base+off, 1))
-			root.add(newField(fmt.Sprintf("Reason Code: %s", mqttReason(body[1])), "", base+off+1, 1))
+			root.add(c.newField(fmt.Sprintf("Session Present: %d", body[0]&1), "", base+off, 1))
+			root.add(c.newField(fmt.Sprintf("Reason Code: %s", mqttReason(body[1])), "", base+off+1, 1))
 			p = 2
 			if mqttLooksLikeProps(body, p) {
-				props, np := mqttParseProps(body, p)
+				props, np := mqttParseProps(c, body, p)
 				if len(props) > 0 {
-					pn := newField("Properties", "", 0, 0)
+					pn := c.newField("Properties", "", 0, 0)
 					pn.Children = props
 					root.add(pn)
 				}
@@ -741,56 +741,56 @@ func (c *ctx) dissectMQTT(b []byte, base int) bool {
 			qos := (b[0] >> 1) & 3
 			retain := b[0] & 1
 			root.add(
-				newField("Topic: "+topic, "", base+off, n),
-				newField(fmt.Sprintf("QoS: %d", qos), "", base, 1),
-				newField(fmt.Sprintf("Retain: %d", retain), "", base, 1),
+				c.newField("Topic: "+topic, "", base+off, n),
+				c.newField(fmt.Sprintf("QoS: %d", qos), "", base, 1),
+				c.newField(fmt.Sprintf("Retain: %d", retain), "", base, 1),
 			)
 			p = n
 			if qos > 0 && p+2 <= len(body) {
-				root.add(newField(fmt.Sprintf("Packet ID: %d", be16(body[p:p+2])), "", base+off+p, 2))
+				root.add(c.newField(fmt.Sprintf("Packet ID: %d", be16(body[p:p+2])), "", base+off+p, 2))
 				p += 2
 			}
 			if mqttLooksLikeProps(body, p) {
-				props, np := mqttParseProps(body, p)
+				props, np := mqttParseProps(c, body, p)
 				if len(props) > 0 {
-					pn := newField("Properties", "", 0, 0)
+					pn := c.newField("Properties", "", 0, 0)
 					pn.Children = props
 					root.add(pn)
 				}
 				p = np
 			}
 			payload := body[min(p, len(body)):]
-			root.add(newField(fmt.Sprintf("Payload (%d bytes)", len(payload)), hexPreview(payload, 48), base+off+p, len(payload)))
+			root.add(c.newField(fmt.Sprintf("Payload (%d bytes)", len(payload)), hexPreview(payload, 48), base+off+p, len(payload)))
 			info = fmt.Sprintf("MQTT PUBLISH topic=%s (%d bytes)", topic, len(payload))
 		}
 	case 4, 5, 6, 7, 9, 11: // PUBACK/PUBREC/PUBREL/PUBCOMP/SUBACK/UNSUBACK
 		if len(body) >= 2 {
-			root.add(newField(fmt.Sprintf("Packet ID: %d", be16(body[0:2])), "", base+off, 2))
+			root.add(c.newField(fmt.Sprintf("Packet ID: %d", be16(body[0:2])), "", base+off, 2))
 			p = 2
 			if p < len(body) {
-				root.add(newField("Reason Code: "+mqttReason(body[p]), "", base+off+p, 1))
+				root.add(c.newField("Reason Code: "+mqttReason(body[p]), "", base+off+p, 1))
 				p++
 			}
-			props, np := mqttParseProps(body, p)
+			props, np := mqttParseProps(c, body, p)
 			if len(props) > 0 {
-				pn := newField("Properties", "", 0, 0)
+				pn := c.newField("Properties", "", 0, 0)
 				pn.Children = props
 				root.add(pn)
 			}
 			p = np
 			for i := 0; p < len(body); i++ {
-				root.add(newField(fmt.Sprintf("Reason Code %d: %s", i+1, mqttReason(body[p])), "", base+off+p, 1))
+				root.add(c.newField(fmt.Sprintf("Reason Code %d: %s", i+1, mqttReason(body[p])), "", base+off+p, 1))
 				p++
 			}
 		}
 	case 8, 10: // SUBSCRIBE / UNSUBSCRIBE
 		if len(body) >= 2 {
-			root.add(newField(fmt.Sprintf("Packet ID: %d", be16(body[0:2])), "", base+off, 2))
+			root.add(c.newField(fmt.Sprintf("Packet ID: %d", be16(body[0:2])), "", base+off, 2))
 			p = 2
 			if mqttLooksLikeProps(body, p) {
-				props, np := mqttParseProps(body, p)
+				props, np := mqttParseProps(c, body, p)
 				if len(props) > 0 {
-					pn := newField("Properties", "", 0, 0)
+					pn := c.newField("Properties", "", 0, 0)
 					pn.Children = props
 					root.add(pn)
 				}
@@ -801,10 +801,10 @@ func (c *ctx) dissectMQTT(b []byte, base int) bool {
 				if !ok {
 					break
 				}
-				f := newField(fmt.Sprintf("Topic Filter %d: %s", i+1, topic), "", base+off+p, 2+len(topic))
+				f := c.newField(fmt.Sprintf("Topic Filter %d: %s", i+1, topic), "", base+off+p, 2+len(topic))
 				p = np
 				if pktType == 8 && p < len(body) {
-					f.add(newField(fmt.Sprintf("Options: 0x%02x (QoS %d)", body[p], body[p]&3), "", base+off+p, 1))
+					f.add(c.newField(fmt.Sprintf("Options: 0x%02x (QoS %d)", body[p], body[p]&3), "", base+off+p, 1))
 					p++
 				}
 				root.add(f)
@@ -813,12 +813,12 @@ func (c *ctx) dissectMQTT(b []byte, base int) bool {
 	case 12, 13: // PINGREQ/PINGRESP
 	case 14, 15: // DISCONNECT/AUTH
 		if p < len(body) {
-			root.add(newField("Reason Code: "+mqttReason(body[p]), "", base+off+p, 1))
+			root.add(c.newField("Reason Code: "+mqttReason(body[p]), "", base+off+p, 1))
 			p++
 		}
-		props, np := mqttParseProps(body, p)
+		props, np := mqttParseProps(c, body, p)
 		if len(props) > 0 {
-			pn := newField("Properties", "", 0, 0)
+			pn := c.newField("Properties", "", 0, 0)
 			pn.Children = props
 			root.add(pn)
 		}
@@ -983,8 +983,8 @@ func (c *ctx) dissectRedis(b []byte, base int) bool {
 		}
 		c.addLayer("redis")
 		c.proto = "redis"
-		root := newNode("Redis RESP3 Reply", base, len(b))
-		root.add(newField(fmt.Sprintf("Response Type: %c", b[0]), "", base, 1), newField("Response: "+shorten(val, 240), "", base, len(b)))
+		root := c.newNode("Redis RESP3 Reply", base, len(b))
+		root.add(c.newField(fmt.Sprintf("Response Type: %c", b[0]), "", base, 1), c.newField("Response: "+shorten(val, 240), "", base, len(b)))
 		c.addRoot(root)
 		c.appInfo = shorten("Redis reply: "+val, 140)
 		return true
@@ -992,10 +992,10 @@ func (c *ctx) dissectRedis(b []byte, base int) bool {
 
 	c.addLayer("redis")
 	c.proto = "redis"
-	root := newNode(fmt.Sprintf("Redis (%s)", cmd), base, len(b))
-	root.add(newField("Command: "+cmd, "", base, len(args[0])))
+	root := c.newNode(fmt.Sprintf("Redis (%s)", cmd), base, len(b))
+	root.add(c.newField("Command: "+cmd, "", base, len(args[0])))
 	for i, arg := range args[1:] {
-		root.add(newField(fmt.Sprintf("Argument %d: %s", i+1, shorten(arg, 120)), "", base, 0))
+		root.add(c.newField(fmt.Sprintf("Argument %d: %s", i+1, shorten(arg, 120)), "", base, 0))
 	}
 	c.addRoot(root)
 	c.appInfo = shorten("Redis "+strings.Join(args, " "), 120)
@@ -1067,7 +1067,7 @@ func pgCString(b []byte, off int) (string, int, bool) {
 	return string(b[off : off+end]), off + end + 1, true
 }
 
-func pgErrorFields(b []byte) []*Field {
+func pgErrorFields(c *ctx, b []byte) []*Field {
 	var out []*Field
 	names := map[byte]string{'S': "Severity", 'V': "Severity (non-localized)", 'C': "SQLSTATE Code", 'M': "Message", 'D': "Detail", 'H': "Hint", 'P': "Position", 'W': "Where", 's': "Schema", 't': "Table", 'c': "Column", 'd': "Data type", 'n': "Constraint", 'F': "File", 'L': "Line", 'R': "Routine"}
 	for off := 0; off < len(b) && b[off] != 0; {
@@ -1081,7 +1081,7 @@ func pgErrorFields(b []byte) []*Field {
 		if name == "" {
 			name = fmt.Sprintf("Field '%c'", code)
 		}
-		out = append(out, newField(name+": "+val, "", 0, 0))
+		out = append(out, c.newField(name+": "+val, "", 0, 0))
 		off = next
 	}
 	return out
@@ -1129,15 +1129,15 @@ func (c *ctx) dissectPostgreSQL(b []byte, base int) bool {
 	c.addLayer("postgresql")
 	c.proto = "postgresql"
 	info := "PostgreSQL"
-	root := newNode("PostgreSQL", base, len(b))
+	root := c.newNode("PostgreSQL", base, len(b))
 
 	if startupLen > 0 && int(be32(b[4:8])) >= 196608 {
 		length := startupLen
 		code := be32(b[4:8])
 		switch code {
 		case 196608:
-			root = newNode("PostgreSQL Startup Message", base, min(length, len(b)))
-			root.add(newField(fmt.Sprintf("Length: %d", length), "", base, 4), newField("Protocol Version: 3.0", "", base+4, 4))
+			root = c.newNode("PostgreSQL Startup Message", base, min(length, len(b)))
+			root.add(c.newField(fmt.Sprintf("Length: %d", length), "", base, 4), c.newField("Protocol Version: 3.0", "", base+4, 4))
 			off := 8
 			kv := map[string]string{}
 			for off < len(b) {
@@ -1155,7 +1155,7 @@ func (c *ctx) dissectPostgreSQL(b []byte, base int) bool {
 			info = "PostgreSQL startup"
 			for _, k := range []string{"user", "database", "application_name", "client_encoding", "options"} {
 				if v := kv[k]; v != "" {
-					root.add(newField(k+": "+v, "", base, 0))
+					root.add(c.newField(k+": "+v, "", base, 0))
 					if k == "user" {
 						info += " user=" + v
 					}
@@ -1165,10 +1165,10 @@ func (c *ctx) dissectPostgreSQL(b []byte, base int) bool {
 				}
 			}
 		case 80877103:
-			root = newNode("PostgreSQL SSLRequest", base, min(length, len(b)))
+			root = c.newNode("PostgreSQL SSLRequest", base, min(length, len(b)))
 			info = "PostgreSQL SSLRequest"
 		case 80877102:
-			root = newNode("PostgreSQL CancelRequest", base, min(length, len(b)))
+			root = c.newNode("PostgreSQL CancelRequest", base, min(length, len(b)))
 			info = "PostgreSQL CancelRequest"
 		}
 	} else if len(b) >= 5 {
@@ -1178,47 +1178,47 @@ func (c *ctx) dissectPostgreSQL(b []byte, base int) bool {
 			return false
 		}
 		name := pgTypeName(typ)
-		root = newNode("PostgreSQL "+name, base, 1+msgLen)
-		root.add(newField(fmt.Sprintf("Type: %c (%s)", typ, name), "", base, 1), newField(fmt.Sprintf("Length: %d", msgLen), "", base+1, 4))
+		root = c.newNode("PostgreSQL "+name, base, 1+msgLen)
+		root.add(c.newField(fmt.Sprintf("Type: %c (%s)", typ, name), "", base, 1), c.newField(fmt.Sprintf("Length: %d", msgLen), "", base+1, 4))
 		payload := b[5:min(1+msgLen, len(b))]
 		info = "PostgreSQL " + name
 		switch typ {
 		case 'R':
 			if len(payload) >= 4 {
 				code := be32(payload[0:4])
-				root.add(newField(fmt.Sprintf("Authentication: %s (%d)", pgAuthName(code), code), "", base+5, 4))
+				root.add(c.newField(fmt.Sprintf("Authentication: %s (%d)", pgAuthName(code), code), "", base+5, 4))
 				info += ": " + pgAuthName(code)
 			}
 		case 'S':
 			if key, n, ok := pgCString(payload, 0); ok {
 				if val, _, ok := pgCString(payload, n); ok {
-					root.add(newField("Parameter: "+key+" = "+val, "", base+5, len(payload)))
+					root.add(c.newField("Parameter: "+key+" = "+val, "", base+5, len(payload)))
 					info += ": " + key + "=" + val
 				}
 			}
 		case 'K':
 			if len(payload) >= 8 {
-				root.add(newField(fmt.Sprintf("Backend PID: %d", be32(payload[0:4])), "", base+5, 4), newField(fmt.Sprintf("Secret Key: 0x%08x", be32(payload[4:8])), "", base+9, 4))
+				root.add(c.newField(fmt.Sprintf("Backend PID: %d", be32(payload[0:4])), "", base+5, 4), c.newField(fmt.Sprintf("Secret Key: 0x%08x", be32(payload[4:8])), "", base+9, 4))
 			}
 		case 'Z':
 			if len(payload) >= 1 {
 				st := map[byte]string{'I': "idle", 'T': "in transaction", 'E': "failed transaction"}[payload[0]]
-				root.add(newField("Transaction Status: "+st, "", base+5, 1))
+				root.add(c.newField("Transaction Status: "+st, "", base+5, 1))
 			}
 		case 'Q':
 			q := trimNul(payload)
-			root.add(newField("Query: "+shorten(q, 300), "", base+5, len(payload)))
+			root.add(c.newField("Query: "+shorten(q, 300), "", base+5, len(payload)))
 			info += ": " + shorten(q, 80)
 		case 'P':
 			stmt, n, ok := pgCString(payload, 0)
 			if ok {
 				q, n2, ok := pgCString(payload, n)
 				if ok {
-					root.add(newField("Statement: "+stmt, "", base+5, n), newField("Query: "+shorten(q, 300), "", base+5+n, n2-n))
+					root.add(c.newField("Statement: "+stmt, "", base+5, n), c.newField("Query: "+shorten(q, 300), "", base+5+n, n2-n))
 					info += ": " + shorten(q, 80)
 					if n2+2 <= len(payload) {
 						cnt := int(be16(payload[n2 : n2+2]))
-						root.add(newField(fmt.Sprintf("Parameter Types: %d", cnt), "", base+5+n2, 2))
+						root.add(c.newField(fmt.Sprintf("Parameter Types: %d", cnt), "", base+5+n2, 2))
 					}
 				}
 			}
@@ -1227,18 +1227,18 @@ func (c *ctx) dissectPostgreSQL(b []byte, base int) bool {
 			if ok {
 				stmt, n2, ok := pgCString(payload, n)
 				if ok {
-					root.add(newField("Portal: "+portal, "", base+5, n), newField("Statement: "+stmt, "", base+5+n, n2-n))
+					root.add(c.newField("Portal: "+portal, "", base+5, n), c.newField("Statement: "+stmt, "", base+5+n, n2-n))
 					info += fmt.Sprintf(" portal=%s statement=%s", portal, stmt)
 					if n2+2 <= len(payload) {
 						fc := int(be16(payload[n2 : n2+2]))
-						root.add(newField(fmt.Sprintf("Parameter Format Codes: %d", fc), "", base+5+n2, 2))
+						root.add(c.newField(fmt.Sprintf("Parameter Format Codes: %d", fc), "", base+5+n2, 2))
 					}
 				}
 			}
 		case 'T':
 			if len(payload) >= 2 {
 				nfields := int(be16(payload[0:2]))
-				root.add(newField(fmt.Sprintf("Fields: %d", nfields), "", base+5, 2))
+				root.add(c.newField(fmt.Sprintf("Fields: %d", nfields), "", base+5, 2))
 				p := 2
 				for i := 0; i < nfields && p+18 <= len(payload); i++ {
 					fname, n, ok := pgCString(payload, p)
@@ -1246,15 +1246,15 @@ func (c *ctx) dissectPostgreSQL(b []byte, base int) bool {
 						break
 					}
 					p = n
-					col := newField(fmt.Sprintf("Column %d: %s", i+1, fname), "", base+5+p, 18)
+					col := c.newField(fmt.Sprintf("Column %d: %s", i+1, fname), "", base+5+p, 18)
 					if p+18 <= len(payload) {
 						col.add(
-							newField(fmt.Sprintf("Table OID: %d", be32(payload[p:p+4])), "", 0, 0),
-							newField(fmt.Sprintf("Column ID: %d", be16(payload[p+4:p+6])), "", 0, 0),
-							newField(fmt.Sprintf("Type OID: %d", be32(payload[p+6:p+10])), "", 0, 0),
-							newField(fmt.Sprintf("Type Size: %d", int16(be16(payload[p+10:p+12]))), "", 0, 0),
-							newField(fmt.Sprintf("Type Modifier: %d", int32(be32(payload[p+12:p+16]))), "", 0, 0),
-							newField(fmt.Sprintf("Format: %d", be16(payload[p+16:p+18])), "", 0, 0),
+							c.newField(fmt.Sprintf("Table OID: %d", be32(payload[p:p+4])), "", 0, 0),
+							c.newField(fmt.Sprintf("Column ID: %d", be16(payload[p+4:p+6])), "", 0, 0),
+							c.newField(fmt.Sprintf("Type OID: %d", be32(payload[p+6:p+10])), "", 0, 0),
+							c.newField(fmt.Sprintf("Type Size: %d", int16(be16(payload[p+10:p+12]))), "", 0, 0),
+							c.newField(fmt.Sprintf("Type Modifier: %d", int32(be32(payload[p+12:p+16]))), "", 0, 0),
+							c.newField(fmt.Sprintf("Format: %d", be16(payload[p+16:p+18])), "", 0, 0),
 						)
 						p += 18
 					}
@@ -1266,13 +1266,13 @@ func (c *ctx) dissectPostgreSQL(b []byte, base int) bool {
 			if len(payload) >= 2 {
 				cols := int(be16(payload[0:2]))
 				if cols < 1024 && (cols == 0 || len(payload) > 2+4) {
-					root.add(newField(fmt.Sprintf("Columns: %d", cols), "", base+5, 2))
+					root.add(c.newField(fmt.Sprintf("Columns: %d", cols), "", base+5, 2))
 					p := 2
 					for i := 0; i < cols && p+4 <= len(payload); i++ {
 						l := int(int32(be32(payload[p : p+4])))
 						p += 4
 						if l < 0 {
-							root.add(newField(fmt.Sprintf("Column %d: NULL", i+1), "", 0, 0))
+							root.add(c.newField(fmt.Sprintf("Column %d: NULL", i+1), "", 0, 0))
 							continue
 						}
 						if p+l > len(payload) {
@@ -1283,7 +1283,7 @@ func (c *ctx) dissectPostgreSQL(b []byte, base int) bool {
 						if !isPrintable(v) {
 							txt = hexPreview(v, 32)
 						}
-						root.add(newField(fmt.Sprintf("Column %d: %s", i+1, shorten(txt, 120)), "", base+5+p, l))
+						root.add(c.newField(fmt.Sprintf("Column %d: %s", i+1, shorten(txt, 120)), "", base+5+p, l))
 						p += l
 					}
 					info += fmt.Sprintf(" rows=%d", cols)
@@ -1295,12 +1295,12 @@ func (c *ctx) dissectPostgreSQL(b []byte, base int) bool {
 				target = string(payload[0])
 			}
 			nm, _, _ := pgCString(payload, 1)
-			root.add(newField("Describe Target: "+target, "", base+5, 1), newField("Name: "+nm, "", 0, 0))
+			root.add(c.newField("Describe Target: "+target, "", base+5, 1), c.newField("Name: "+nm, "", 0, 0))
 			info += " target=" + target
 		case 'E':
 			// Ambiguous: backend ErrorResponse or frontend Execute.
 			if len(payload) > 0 && strings.IndexByte("SVCMDHPWstcdnFLR", payload[0]) >= 0 {
-				fields := pgErrorFields(payload)
+				fields := pgErrorFields(c, payload)
 				root.add(fields...)
 				for _, f := range fields {
 					if strings.HasPrefix(f.Label, "Message: ") {
@@ -1310,14 +1310,14 @@ func (c *ctx) dissectPostgreSQL(b []byte, base int) bool {
 				}
 			} else {
 				portal, _, _ := pgCString(payload, 0)
-				root.add(newField("Portal: "+portal, "", 0, 0))
+				root.add(c.newField("Portal: "+portal, "", 0, 0))
 				info += " portal=" + portal
 			}
 		case 'N':
-			root.add(pgErrorFields(payload)...)
+			root.add(pgErrorFields(c, payload)...)
 		case 'C':
 			s := trimNul(payload)
-			root.add(newField("Tag: "+s, "", base+5, len(payload)))
+			root.add(c.newField("Tag: "+s, "", base+5, len(payload)))
 			info += ": " + s
 		case 'A':
 			if len(payload) >= 4 {
@@ -1325,7 +1325,7 @@ func (c *ctx) dissectPostgreSQL(b []byte, base int) bool {
 				ch, n, ok := pgCString(payload, 4)
 				if ok {
 					msg, _, _ := pgCString(payload, n)
-					root.add(newField(fmt.Sprintf("PID: %d", pid), "", base+5, 4), newField("Channel: "+ch, "", base+9, n-4), newField("Payload: "+shorten(msg, 120), "", 0, 0))
+					root.add(c.newField(fmt.Sprintf("PID: %d", pid), "", base+5, 4), c.newField("Channel: "+ch, "", base+9, n-4), c.newField("Payload: "+shorten(msg, 120), "", 0, 0))
 					info = fmt.Sprintf("PostgreSQL NOTIFY %s: %s", ch, shorten(msg, 60))
 				}
 			}
@@ -1499,7 +1499,7 @@ func bgpCapability(code byte, v []byte) string {
 	return hexPreview(v, 32)
 }
 
-func bgpAttrs(data []byte, base int) []*Field {
+func bgpAttrs(c *ctx, data []byte, base int) []*Field {
 	var out []*Field
 	for p := 0; p+3 <= len(data); {
 		flags, typ := data[p], data[p+1]
@@ -1521,7 +1521,7 @@ func bgpAttrs(data []byte, base int) []*Field {
 		if name == "" {
 			name = fmt.Sprintf("Attribute %d", typ)
 		}
-		f := newField(fmt.Sprintf("%s (flags 0x%02x, %d bytes)", name, flags, l), "", base+p-l, l)
+		f := c.newField(fmt.Sprintf("%s (flags 0x%02x, %d bytes)", name, flags, l), "", base+p-l, l)
 		switch typ {
 		case 1:
 			if len(v) > 0 {
@@ -1618,7 +1618,7 @@ func (c *ctx) dissectBGP(b []byte, base int) bool {
 	}
 	c.addLayer("bgp")
 	c.proto = "bgp"
-	root := newNode("Border Gateway Protocol", base, len(b))
+	root := c.newNode("Border Gateway Protocol", base, len(b))
 	off := 0
 	info := "BGP"
 	for off+19 <= len(b) {
@@ -1632,11 +1632,11 @@ func (c *ctx) dissectBGP(b []byte, base int) bool {
 		if name == "" {
 			name = fmt.Sprintf("Type %d", typ)
 		}
-		f := newField(fmt.Sprintf("%s (length %d)", name, length), "", base+off, length)
+		f := c.newField(fmt.Sprintf("%s (length %d)", name, length), "", base+off, length)
 		f.add(
-			newField("Marker: 16 bytes", "", base+off, 16),
-			newField(fmt.Sprintf("Length: %d", length), "", base+off+16, 2),
-			newField(fmt.Sprintf("Type: %s (%d)", name, typ), "", base+off+18, 1),
+			c.newField("Marker: 16 bytes", "", base+off, 16),
+			c.newField(fmt.Sprintf("Length: %d", length), "", base+off+16, 2),
+			c.newField(fmt.Sprintf("Type: %s (%d)", name, typ), "", base+off+18, 1),
 		)
 		switch typ {
 		case 1: // OPEN
@@ -1646,11 +1646,11 @@ func (c *ctx) dissectBGP(b []byte, base int) bool {
 				routerID := netip.AddrFrom4([4]byte{msg[24], msg[25], msg[26], msg[27]}).String()
 				optLen := int(msg[28])
 				f.add(
-					newField(fmt.Sprintf("Version: %d", msg[19]), "", base+off+19, 1),
-					newField(fmt.Sprintf("My AS: %d", asn), "", base+off+20, 2),
-					newField(fmt.Sprintf("Hold Time: %d s", hold), "", base+off+22, 2),
-					newField("BGP Identifier: "+routerID, "", base+off+24, 4),
-					newField(fmt.Sprintf("Optional Parameters Length: %d", optLen), "", base+off+28, 1),
+					c.newField(fmt.Sprintf("Version: %d", msg[19]), "", base+off+19, 1),
+					c.newField(fmt.Sprintf("My AS: %d", asn), "", base+off+20, 2),
+					c.newField(fmt.Sprintf("Hold Time: %d s", hold), "", base+off+22, 2),
+					c.newField("BGP Identifier: "+routerID, "", base+off+24, 4),
+					c.newField(fmt.Sprintf("Optional Parameters Length: %d", optLen), "", base+off+28, 1),
 				)
 				info = fmt.Sprintf("BGP OPEN AS%d router=%s", asn, routerID)
 				var caps []string
@@ -1672,7 +1672,7 @@ func (c *ctx) dissectBGP(b []byte, base int) bool {
 							break
 						}
 						desc := bgpCapability(code, pv[q:q+cl])
-						f.add(newField(fmt.Sprintf("Capability %d: %s", code, desc), hexPreview(pv[q:q+cl], 24), base+off+p-pl+q-2, cl))
+						f.add(c.newField(fmt.Sprintf("Capability %d: %s", code, desc), hexPreview(pv[q:q+cl], 24), base+off+p-pl+q-2, cl))
 						caps = append(caps, desc)
 						q += cl
 					}
@@ -1685,23 +1685,23 @@ func (c *ctx) dissectBGP(b []byte, base int) bool {
 			if len(msg) >= 23 {
 				wlen := int(be16(msg[19:21]))
 				alenOff := 21 + wlen
-				f.add(newField(fmt.Sprintf("Withdrawn Routes Length: %d", wlen), "", base+off+19, 2))
+				f.add(c.newField(fmt.Sprintf("Withdrawn Routes Length: %d", wlen), "", base+off+19, 2))
 				withdrawn := []string{}
 				if wlen > 0 && 21+wlen <= len(msg) {
 					withdrawn = bgpPrefixList(msg[21:21+wlen], 1, false)
-					f.add(newField("Withdrawn Routes: "+strings.Join(withdrawn, " "), "", base+off+21, wlen))
+					f.add(c.newField("Withdrawn Routes: "+strings.Join(withdrawn, " "), "", base+off+21, wlen))
 				}
 				if alenOff+2 <= len(msg) {
 					alen := int(be16(msg[alenOff : alenOff+2]))
-					f.add(newField(fmt.Sprintf("Path Attributes Length: %d", alen), "", base+off+alenOff, 2))
+					f.add(c.newField(fmt.Sprintf("Path Attributes Length: %d", alen), "", base+off+alenOff, 2))
 					attrStart := alenOff + 2
 					if attrStart+alen <= len(msg) {
-						attrs := bgpAttrs(msg[attrStart:attrStart+alen], base+off+attrStart)
+						attrs := bgpAttrs(c, msg[attrStart:attrStart+alen], base+off+attrStart)
 						f.add(attrs...)
 						nlri := msg[attrStart+alen:]
 						prefixes := bgpPrefixList(nlri, 1, false)
 						if len(prefixes) > 0 {
-							f.add(newField("NLRI: "+strings.Join(prefixes, " "), "", base+off+attrStart+alen, len(nlri)))
+							f.add(c.newField("NLRI: "+strings.Join(prefixes, " "), "", base+off+attrStart+alen, len(nlri)))
 						}
 						info = fmt.Sprintf("BGP UPDATE withdrawn=%d prefixes=%d attrs=%d", len(withdrawn), len(prefixes), len(attrs))
 					}
@@ -1716,9 +1716,9 @@ func (c *ctx) dissectBGP(b []byte, base int) bool {
 					cname = fmt.Sprintf("Code %d", errCode)
 				}
 				f.add(
-					newField(fmt.Sprintf("Error Code: %s (%d)", cname, errCode), "", base+off+19, 1),
-					newField(fmt.Sprintf("Error Subcode: %d", sub), "", base+off+20, 1),
-					newField("Data: "+hexPreview(msg[21:], 48), "", base+off+21, len(msg)-21),
+					c.newField(fmt.Sprintf("Error Code: %s (%d)", cname, errCode), "", base+off+19, 1),
+					c.newField(fmt.Sprintf("Error Subcode: %d", sub), "", base+off+20, 1),
+					c.newField("Data: "+hexPreview(msg[21:], 48), "", base+off+21, len(msg)-21),
 				)
 				info = fmt.Sprintf("BGP NOTIFICATION %s sub=%d", cname, sub)
 			}
@@ -1728,7 +1728,7 @@ func (c *ctx) dissectBGP(b []byte, base int) bool {
 			if len(msg) >= 23 {
 				afi := be16(msg[19:21])
 				safi := msg[22]
-				f.add(newField(fmt.Sprintf("AFI: %d", afi), "", base+off+19, 2), newField("Reserved: "+strconv.Itoa(int(msg[21])), "", base+off+21, 1), newField(fmt.Sprintf("SAFI: %d", safi), "", base+off+22, 1))
+				f.add(c.newField(fmt.Sprintf("AFI: %d", afi), "", base+off+19, 2), c.newField("Reserved: "+strconv.Itoa(int(msg[21])), "", base+off+21, 1), c.newField(fmt.Sprintf("SAFI: %d", safi), "", base+off+22, 1))
 				info = fmt.Sprintf("BGP ROUTE-REFRESH AFI=%d SAFI=%d", afi, safi)
 			}
 		}
@@ -1756,48 +1756,48 @@ func (c *ctx) dissectWireGuard(b []byte, base int) bool {
 	names := []string{"", "handshake initiation", "handshake response", "cookie reply", "transport data"}
 	c.addLayer("wireguard")
 	c.proto = "wireguard"
-	root := newNode("WireGuard ("+names[typ]+")", base, len(b))
+	root := c.newNode("WireGuard ("+names[typ]+")", base, len(b))
 	root.add(
-		newField(fmt.Sprintf("Message Type: %d (%s)", typ, names[typ]), "", base, 1),
-		newField("Reserved: 0", "", base+1, 3),
+		c.newField(fmt.Sprintf("Message Type: %d (%s)", typ, names[typ]), "", base, 1),
+		c.newField("Reserved: 0", "", base+1, 3),
 	)
 	switch typ {
 	case 1: // handshake initiation
 		if len(b) >= 148 {
 			root.add(
-				newField(fmt.Sprintf("Sender Index: 0x%08x", be32(b[4:8])), "", base+4, 4),
-				newField("Unencrypted Ephemeral: "+hexPreview(b[8:40], 32), "", base+8, 32),
-				newField("Encrypted Static: "+hexPreview(b[40:88], 48), "", base+40, 48),
-				newField("Encrypted Timestamp: "+hexPreview(b[88:116], 28), "", base+88, 28),
-				newField("MAC1: "+hexPreview(b[116:132], 16), "", base+116, 16),
-				newField("MAC2: "+hexPreview(b[132:148], 16), "", base+132, 16),
+				c.newField(fmt.Sprintf("Sender Index: 0x%08x", be32(b[4:8])), "", base+4, 4),
+				c.newField("Unencrypted Ephemeral: "+hexPreview(b[8:40], 32), "", base+8, 32),
+				c.newField("Encrypted Static: "+hexPreview(b[40:88], 48), "", base+40, 48),
+				c.newField("Encrypted Timestamp: "+hexPreview(b[88:116], 28), "", base+88, 28),
+				c.newField("MAC1: "+hexPreview(b[116:132], 16), "", base+116, 16),
+				c.newField("MAC2: "+hexPreview(b[132:148], 16), "", base+132, 16),
 			)
 		}
 	case 2: // handshake response
 		if len(b) >= 92 {
 			root.add(
-				newField(fmt.Sprintf("Sender Index: 0x%08x", be32(b[4:8])), "", base+4, 4),
-				newField(fmt.Sprintf("Receiver Index: 0x%08x", be32(b[8:12])), "", base+8, 4),
-				newField("Unencrypted Ephemeral: "+hexPreview(b[12:44], 32), "", base+12, 32),
-				newField("Encrypted Nothing: "+hexPreview(b[44:60], 16), "", base+44, 16),
-				newField("MAC1: "+hexPreview(b[60:76], 16), "", base+60, 16),
-				newField("MAC2: "+hexPreview(b[76:92], 16), "", base+76, 16),
+				c.newField(fmt.Sprintf("Sender Index: 0x%08x", be32(b[4:8])), "", base+4, 4),
+				c.newField(fmt.Sprintf("Receiver Index: 0x%08x", be32(b[8:12])), "", base+8, 4),
+				c.newField("Unencrypted Ephemeral: "+hexPreview(b[12:44], 32), "", base+12, 32),
+				c.newField("Encrypted Nothing: "+hexPreview(b[44:60], 16), "", base+44, 16),
+				c.newField("MAC1: "+hexPreview(b[60:76], 16), "", base+60, 16),
+				c.newField("MAC2: "+hexPreview(b[76:92], 16), "", base+76, 16),
 			)
 		}
 	case 3: // cookie reply
 		if len(b) >= 64 {
 			root.add(
-				newField(fmt.Sprintf("Receiver Index: 0x%08x", be32(b[4:8])), "", base+4, 4),
-				newField("Nonce: "+hexPreview(b[8:32], 24), "", base+8, 24),
-				newField("Encrypted Cookie: "+hexPreview(b[32:64], 32), "", base+32, 32),
+				c.newField(fmt.Sprintf("Receiver Index: 0x%08x", be32(b[4:8])), "", base+4, 4),
+				c.newField("Nonce: "+hexPreview(b[8:32], 24), "", base+8, 24),
+				c.newField("Encrypted Cookie: "+hexPreview(b[32:64], 32), "", base+32, 32),
 			)
 		}
 	case 4: // transport data
 		if len(b) >= 16 {
 			root.add(
-				newField(fmt.Sprintf("Receiver Index: 0x%08x", be32(b[4:8])), "", base+4, 4),
-				newField(fmt.Sprintf("Counter: %d", be64(b[8:16])), "", base+8, 8),
-				newField(fmt.Sprintf("Encrypted Payload (%d bytes)", len(b)-16), hexPreview(b[16:], 48), base+16, len(b)-16),
+				c.newField(fmt.Sprintf("Receiver Index: 0x%08x", be32(b[4:8])), "", base+4, 4),
+				c.newField(fmt.Sprintf("Counter: %d", be64(b[8:16])), "", base+8, 8),
+				c.newField(fmt.Sprintf("Encrypted Payload (%d bytes)", len(b)-16), hexPreview(b[16:], 48), base+16, len(b)-16),
 			)
 		}
 	}
@@ -1922,7 +1922,7 @@ func snmpErrorStatus(v int64) string {
 	return fmt.Sprintf("status %d", v)
 }
 
-func snmpVarbinds(list []byte, root *Field, base int) string {
+func snmpVarbinds(c *ctx, list []byte, root *Field, base int) string {
 	first := ""
 	pos := 0
 	for i := 0; i < 128; i++ {
@@ -1941,24 +1941,24 @@ func snmpVarbinds(list []byte, root *Field, base int) string {
 		}
 		val, ok := berRead(vb.value, o.next)
 		if !ok {
-			root.add(newField(oid+" = <missing>", "", base, 0))
+			root.add(c.newField(oid+" = <missing>", "", base, 0))
 			continue
 		}
 		switch val.tag {
 		case 0x80:
-			root.add(newField(oid+" = noSuchObject", "", base, 0))
+			root.add(c.newField(oid+" = noSuchObject", "", base, 0))
 		case 0x81:
-			root.add(newField(oid+" = noSuchInstance", "", base, 0))
+			root.add(c.newField(oid+" = noSuchInstance", "", base, 0))
 		case 0x82:
-			root.add(newField(oid+" = endOfMibView", "", base, 0))
+			root.add(c.newField(oid+" = endOfMibView", "", base, 0))
 		default:
-			root.add(newField(oid+" = "+berValue(val), "", base, 0))
+			root.add(c.newField(oid+" = "+berValue(val), "", base, 0))
 		}
 	}
 	return first
 }
 
-func snmpPDU(pdu berTLV, root *Field, base int) (string, string) {
+func snmpPDU(c *ctx, pdu berTLV, root *Field, base int) (string, string) {
 	name := snmpPDUNames[pdu.tag]
 	if name == "" {
 		return "", ""
@@ -1968,35 +1968,35 @@ func snmpPDU(pdu berTLV, root *Field, base int) (string, string) {
 	if pdu.tag == 0xA4 { // SNMPv1 Trap-PDU
 		ent, ok := berRead(pdu.value, pos)
 		if ok && ent.tag == 0x06 {
-			root.add(newField("Enterprise: "+berOID(ent.value), "", base, 0))
+			root.add(c.newField("Enterprise: "+berOID(ent.value), "", base, 0))
 			pos = ent.next
 		}
 		agent, ok := berRead(pdu.value, pos)
 		if ok && agent.tag == 0x40 {
-			root.add(newField("Agent Address: "+berValue(agent), "", base, 0))
+			root.add(c.newField("Agent Address: "+berValue(agent), "", base, 0))
 			pos = agent.next
 		}
 		gen, ok := berRead(pdu.value, pos)
 		if ok {
 			gn := map[int64]string{0: "coldStart", 1: "warmStart", 2: "linkDown", 3: "linkUp", 4: "authenticationFailure", 5: "egpNeighborLoss", 6: "enterpriseSpecific"}[berInt(gen.value)]
-			root.add(newField(fmt.Sprintf("Generic Trap: %s (%d)", gn, berInt(gen.value)), "", base, 0))
+			root.add(c.newField(fmt.Sprintf("Generic Trap: %s (%d)", gn, berInt(gen.value)), "", base, 0))
 			pos = gen.next
 			info += " " + gn
 		}
 		spec, ok := berRead(pdu.value, pos)
 		if ok {
-			root.add(newField(fmt.Sprintf("Specific Trap: %d", berInt(spec.value)), "", base, 0))
+			root.add(c.newField(fmt.Sprintf("Specific Trap: %d", berInt(spec.value)), "", base, 0))
 			pos = spec.next
 		}
 		ts, ok := berRead(pdu.value, pos)
 		if ok {
-			root.add(newField(fmt.Sprintf("Time Stamp: %d", berInt(ts.value)), "", base, 0))
+			root.add(c.newField(fmt.Sprintf("Time Stamp: %d", berInt(ts.value)), "", base, 0))
 			pos = ts.next
 		}
 	} else {
 		req, ok := berRead(pdu.value, pos)
 		if ok {
-			root.add(newField(fmt.Sprintf("Request ID: %d", berInt(req.value)), "", base, 0))
+			root.add(c.newField(fmt.Sprintf("Request ID: %d", berInt(req.value)), "", base, 0))
 			pos = req.next
 		}
 		st, ok := berRead(pdu.value, pos)
@@ -2005,7 +2005,7 @@ func snmpPDU(pdu berTLV, root *Field, base int) (string, string) {
 			if pdu.tag == 0xA5 {
 				label = "Non-repeaters"
 			}
-			root.add(newField(fmt.Sprintf("%s: %s (%d)", label, snmpErrorStatus(berInt(st.value)), berInt(st.value)), "", base, 0))
+			root.add(c.newField(fmt.Sprintf("%s: %s (%d)", label, snmpErrorStatus(berInt(st.value)), berInt(st.value)), "", base, 0))
 			pos = st.next
 		}
 		idx, ok := berRead(pdu.value, pos)
@@ -2014,13 +2014,13 @@ func snmpPDU(pdu berTLV, root *Field, base int) (string, string) {
 			if pdu.tag == 0xA5 {
 				label = "Max Repetitions"
 			}
-			root.add(newField(fmt.Sprintf("%s: %d", label, berInt(idx.value)), "", base, 0))
+			root.add(c.newField(fmt.Sprintf("%s: %d", label, berInt(idx.value)), "", base, 0))
 			pos = idx.next
 		}
 	}
 	vbs, ok := berRead(pdu.value, pos)
 	if ok && vbs.tag == 0x30 {
-		oid := snmpVarbinds(vbs.value, root, base)
+		oid := snmpVarbinds(c, vbs.value, root, base)
 		if oid != "" {
 			info += " " + oid
 		}
@@ -2046,8 +2046,8 @@ func (c *ctx) dissectSNMP(b []byte, base int) bool {
 	}
 	c.addLayer("snmp")
 	c.proto = "snmp"
-	root := newNode("Simple Network Management Protocol", base, len(b))
-	root.add(newField(fmt.Sprintf("Version: %s (%d)", snmpVersion(version), version), "", base, 0))
+	root := c.newNode("Simple Network Management Protocol", base, len(b))
+	root.add(c.newField(fmt.Sprintf("Version: %s (%d)", snmpVersion(version), version), "", base, 0))
 	info := "SNMP " + snmpVersion(version)
 
 	if version == 3 {
@@ -2058,12 +2058,12 @@ func (c *ctx) dissectSNMP(b []byte, base int) bool {
 		hpos := 0
 		msgID, ok := berRead(header.value, hpos)
 		if ok {
-			root.add(newField(fmt.Sprintf("Message ID: %d", berInt(msgID.value)), "", base, 0))
+			root.add(c.newField(fmt.Sprintf("Message ID: %d", berInt(msgID.value)), "", base, 0))
 			hpos = msgID.next
 		}
 		maxSize, ok := berRead(header.value, hpos)
 		if ok {
-			root.add(newField(fmt.Sprintf("Max Message Size: %d", berInt(maxSize.value)), "", base, 0))
+			root.add(c.newField(fmt.Sprintf("Max Message Size: %d", berInt(maxSize.value)), "", base, 0))
 			hpos = maxSize.next
 		}
 		flags, ok := berRead(header.value, hpos)
@@ -2072,12 +2072,12 @@ func (c *ctx) dissectSNMP(b []byte, base int) bool {
 			if len(flags.value) > 0 {
 				fv = flags.value[0]
 			}
-			root.add(newField(fmt.Sprintf("Flags: 0x%02x (auth=%d priv=%d reportable=%d)", fv, (fv>>0)&1, (fv>>1)&1, (fv>>2)&1), "", base, 0))
+			root.add(c.newField(fmt.Sprintf("Flags: 0x%02x (auth=%d priv=%d reportable=%d)", fv, (fv>>0)&1, (fv>>1)&1, (fv>>2)&1), "", base, 0))
 			hpos = flags.next
 		}
 		secModel, ok := berRead(header.value, hpos)
 		if ok {
-			root.add(newField(fmt.Sprintf("Security Model: %d", berInt(secModel.value)), "", base, 0))
+			root.add(c.newField(fmt.Sprintf("Security Model: %d", berInt(secModel.value)), "", base, 0))
 		}
 		sec, ok := berRead(outer.value, header.next)
 		if !ok || sec.tag != 0x04 {
@@ -2103,7 +2103,7 @@ func (c *ctx) dissectSNMP(b []byte, base int) bool {
 				if i == 1 || i == 2 {
 					val = strconv.FormatInt(berInt(t.value), 10)
 				}
-				root.add(newField(names[i]+": "+val, "", base, 0))
+				root.add(c.newField(names[i]+": "+val, "", base, 0))
 				if i == 3 {
 					info += " user=" + string(t.value)
 				}
@@ -2115,11 +2115,11 @@ func (c *ctx) dissectSNMP(b []byte, base int) bool {
 		}
 		dpos := 0
 		if ce, ok := berRead(data.value, dpos); ok {
-			root.add(newField("Context Engine ID: "+hexPreview(ce.value, 32), "", base, 0))
+			root.add(c.newField("Context Engine ID: "+hexPreview(ce.value, 32), "", base, 0))
 			dpos = ce.next
 		}
 		if cn, ok := berRead(data.value, dpos); ok {
-			root.add(newField("Context Name: "+string(cn.value), "", base, 0))
+			root.add(c.newField("Context Name: "+string(cn.value), "", base, 0))
 			dpos = cn.next
 		}
 		scoped, ok := berRead(data.value, dpos)
@@ -2127,11 +2127,11 @@ func (c *ctx) dissectSNMP(b []byte, base int) bool {
 			return false
 		}
 		if scoped.tag == 0x04 {
-			root.add(newField("Encrypted PDU: "+hexPreview(scoped.value, 64), "", base, 0))
+			root.add(c.newField("Encrypted PDU: "+hexPreview(scoped.value, 64), "", base, 0))
 			info += " encrypted"
-		} else if name, pduInfo := snmpPDU(scoped, root, base); name != "" {
+		} else if name, pduInfo := snmpPDU(c, scoped, root, base); name != "" {
 			root.Label = "Simple Network Management Protocol (" + name + ")"
-			root.add(newField(fmt.Sprintf("PDU: %s (0x%02x)", name, scoped.tag), "", base, 0))
+			root.add(c.newField(fmt.Sprintf("PDU: %s (0x%02x)", name, scoped.tag), "", base, 0))
 			info += " " + pduInfo
 		}
 	} else {
@@ -2143,12 +2143,12 @@ func (c *ctx) dissectSNMP(b []byte, base int) bool {
 		if !ok {
 			return false
 		}
-		name, pduInfo := snmpPDU(pdu, root, base)
+		name, pduInfo := snmpPDU(c, pdu, root, base)
 		if name == "" {
 			return false
 		}
 		root.Label = "Simple Network Management Protocol (" + name + ")"
-		root.add(newField("Community: "+string(community.value), "", base, 0), newField(fmt.Sprintf("PDU: %s (0x%02x)", name, pdu.tag), "", base, 0))
+		root.add(c.newField("Community: "+string(community.value), "", base, 0), c.newField(fmt.Sprintf("PDU: %s (0x%02x)", name, pdu.tag), "", base, 0))
 		info += " " + name + " community=" + string(community.value) + " " + pduInfo
 	}
 	c.addRoot(root)
@@ -2171,8 +2171,8 @@ func (c *ctx) dissectSSDP(b []byte, base int) bool {
 	}
 	c.addLayer("ssdp")
 	c.proto = "ssdp"
-	root := newNode("Simple Service Discovery Protocol", base, len(b))
-	root.add(newField(first, "", base, len(line)))
+	root := c.newNode("Simple Service Discovery Protocol", base, len(b))
+	root.add(c.newField(first, "", base, len(line)))
 	headers := map[string]string{}
 	for _, hl := range strings.Split(string(rest), "\n") {
 		hl = strings.TrimRight(hl, "\r")
@@ -2182,7 +2182,7 @@ func (c *ctx) dissectSSDP(b []byte, base int) bool {
 		k, v, ok := strings.Cut(hl, ":")
 		if ok {
 			headers[strings.ToLower(strings.TrimSpace(k))] = strings.TrimSpace(v)
-			root.add(newField(hl, "", base, 0))
+			root.add(c.newField(hl, "", base, 0))
 		}
 	}
 	info := "SSDP " + strings.Split(first, " ")[0]
@@ -2220,8 +2220,8 @@ func sipHeaderName(k string) string {
 	return k
 }
 
-func sipSDP(body []byte, root *Field, base int) {
-	sdp := newField("Session Description Protocol (SDP)", "", base, len(body))
+func sipSDP(c *ctx, body []byte, root *Field, base int) {
+	sdp := c.newField("Session Description Protocol (SDP)", "", base, len(body))
 	for _, line := range strings.Split(string(body), "\n") {
 		line = strings.TrimRight(line, "\r")
 		if len(line) < 2 || line[1] != '=' {
@@ -2232,21 +2232,21 @@ func sipSDP(body []byte, root *Field, base int) {
 		if label == "" {
 			label = string(key)
 		}
-		field := newField(label+": "+val, "", base, 0)
+		field := c.newField(label+": "+val, "", base, 0)
 		if key == 'm' {
 			parts := strings.Fields(val)
 			if len(parts) >= 3 {
 				field.Value = ""
-				field.add(newField("Media: "+parts[0], "", base, 0), newField("Port: "+parts[1], "", base, 0), newField("Protocol: "+parts[2], "", base, 0))
+				field.add(c.newField("Media: "+parts[0], "", base, 0), c.newField("Port: "+parts[1], "", base, 0), c.newField("Protocol: "+parts[2], "", base, 0))
 				if len(parts) > 3 {
-					field.add(newField("Formats: "+strings.Join(parts[3:], " "), "", base, 0))
+					field.add(c.newField("Formats: "+strings.Join(parts[3:], " "), "", base, 0))
 				}
 			}
 		} else if key == 'c' {
 			parts := strings.Fields(val)
 			if len(parts) >= 3 {
 				field.Value = ""
-				field.add(newField("Network Type: "+parts[0], "", base, 0), newField("Address Type: "+parts[1], "", base, 0), newField("Connection Address: "+strings.Join(parts[2:], " "), "", base, 0))
+				field.add(c.newField("Network Type: "+parts[0], "", base, 0), c.newField("Address Type: "+parts[1], "", base, 0), c.newField("Connection Address: "+strings.Join(parts[2:], " "), "", base, 0))
 			}
 		} else if key == 'a' {
 			if k, v, ok := strings.Cut(val, ":"); ok {
@@ -2276,8 +2276,8 @@ func (c *ctx) dissectSIP(b []byte, base int) bool {
 	}
 	c.addLayer("sip")
 	c.proto = "sip"
-	root := newNode("Session Initiation Protocol", base, len(b))
-	root.add(newField(first, "", base, len(line)))
+	root := c.newNode("Session Initiation Protocol", base, len(b))
+	root.add(c.newField(first, "", base, len(line)))
 	headers := map[string]string{}
 	var body []byte
 	headerText := rest
@@ -2295,7 +2295,7 @@ func (c *ctx) dissectSIP(b []byte, base int) bool {
 		if ok {
 			key := sipHeaderName(k)
 			headers[key] = strings.TrimSpace(v)
-			root.add(newField(strings.TrimSpace(k)+": "+strings.TrimSpace(v), "", base, 0))
+			root.add(c.newField(strings.TrimSpace(k)+": "+strings.TrimSpace(v), "", base, 0))
 		}
 	}
 	info := first
@@ -2320,7 +2320,7 @@ func (c *ctx) dissectSIP(b []byte, base int) bool {
 	}
 	ct := strings.ToLower(headers["content-type"])
 	if len(body) > 0 && (strings.Contains(ct, "application/sdp") || bytes.HasPrefix(body, []byte("v="))) {
-		sipSDP(body, root, base)
+		sipSDP(c, body, root, base)
 		info += " SDP"
 	}
 	c.addRoot(root)
@@ -2362,13 +2362,13 @@ func sshNameList(b []byte, off int) (string, int, bool) {
 	return strings.Join(strings.Split(v, ","), ", "), n, true
 }
 
-func sshAddStrings(f *Field, b []byte, off int, labels []string) {
+func sshAddStrings(c *ctx, f *Field, b []byte, off int, labels []string) {
 	for _, label := range labels {
 		v, n, ok := sshNameList(b, off)
 		if !ok {
 			return
 		}
-		f.add(newField(label+": "+v, "", 0, 0))
+		f.add(c.newField(label+": "+v, "", 0, 0))
 		off = n
 	}
 }
@@ -2383,13 +2383,13 @@ func (c *ctx) dissectSSH(b []byte, base int) bool {
 		parts := strings.SplitN(ident, "-", 3)
 		c.addLayer("ssh")
 		c.proto = "ssh"
-		root := newNode("SSH Protocol", base, len(b))
-		fields := []*Field{newField("Identification: "+ident, "", base, len(line))}
+		root := c.newNode("SSH Protocol", base, len(b))
+		fields := []*Field{c.newField("Identification: "+ident, "", base, len(line))}
 		if len(parts) >= 2 {
-			fields = append(fields, newField("Protocol Version: SSH-"+parts[1], "", base, 0))
+			fields = append(fields, c.newField("Protocol Version: SSH-"+parts[1], "", base, 0))
 		}
 		if len(parts) >= 3 {
-			fields = append(fields, newField("Software Version: "+parts[2], "", base, 0))
+			fields = append(fields, c.newField("Software Version: "+parts[2], "", base, 0))
 		}
 		root.add(fields...)
 		c.addRoot(root)
@@ -2415,11 +2415,11 @@ func (c *ctx) dissectSSH(b []byte, base int) bool {
 	}
 	c.addLayer("ssh")
 	c.proto = "ssh"
-	root := newNode("SSH Protocol ("+name+")", base, 4+pktLen)
+	root := c.newNode("SSH Protocol ("+name+")", base, 4+pktLen)
 	root.add(
-		newField(fmt.Sprintf("Packet Length: %d", pktLen), "", base, 4),
-		newField(fmt.Sprintf("Padding Length: %d", padding), "", base+4, 1),
-		newField(fmt.Sprintf("Message: %s (%d)", name, code), "", base+5, 1),
+		c.newField(fmt.Sprintf("Packet Length: %d", pktLen), "", base, 4),
+		c.newField(fmt.Sprintf("Padding Length: %d", padding), "", base+4, 1),
+		c.newField(fmt.Sprintf("Message: %s (%d)", name, code), "", base+5, 1),
 	)
 	info := "SSH " + name
 	p := 1
@@ -2432,27 +2432,27 @@ func (c *ctx) dissectSSH(b []byte, base int) bool {
 			desc, n, _ := sshString(payload, p)
 			p = n
 			lang, _, _ := sshString(payload, p)
-			root.add(newField(fmt.Sprintf("Reason Code: %d", reason), "", 0, 0), newField("Description: "+desc, "", 0, 0), newField("Language: "+lang, "", 0, 0))
+			root.add(c.newField(fmt.Sprintf("Reason Code: %d", reason), "", 0, 0), c.newField("Description: "+desc, "", 0, 0), c.newField("Language: "+lang, "", 0, 0))
 			info += " " + desc
 		}
 	case 2, 4: // IGNORE / DEBUG
 		if code == 4 {
 			always, n, ok := sshString(payload, p)
 			if ok {
-				root.add(newField("Always Display: "+always, "", 0, 0))
+				root.add(c.newField("Always Display: "+always, "", 0, 0))
 				p = n
 			}
 		}
 		msg, _, _ := sshString(payload, p)
-		root.add(newField("Message: "+shorten(msg, 160), "", 0, 0))
+		root.add(c.newField("Message: "+shorten(msg, 160), "", 0, 0))
 	case 3: // UNIMPLEMENTED
 		if p+4 <= len(payload) {
-			root.add(newField(fmt.Sprintf("Sequence Number: %d", be32(payload[p:p+4])), "", 0, 0))
+			root.add(c.newField(fmt.Sprintf("Sequence Number: %d", be32(payload[p:p+4])), "", 0, 0))
 		}
 	case 5, 6: // SERVICE_REQUEST / SERVICE_ACCEPT
 		svc, _, ok := sshString(payload, p)
 		if ok {
-			root.add(newField("Service: "+svc, "", 0, 0))
+			root.add(c.newField("Service: "+svc, "", 0, 0))
 			info += " " + svc
 		}
 	case 7: // EXT_INFO
@@ -2470,14 +2470,14 @@ func (c *ctx) dissectSSH(b []byte, base int) bool {
 					break
 				}
 				p = np2
-				root.add(newField(k+": "+v, "", 0, 0))
+				root.add(c.newField(k+": "+v, "", 0, 0))
 			}
 		}
 	case 20: // KEXINIT
 		if len(payload) >= 17 {
-			root.add(newField("Cookie: "+hexPreview(payload[1:17], 16), "", base+6, 16))
+			root.add(c.newField("Cookie: "+hexPreview(payload[1:17], 16), "", base+6, 16))
 			p = 17
-			sshAddStrings(root, payload, p, []string{
+			sshAddStrings(c, root, payload, p, []string{
 				"Key Exchange Algorithms", "Server Host Key Algorithms",
 				"Encryption Client-to-Server", "Encryption Server-to-Client",
 				"MAC Client-to-Server", "MAC Server-to-Client",
@@ -2494,17 +2494,17 @@ func (c *ctx) dissectSSH(b []byte, base int) bool {
 				q = n
 			}
 			if q < len(payload) {
-				root.add(newField(fmt.Sprintf("First KEX Packet Follows: %d", payload[q]), "", 0, 0))
+				root.add(c.newField(fmt.Sprintf("First KEX Packet Follows: %d", payload[q]), "", 0, 0))
 				q++
 				if q+4 <= len(payload) {
-					root.add(newField(fmt.Sprintf("Reserved: %d", be32(payload[q:q+4])), "", 0, 0))
+					root.add(c.newField(fmt.Sprintf("Reserved: %d", be32(payload[q:q+4])), "", 0, 0))
 				}
 			}
 			info += " KEX"
 		}
 	case 30: // KEXDH_INIT / KEX_ECDH_INIT
 		if v, _, ok := sshString(payload, p); ok {
-			root.add(newField("Client Ephemeral Public Key: "+hexPreview([]byte(v), 64), "", 0, 0))
+			root.add(c.newField("Client Ephemeral Public Key: "+hexPreview([]byte(v), 64), "", 0, 0))
 		}
 	case 31, 33: // KEXDH_REPLY / GEX_REPLY / ECDH_REPLY
 		if code == 31 && p+12 <= len(payload) {
@@ -2512,68 +2512,68 @@ func (c *ctx) dissectSSH(b []byte, base int) bool {
 			pref := be32(payload[p+4 : p+8])
 			max := be32(payload[p+8 : p+12])
 			if min >= 1024 && min <= pref && pref <= max {
-				root.add(newField(fmt.Sprintf("Min Group Size: %d", min), "", 0, 0), newField(fmt.Sprintf("Preferred Group Size: %d", pref), "", 0, 0), newField(fmt.Sprintf("Max Group Size: %d", max), "", 0, 0))
+				root.add(c.newField(fmt.Sprintf("Min Group Size: %d", min), "", 0, 0), c.newField(fmt.Sprintf("Preferred Group Size: %d", pref), "", 0, 0), c.newField(fmt.Sprintf("Max Group Size: %d", max), "", 0, 0))
 				p += 12
 				if v, _, ok := sshString(payload, p); ok {
-					root.add(newField("Prime: "+hexPreview([]byte(v), 64), "", 0, 0))
+					root.add(c.newField("Prime: "+hexPreview([]byte(v), 64), "", 0, 0))
 				}
 				break
 			}
 		}
 		hostKey, n, ok := sshString(payload, p)
 		if ok {
-			root.add(newField("Server Host Key: "+hexPreview([]byte(hostKey), 64), "", 0, 0))
+			root.add(c.newField("Server Host Key: "+hexPreview([]byte(hostKey), 64), "", 0, 0))
 			p = n
 			if f, n2, ok := sshString(payload, p); ok {
-				root.add(newField("Server Ephemeral Public Key: "+hexPreview([]byte(f), 64), "", 0, 0))
+				root.add(c.newField("Server Ephemeral Public Key: "+hexPreview([]byte(f), 64), "", 0, 0))
 				p = n2
 			}
 			if sig, _, ok := sshString(payload, p); ok {
-				root.add(newField("Signature: "+hexPreview([]byte(sig), 64), "", 0, 0))
+				root.add(c.newField("Signature: "+hexPreview([]byte(sig), 64), "", 0, 0))
 			}
 		}
 	case 32: // GEX_REQUEST_OLD
 		if p+4 <= len(payload) {
-			root.add(newField(fmt.Sprintf("Preferred Group Size: %d", be32(payload[p:p+4])), "", 0, 0))
+			root.add(c.newField(fmt.Sprintf("Preferred Group Size: %d", be32(payload[p:p+4])), "", 0, 0))
 		}
 	case 34: // GEX_INIT / GEX_REPLY handled above
 		if v, _, ok := sshString(payload, p); ok {
-			root.add(newField("Client Ephemeral Public Key: "+hexPreview([]byte(v), 64), "", 0, 0))
+			root.add(c.newField("Client Ephemeral Public Key: "+hexPreview([]byte(v), 64), "", 0, 0))
 		}
 	case 36: // GEX_REQUEST
 		if p+12 <= len(payload) {
-			root.add(newField(fmt.Sprintf("Min Group Size: %d", be32(payload[p:p+4])), "", 0, 0), newField(fmt.Sprintf("Preferred Group Size: %d", be32(payload[p+4:p+8])), "", 0, 0), newField(fmt.Sprintf("Max Group Size: %d", be32(payload[p+8:p+12])), "", 0, 0))
+			root.add(c.newField(fmt.Sprintf("Min Group Size: %d", be32(payload[p:p+4])), "", 0, 0), c.newField(fmt.Sprintf("Preferred Group Size: %d", be32(payload[p+4:p+8])), "", 0, 0), c.newField(fmt.Sprintf("Max Group Size: %d", be32(payload[p+8:p+12])), "", 0, 0))
 		}
 	case 50: // USERAUTH_REQUEST
 		user, n, ok := sshString(payload, p)
 		if ok {
-			root.add(newField("User Name: "+user, "", 0, 0))
+			root.add(c.newField("User Name: "+user, "", 0, 0))
 			p = n
 			svc, n2, ok := sshString(payload, p)
 			if ok {
-				root.add(newField("Service: "+svc, "", 0, 0))
+				root.add(c.newField("Service: "+svc, "", 0, 0))
 				p = n2
 				method, n3, ok := sshString(payload, p)
 				if ok {
-					root.add(newField("Method: "+method, "", 0, 0))
+					root.add(c.newField("Method: "+method, "", 0, 0))
 					p = n3
 					info = fmt.Sprintf("SSH USERAUTH_REQUEST user=%s method=%s", user, method)
 					switch method {
 					case "password":
 						if p < len(payload) {
-							root.add(newField(fmt.Sprintf("Change Password: %d", payload[p]), "", 0, 0))
+							root.add(c.newField(fmt.Sprintf("Change Password: %d", payload[p]), "", 0, 0))
 							p++
 							if pw, _, ok := sshString(payload, p); ok {
-								root.add(newField("Password: "+shorten(pw, 32), "", 0, 0))
+								root.add(c.newField("Password: "+shorten(pw, 32), "", 0, 0))
 							}
 						}
 					case "publickey":
 						if p < len(payload) {
-							root.add(newField(fmt.Sprintf("Has Signature: %d", payload[p]), "", 0, 0))
+							root.add(c.newField(fmt.Sprintf("Has Signature: %d", payload[p]), "", 0, 0))
 							p++
 						}
 						if alg, _, ok := sshString(payload, p); ok {
-							root.add(newField("Public Key Algorithm: "+alg, "", 0, 0))
+							root.add(c.newField("Public Key Algorithm: "+alg, "", 0, 0))
 						}
 					}
 				}
@@ -2581,119 +2581,119 @@ func (c *ctx) dissectSSH(b []byte, base int) bool {
 		}
 	case 51: // USERAUTH_FAILURE
 		if list, n, ok := sshNameList(payload, p); ok {
-			root.add(newField("Authentications That Can Continue: "+list, "", 0, 0))
+			root.add(c.newField("Authentications That Can Continue: "+list, "", 0, 0))
 			p = n
 			if p < len(payload) {
-				root.add(newField(fmt.Sprintf("Partial Success: %d", payload[p]), "", 0, 0))
+				root.add(c.newField(fmt.Sprintf("Partial Success: %d", payload[p]), "", 0, 0))
 			}
 		}
 	case 52:
 		info = "SSH USERAUTH_SUCCESS"
 	case 53: // BANNER
 		if msg, n, ok := sshString(payload, p); ok {
-			root.add(newField("Message: "+shorten(msg, 160), "", 0, 0))
+			root.add(c.newField("Message: "+shorten(msg, 160), "", 0, 0))
 			p = n
 			if lang, _, ok := sshString(payload, p); ok {
-				root.add(newField("Language: "+lang, "", 0, 0))
+				root.add(c.newField("Language: "+lang, "", 0, 0))
 			}
 		}
 	case 60: // PK_OK
 		if alg, n, ok := sshString(payload, p); ok {
-			root.add(newField("Public Key Algorithm: "+alg, "", 0, 0))
+			root.add(c.newField("Public Key Algorithm: "+alg, "", 0, 0))
 			p = n
 			if blob, _, ok := sshString(payload, p); ok {
-				root.add(newField("Public Key: "+hexPreview([]byte(blob), 48), "", 0, 0))
+				root.add(c.newField("Public Key: "+hexPreview([]byte(blob), 48), "", 0, 0))
 			}
 		}
 	case 80: // GLOBAL_REQUEST
 		if req, n, ok := sshString(payload, p); ok {
-			root.add(newField("Request Name: "+req, "", 0, 0))
+			root.add(c.newField("Request Name: "+req, "", 0, 0))
 			p = n
 			if p < len(payload) {
-				root.add(newField(fmt.Sprintf("Want Reply: %d", payload[p]), "", 0, 0))
+				root.add(c.newField(fmt.Sprintf("Want Reply: %d", payload[p]), "", 0, 0))
 				p++
 			}
 			if p < len(payload) {
-				root.add(newField("Request Data: "+hexPreview(payload[p:], 64), "", 0, 0))
+				root.add(c.newField("Request Data: "+hexPreview(payload[p:], 64), "", 0, 0))
 			}
 			info += " " + req
 		}
 	case 81, 82:
 		if len(payload) > 1 {
-			root.add(newField("Response Data: "+hexPreview(payload[1:], 64), "", 0, 0))
+			root.add(c.newField("Response Data: "+hexPreview(payload[1:], 64), "", 0, 0))
 		}
 	case 90: // CHANNEL_OPEN
 		if typ, n, ok := sshString(payload, p); ok {
-			root.add(newField("Channel Type: "+typ, "", 0, 0))
+			root.add(c.newField("Channel Type: "+typ, "", 0, 0))
 			p = n
 			if p+12 <= len(payload) {
-				root.add(newField(fmt.Sprintf("Sender Channel: %d", be32(payload[p:p+4])), "", 0, 0), newField(fmt.Sprintf("Initial Window Size: %d", be32(payload[p+4:p+8])), "", 0, 0), newField(fmt.Sprintf("Maximum Packet Size: %d", be32(payload[p+8:p+12])), "", 0, 0))
+				root.add(c.newField(fmt.Sprintf("Sender Channel: %d", be32(payload[p:p+4])), "", 0, 0), c.newField(fmt.Sprintf("Initial Window Size: %d", be32(payload[p+4:p+8])), "", 0, 0), c.newField(fmt.Sprintf("Maximum Packet Size: %d", be32(payload[p+8:p+12])), "", 0, 0))
 			}
 			info += " " + typ
 		}
 	case 91: // OPEN_CONFIRMATION
 		if p+16 <= len(payload) {
-			root.add(newField(fmt.Sprintf("Recipient Channel: %d", be32(payload[p:p+4])), "", 0, 0), newField(fmt.Sprintf("Sender Channel: %d", be32(payload[p+4:p+8])), "", 0, 0), newField(fmt.Sprintf("Initial Window Size: %d", be32(payload[p+8:p+12])), "", 0, 0), newField(fmt.Sprintf("Maximum Packet Size: %d", be32(payload[p+12:p+16])), "", 0, 0))
+			root.add(c.newField(fmt.Sprintf("Recipient Channel: %d", be32(payload[p:p+4])), "", 0, 0), c.newField(fmt.Sprintf("Sender Channel: %d", be32(payload[p+4:p+8])), "", 0, 0), c.newField(fmt.Sprintf("Initial Window Size: %d", be32(payload[p+8:p+12])), "", 0, 0), c.newField(fmt.Sprintf("Maximum Packet Size: %d", be32(payload[p+12:p+16])), "", 0, 0))
 		}
 	case 92: // OPEN_FAILURE
 		if p+4 <= len(payload) {
-			root.add(newField(fmt.Sprintf("Recipient Channel: %d", be32(payload[p:p+4])), "", 0, 0))
+			root.add(c.newField(fmt.Sprintf("Recipient Channel: %d", be32(payload[p:p+4])), "", 0, 0))
 			p += 4
 			if p+4 <= len(payload) {
-				root.add(newField(fmt.Sprintf("Reason Code: %d", be32(payload[p:p+4])), "", 0, 0))
+				root.add(c.newField(fmt.Sprintf("Reason Code: %d", be32(payload[p:p+4])), "", 0, 0))
 				p += 4
 				if desc, n, ok := sshString(payload, p); ok {
-					root.add(newField("Description: "+desc, "", 0, 0))
+					root.add(c.newField("Description: "+desc, "", 0, 0))
 					p = n
 					if lang, _, ok := sshString(payload, p); ok {
-						root.add(newField("Language: "+lang, "", 0, 0))
+						root.add(c.newField("Language: "+lang, "", 0, 0))
 					}
 				}
 			}
 		}
 	case 93: // WINDOW_ADJUST
 		if p+8 <= len(payload) {
-			root.add(newField(fmt.Sprintf("Recipient Channel: %d", be32(payload[p:p+4])), "", 0, 0), newField(fmt.Sprintf("Bytes to Add: %d", be32(payload[p+4:p+8])), "", 0, 0))
+			root.add(c.newField(fmt.Sprintf("Recipient Channel: %d", be32(payload[p:p+4])), "", 0, 0), c.newField(fmt.Sprintf("Bytes to Add: %d", be32(payload[p+4:p+8])), "", 0, 0))
 		}
 	case 94: // DATA
 		if p+4 <= len(payload) {
-			root.add(newField(fmt.Sprintf("Recipient Channel: %d", be32(payload[p:p+4])), "", 0, 0))
+			root.add(c.newField(fmt.Sprintf("Recipient Channel: %d", be32(payload[p:p+4])), "", 0, 0))
 			p += 4
 			if data, _, ok := sshString(payload, p); ok {
-				root.add(newField(fmt.Sprintf("Data (%d bytes): %s", len(data), hexPreview([]byte(data), 64)), "", 0, 0))
+				root.add(c.newField(fmt.Sprintf("Data (%d bytes): %s", len(data), hexPreview([]byte(data), 64)), "", 0, 0))
 			}
 		}
 	case 95: // EXTENDED_DATA
 		if p+8 <= len(payload) {
-			root.add(newField(fmt.Sprintf("Recipient Channel: %d", be32(payload[p:p+4])), "", 0, 0), newField(fmt.Sprintf("Data Type Code: %d", be32(payload[p+4:p+8])), "", 0, 0))
+			root.add(c.newField(fmt.Sprintf("Recipient Channel: %d", be32(payload[p:p+4])), "", 0, 0), c.newField(fmt.Sprintf("Data Type Code: %d", be32(payload[p+4:p+8])), "", 0, 0))
 			p += 8
 			if data, _, ok := sshString(payload, p); ok {
-				root.add(newField(fmt.Sprintf("Data (%d bytes): %s", len(data), hexPreview([]byte(data), 64)), "", 0, 0))
+				root.add(c.newField(fmt.Sprintf("Data (%d bytes): %s", len(data), hexPreview([]byte(data), 64)), "", 0, 0))
 			}
 		}
 	case 96, 97, 98:
 		if code == 98 {
 			if p+4 <= len(payload) {
-				root.add(newField(fmt.Sprintf("Recipient Channel: %d", be32(payload[p:p+4])), "", 0, 0))
+				root.add(c.newField(fmt.Sprintf("Recipient Channel: %d", be32(payload[p:p+4])), "", 0, 0))
 				p += 4
 				if req, n, ok := sshString(payload, p); ok {
-					root.add(newField("Request Type: "+req, "", 0, 0))
+					root.add(c.newField("Request Type: "+req, "", 0, 0))
 					p = n
 					if p < len(payload) {
-						root.add(newField(fmt.Sprintf("Want Reply: %d", payload[p]), "", 0, 0))
+						root.add(c.newField(fmt.Sprintf("Want Reply: %d", payload[p]), "", 0, 0))
 						p++
 					}
 					if p < len(payload) {
-						root.add(newField("Request Data: "+hexPreview(payload[p:], 64), "", 0, 0))
+						root.add(c.newField("Request Data: "+hexPreview(payload[p:], 64), "", 0, 0))
 					}
 				}
 			}
 		} else if p+4 <= len(payload) {
-			root.add(newField(fmt.Sprintf("Recipient Channel: %d", be32(payload[p:p+4])), "", 0, 0))
+			root.add(c.newField(fmt.Sprintf("Recipient Channel: %d", be32(payload[p:p+4])), "", 0, 0))
 		}
 	}
 	if name == fmt.Sprintf("Unknown/Encrypted Message %d", code) {
-		root.add(newField("Payload: "+hexPreview(payload, 96), "", base+5, len(payload)))
+		root.add(c.newField("Payload: "+hexPreview(payload, 96), "", base+5, len(payload)))
 		info = "SSH encrypted/unknown payload"
 	}
 	c.addRoot(root)
@@ -2738,9 +2738,9 @@ func (c *ctx) dissectHTTP2(b []byte, base int) bool {
 	}
 	c.addLayer("http2")
 	c.proto = "http2"
-	root := newNode("HTTP/2", base, len(b))
+	root := c.newNode("HTTP/2", base, len(b))
 	if hasPreface {
-		root.add(newField("Client Connection Preface", "", base, len(http2Preface)))
+		root.add(c.newField("Client Connection Preface", "", base, len(http2Preface)))
 	}
 	info := "HTTP2"
 	for i := 0; i < 128 && off+9 <= len(b); i++ {
@@ -2755,53 +2755,53 @@ func (c *ctx) dissectHTTP2(b []byte, base int) bool {
 		if int(typ) < len(http2Types) {
 			name = http2Types[typ]
 		}
-		f := newField(fmt.Sprintf("%s (stream %d, length %d)", name, stream, length), "", base+off, 9+length)
+		f := c.newField(fmt.Sprintf("%s (stream %d, length %d)", name, stream, length), "", base+off, 9+length)
 		f.add(
-			newField(fmt.Sprintf("Length: %d", length), "", base+off, 3),
-			newField(fmt.Sprintf("Type: %s (%d)", name, typ), "", base+off+3, 1),
-			newField(fmt.Sprintf("Flags: 0x%02x", flags), "", base+off+4, 1),
-			newField(fmt.Sprintf("Stream Identifier: %d", stream), "", base+off+5, 4),
+			c.newField(fmt.Sprintf("Length: %d", length), "", base+off, 3),
+			c.newField(fmt.Sprintf("Type: %s (%d)", name, typ), "", base+off+3, 1),
+			c.newField(fmt.Sprintf("Flags: 0x%02x", flags), "", base+off+4, 1),
+			c.newField(fmt.Sprintf("Stream Identifier: %d", stream), "", base+off+5, 4),
 		)
 		body := b[off+9 : off+9+length]
 		consumed := 0
 		switch typ {
 		case 4: // SETTINGS
 			if flags&1 != 0 {
-				f.add(newField("ACK: 1", "", base+off+4, 1))
+				f.add(c.newField("ACK: 1", "", base+off+4, 1))
 			}
 			for p := 0; p+6 <= len(body); p += 6 {
 				id := be16(body[p : p+2])
 				val := be32(body[p+2 : p+6])
-				f.add(newField(fmt.Sprintf("%s: %d", http2SettingName(id), val), "", base+off+9+p, 6))
+				f.add(c.newField(fmt.Sprintf("%s: %d", http2SettingName(id), val), "", base+off+9+p, 6))
 			}
 		case 6: // PING
 			if len(body) == 8 {
-				f.add(newField("Opaque Data: "+hexPreview(body, 8), "", base+off+9, 8))
+				f.add(c.newField("Opaque Data: "+hexPreview(body, 8), "", base+off+9, 8))
 			}
 			if flags&1 != 0 {
-				f.add(newField("ACK: 1", "", base+off+4, 1))
+				f.add(c.newField("ACK: 1", "", base+off+4, 1))
 			}
 		case 7: // GOAWAY
 			if len(body) >= 8 {
-				f.add(newField(fmt.Sprintf("Last Stream ID: %d", be32(body[0:4])&0x7fffffff), "", base+off+9, 4))
+				f.add(c.newField(fmt.Sprintf("Last Stream ID: %d", be32(body[0:4])&0x7fffffff), "", base+off+9, 4))
 				code := be32(body[4:8])
-				f.add(newField(fmt.Sprintf("Error Code: %s (%d)", http2ErrorName(code), code), "", base+off+9+4, 4))
+				f.add(c.newField(fmt.Sprintf("Error Code: %s (%d)", http2ErrorName(code), code), "", base+off+9+4, 4))
 				if len(body) > 8 {
-					f.add(newField("Debug Data: "+printablePreview(body[8:], 160), "", base+off+9+8, len(body)-8))
+					f.add(c.newField("Debug Data: "+printablePreview(body[8:], 160), "", base+off+9+8, len(body)-8))
 				}
 			}
 		case 3: // RST_STREAM
 			if len(body) >= 4 {
 				code := be32(body[0:4])
-				f.add(newField(fmt.Sprintf("Error Code: %s (%d)", http2ErrorName(code), code), "", base+off+9, 4))
+				f.add(c.newField(fmt.Sprintf("Error Code: %s (%d)", http2ErrorName(code), code), "", base+off+9, 4))
 			}
 		case 8: // WINDOW_UPDATE
 			if len(body) >= 4 {
-				f.add(newField(fmt.Sprintf("Window Size Increment: %d", be32(body[0:4])&0x7fffffff), "", base+off+9, 4))
+				f.add(c.newField(fmt.Sprintf("Window Size Increment: %d", be32(body[0:4])&0x7fffffff), "", base+off+9, 4))
 			}
 		case 2: // PRIORITY
 			if len(body) >= 5 {
-				f.add(newField(fmt.Sprintf("Exclusive: %d", body[0]>>7), "", base+off+9, 1), newField(fmt.Sprintf("Depends On: %d", be32(body[0:4])&0x7fffffff), "", base+off+9, 4), newField(fmt.Sprintf("Weight: %d", int(body[4])+1), "", base+off+9+4, 1))
+				f.add(c.newField(fmt.Sprintf("Exclusive: %d", body[0]>>7), "", base+off+9, 1), c.newField(fmt.Sprintf("Depends On: %d", be32(body[0:4])&0x7fffffff), "", base+off+9, 4), c.newField(fmt.Sprintf("Weight: %d", int(body[4])+1), "", base+off+9+4, 1))
 			}
 		case 0, 1, 9, 5: // DATA / HEADERS / CONTINUATION / PUSH_PROMISE
 			hdrOff := 0
@@ -2815,7 +2815,7 @@ func (c *ctx) dissectHTTP2(b []byte, base int) bool {
 					}
 				}
 				if flags&0x20 != 0 && len(block) >= 5 {
-					f.add(newField(fmt.Sprintf("Exclusive: %d", block[0]>>7), "", base+off+9+hdrOff, 1), newField(fmt.Sprintf("Stream Dependency: %d", be32(block[0:4])&0x7fffffff), "", base+off+9+hdrOff, 4), newField(fmt.Sprintf("Weight: %d", int(block[4])+1), "", base+off+9+hdrOff+4, 1))
+					f.add(c.newField(fmt.Sprintf("Exclusive: %d", block[0]>>7), "", base+off+9+hdrOff, 1), c.newField(fmt.Sprintf("Stream Dependency: %d", be32(block[0:4])&0x7fffffff), "", base+off+9+hdrOff, 4), c.newField(fmt.Sprintf("Weight: %d", int(block[4])+1), "", base+off+9+hdrOff+4, 1))
 					block = block[5:]
 					hdrOff += 5
 				}
@@ -2823,12 +2823,12 @@ func (c *ctx) dissectHTTP2(b []byte, base int) bool {
 				if len(block) < 4 {
 					break
 				}
-				f.add(newField(fmt.Sprintf("Promised Stream ID: %d", be32(block[0:4])&0x7fffffff), "", base+off+9, 4))
+				f.add(c.newField(fmt.Sprintf("Promised Stream ID: %d", be32(block[0:4])&0x7fffffff), "", base+off+9, 4))
 				block = block[4:]
 				hdrOff = 4
 			}
 			if typ == 0 || typ == 9 {
-				f.add(newField(fmt.Sprintf("Payload (%d bytes)", len(body)), printablePreview(body, 300), base+off+9, len(body)))
+				f.add(c.newField(fmt.Sprintf("Payload (%d bytes)", len(body)), printablePreview(body, 300), base+off+9, len(body)))
 				break
 			}
 			// HEADERS may be followed by CONTINUATION frames on the same stream.
@@ -2841,19 +2841,19 @@ func (c *ctx) dissectHTTP2(b []byte, base int) bool {
 						break
 					}
 					block = append(block, b[q+9:q+9+cl]...)
-					f.add(newField(fmt.Sprintf("CONTINUATION (length %d)", cl), "", base+q, 9+cl))
+					f.add(c.newField(fmt.Sprintf("CONTINUATION (length %d)", cl), "", base+q, 9+cl))
 					q += 9 + cl
 				}
 				consumed = q - off
 			}
 			fields, err := flow.decodeHeaders(c, block, c.m.TCPSeq, base+off+9+hdrOff)
 			if err != nil {
-				f.add(newField("HPACK decode error: "+err.Error(), hexPreview(block, 64), base+off+9+hdrOff, len(block)))
+				f.add(c.newField("HPACK decode error: "+err.Error(), hexPreview(block, 64), base+off+9+hdrOff, len(block)))
 				break
 			}
-			hn := newField(fmt.Sprintf("Decoded Headers (%d)", len(fields)), "", base+off+9+hdrOff, len(block))
+			hn := c.newField(fmt.Sprintf("Decoded Headers (%d)", len(fields)), "", base+off+9+hdrOff, len(block))
 			for _, hf := range fields {
-				hn.add(newField(hf.Name+": "+hf.Value, "", 0, 0))
+				hn.add(c.newField(hf.Name+": "+hf.Value, "", 0, 0))
 				if hf.Name == ":method" || hf.Name == ":path" || hf.Name == ":status" || hf.Name == ":authority" {
 					if info == "HTTP2" {
 						info += " " + hf.Name + "=" + hf.Value
@@ -2937,21 +2937,21 @@ func (c *ctx) dissectQUIC(b []byte, base int) bool {
 	version := be32(b[1:5])
 	c.addLayer("quic")
 	c.proto = "quic"
-	root := newNode("QUIC", base, len(b))
+	root := c.newNode("QUIC", base, len(b))
 	root.add(
-		newField(fmt.Sprintf("Header Form: %s", map[bool]string{true: "long", false: "short"}[long]), "", base, 1),
-		newField(fmt.Sprintf("Fixed Bit: %d", (first>>6)&1), "", base, 1),
+		c.newField(fmt.Sprintf("Header Form: %s", map[bool]string{true: "long", false: "short"}[long]), "", base, 1),
+		c.newField(fmt.Sprintf("Fixed Bit: %d", (first>>6)&1), "", base, 1),
 	)
 	info := "QUIC"
 	flow := tlsFlowFor(c)
 
 	if long {
 		root.Label = fmt.Sprintf("QUIC (%s)", quicVersionName(version))
-		root.add(newField(fmt.Sprintf("Version: %s (0x%08x)", quicVersionName(version), version), "", base+1, 4))
+		root.add(c.newField(fmt.Sprintf("Version: %s (0x%08x)", quicVersionName(version), version), "", base+1, 4))
 		info += " " + quicVersionName(version)
 		pktType := (first >> 4) & 0x3
 		typeName := []string{"Initial", "0-RTT", "Handshake", "Retry"}[pktType]
-		root.add(newField("Packet Type: "+typeName, "", base, 1))
+		root.add(c.newField("Packet Type: "+typeName, "", base, 1))
 		off := 5
 		if off >= len(b) {
 			return true
@@ -2974,21 +2974,21 @@ func (c *ctx) dissectQUIC(b []byte, base int) bool {
 		scid := b[off : off+scidLen]
 		off += scidLen
 		root.add(
-			newField("Destination Connection ID: "+hexPreview(dcid, 20), "", base+6, dcidLen),
-			newField("Source Connection ID: "+hexPreview(scid, 20), "", base+7+dcidLen, scidLen),
+			c.newField("Destination Connection ID: "+hexPreview(dcid, 20), "", base+6, dcidLen),
+			c.newField("Source Connection ID: "+hexPreview(scid, 20), "", base+7+dcidLen, scidLen),
 		)
 		if pktType == 0 && off < len(b) {
 			tokenLen, n, ok := quicVarint(b, off)
 			if ok {
-				root.add(newField(fmt.Sprintf("Token Length: %d", tokenLen), "", base+off, n))
+				root.add(c.newField(fmt.Sprintf("Token Length: %d", tokenLen), "", base+off, n))
 				tokenOff := n
 				off = n + int(tokenLen)
 				if tokenLen > 0 && tokenOff+int(tokenLen) <= len(b) {
-					root.add(newField("Token: "+hexPreview(b[tokenOff:tokenOff+int(tokenLen)], 32), "", base+tokenOff, int(tokenLen)))
+					root.add(c.newField("Token: "+hexPreview(b[tokenOff:tokenOff+int(tokenLen)], 32), "", base+tokenOff, int(tokenLen)))
 				}
 				if off < len(b) {
 					if plen, n2, ok := quicVarint(b, off); ok {
-						root.add(newField(fmt.Sprintf("Length: %d", plen), "", base+off, n2))
+						root.add(c.newField(fmt.Sprintf("Length: %d", plen), "", base+off, n2))
 						pnOffset := n2
 						if c.quicDecryptInitial(b, base, root, flow, off, dcid, scid, version, plen, pnOffset, first) {
 							info += " decrypted"
@@ -2999,7 +2999,7 @@ func (c *ctx) dissectQUIC(b []byte, base int) bool {
 		}
 		if pktType != 0 && off < len(b) {
 			if plen, n2, ok := quicVarint(b, off); ok {
-				root.add(newField(fmt.Sprintf("Length: %d", plen), "", base+off, n2))
+				root.add(c.newField(fmt.Sprintf("Length: %d", plen), "", base+off, n2))
 				random := flow.randomCopy()
 				if len(random) > 0 {
 					labels := []string{"CLIENT_HANDSHAKE_TRAFFIC_SECRET", "SERVER_HANDSHAKE_TRAFFIC_SECRET"}
@@ -3012,7 +3012,7 @@ func (c *ctx) dissectQUIC(b []byte, base int) bool {
 							secs = append(secs, quicSecret{label, v})
 						}
 					}
-					if c.quicDecryptWithSecrets(b, base, root, flow, n2, n2+int(plen), first, true, secs) {
+					if !c.noFields && c.quicDecryptWithSecrets(b, base, root, flow, n2, n2+int(plen), first, true, secs) {
 						info += " decrypted"
 					}
 				}
@@ -3028,7 +3028,7 @@ func (c *ctx) dissectQUIC(b []byte, base int) bool {
 		dcidLen := 8
 		if len(b) >= 1+dcidLen+4+16 {
 			dcid := b[1 : 1+dcidLen]
-			root.add(newField("Destination Connection ID: "+hexPreview(dcid, 20), "", base+1, dcidLen))
+			root.add(c.newField("Destination Connection ID: "+hexPreview(dcid, 20), "", base+1, dcidLen))
 			random := flow.randomCopy()
 			if len(random) > 0 {
 				var secs []quicSecret
@@ -3037,7 +3037,7 @@ func (c *ctx) dissectQUIC(b []byte, base int) bool {
 						secs = append(secs, quicSecret{label, v})
 					}
 				}
-				if c.quicDecryptWithSecrets(b, base, root, flow, 1+dcidLen, len(b), first, false, secs) {
+				if !c.noFields && c.quicDecryptWithSecrets(b, base, root, flow, 1+dcidLen, len(b), first, false, secs) {
 					info += " decrypted"
 				}
 			}
@@ -3058,17 +3058,17 @@ func (c *ctx) dissectVXLAN(b []byte, base int) bool {
 	vni := be32(b[4:8]) >> 8
 	c.addLayer("vxlan")
 	c.proto = "vxlan"
-	root := newNode(fmt.Sprintf("Virtual eXtensible LAN, VNI: %d", vni), base, len(b))
+	root := c.newNode(fmt.Sprintf("Virtual eXtensible LAN, VNI: %d", vni), base, len(b))
 	root.add(
-		newField(fmt.Sprintf("Flags: 0x%02x", b[0]), "", base, 1),
-		newField(fmt.Sprintf("VXLAN Network Identifier: %d", vni), "", base+4, 4),
+		c.newField(fmt.Sprintf("Flags: 0x%02x", b[0]), "", base, 1),
+		c.newField(fmt.Sprintf("VXLAN Network Identifier: %d", vni), "", base+4, 4),
 	)
 	inner := b[8:]
 	info := fmt.Sprintf("VXLAN VNI %d", vni)
 	if len(inner) > 0 && c.depth < maxTunnelDepth {
-		res := decode(inner, packet.LinkEthernet, len(inner), c.depth+1)
+		res := decode(inner, packet.LinkEthernet, len(inner), c.depth+1, c.noFields)
 		if len(res.Fields) > 0 {
-			group := newNode("Inner frame", base+8, len(inner))
+			group := c.newNode("Inner frame", base+8, len(inner))
 			group.Children = shiftFields(res.Fields, base+8)
 			innerRes := res
 			root.add(group)
@@ -3078,7 +3078,7 @@ func (c *ctx) dissectVXLAN(b []byte, base int) bool {
 			}
 		}
 	} else if len(inner) > 0 {
-		root.add(newField("Inner frame (tunnel depth limit)", "", base+8, len(inner)))
+		root.add(c.newField("Inner frame (tunnel depth limit)", "", base+8, len(inner)))
 	}
 	c.addRoot(root)
 	c.appInfo = shorten(info, 120)

@@ -54,45 +54,45 @@ func (c *ctx) dissectIGMP(b []byte, base int) {
 	c.addLayer("igmp")
 	c.proto = "igmp"
 	if len(b) < 8 {
-		c.addRoot(newNode("Internet Group Management Protocol (truncated)", base, len(b)))
+		c.addRoot(c.newNode("Internet Group Management Protocol (truncated)", base, len(b)))
 		return
 	}
 	typ := b[0]
 	name := igmpTypeName(typ)
 	group := netip.AddrFrom4([4]byte{b[4], b[5], b[6], b[7]}).String()
-	root := newNode("Internet Group Management Protocol ("+name+")", base, len(b))
+	root := c.newNode("Internet Group Management Protocol ("+name+")", base, len(b))
 	root.add(
-		newField(fmt.Sprintf("Type: %s (0x%02x)", name, typ), "", base, 1),
-		newField("Checksum: "+fmt.Sprintf("0x%04x", be16(b[2:4])), "", base+2, 2),
+		c.newField(fmt.Sprintf("Type: %s (0x%02x)", name, typ), "", base, 1),
+		c.newField("Checksum: "+fmt.Sprintf("0x%04x", be16(b[2:4])), "", base+2, 2),
 	)
 	info := name + " " + group
 
 	switch typ {
 	case 0x11: // query
-		root.add(newField("Max Response Time: "+igmpMaxResp(b[1]), "", base+1, 1))
-		root.add(newField("Group Address: "+group, "", base+4, 4))
+		root.add(c.newField("Max Response Time: "+igmpMaxResp(b[1]), "", base+1, 1))
+		root.add(c.newField("Group Address: "+group, "", base+4, 4))
 		if len(b) >= 12 {
 			nsrc := int(be16(b[10:12]))
 			root.add(
-				newField(fmt.Sprintf("Reserved/Suppress: 0x%02x", b[8]), "", base+8, 1),
-				newField(fmt.Sprintf("QQIC: %d", b[9]), "", base+9, 1),
-				newField(fmt.Sprintf("Number of Sources: %d", nsrc), "", base+10, 2),
+				c.newField(fmt.Sprintf("Reserved/Suppress: 0x%02x", b[8]), "", base+8, 1),
+				c.newField(fmt.Sprintf("QQIC: %d", b[9]), "", base+9, 1),
+				c.newField(fmt.Sprintf("Number of Sources: %d", nsrc), "", base+10, 2),
 			)
 			srcs := igmpSources(b, base, 12, nsrc)
 			for i, src := range srcs {
-				root.add(newField(fmt.Sprintf("Source %d: %s", i+1, src), "", base+12+i*4, 4))
+				root.add(c.newField(fmt.Sprintf("Source %d: %s", i+1, src), "", base+12+i*4, 4))
 			}
 			if nsrc > 0 {
 				info += fmt.Sprintf(" sources=%d", nsrc)
 			}
 		} else {
-			root.add(newField("Max Response Time: "+igmpMaxResp(b[1]), "", base+1, 1))
+			root.add(c.newField("Max Response Time: "+igmpMaxResp(b[1]), "", base+1, 1))
 		}
 	case 0x22: // v3 report
 		nrec := int(be16(b[6:8]))
 		root.add(
-			newField(fmt.Sprintf("Reserved: 0x%04x", be16(b[4:6])), "", base+4, 2),
-			newField(fmt.Sprintf("Number of Group Records: %d", nrec), "", base+6, 2),
+			c.newField(fmt.Sprintf("Reserved: 0x%04x", be16(b[4:6])), "", base+4, 2),
+			c.newField(fmt.Sprintf("Number of Group Records: %d", nrec), "", base+6, 2),
 		)
 		off := 8
 		for i := 0; i < nrec && off+8 <= len(b); i++ {
@@ -104,24 +104,24 @@ func (c *ctx) dissectIGMP(b []byte, base int) {
 			if rname == "" {
 				rname = fmt.Sprintf("Record Type %d", rtype)
 			}
-			f := newField(fmt.Sprintf("%s group=%s sources=%d", rname, grp, nsrc), "", base+off, 8+auxLen+nsrc*4)
+			f := c.newField(fmt.Sprintf("%s group=%s sources=%d", rname, grp, nsrc), "", base+off, 8+auxLen+nsrc*4)
 			f.add(
-				newField(fmt.Sprintf("Record Type: %s (%d)", rname, rtype), "", base+off, 1),
-				newField(fmt.Sprintf("Auxiliary Data Length: %d", auxLen), "", base+off+1, 1),
-				newField(fmt.Sprintf("Number of Sources: %d", nsrc), "", base+off+2, 2),
-				newField("Multicast Group: "+grp.String(), "", base+off+4, 4),
+				c.newField(fmt.Sprintf("Record Type: %s (%d)", rname, rtype), "", base+off, 1),
+				c.newField(fmt.Sprintf("Auxiliary Data Length: %d", auxLen), "", base+off+1, 1),
+				c.newField(fmt.Sprintf("Number of Sources: %d", nsrc), "", base+off+2, 2),
+				c.newField("Multicast Group: "+grp.String(), "", base+off+4, 4),
 			)
 			p := off + 8
 			if auxLen > 0 {
 				if p+auxLen > len(b) {
 					break
 				}
-				f.add(newField("Auxiliary Data: "+hexPreview(b[p:p+auxLen], 32), "", base+p, auxLen))
+				f.add(c.newField("Auxiliary Data: "+hexPreview(b[p:p+auxLen], 32), "", base+p, auxLen))
 				p += auxLen
 			}
 			for j := 0; j < nsrc && p+4 <= len(b); j++ {
 				src := netip.AddrFrom4([4]byte{b[p], b[p+1], b[p+2], b[p+3]})
-				f.add(newField(fmt.Sprintf("Source %d: %s", j+1, src), "", base+p, 4))
+				f.add(c.newField(fmt.Sprintf("Source %d: %s", j+1, src), "", base+p, 4))
 				p += 4
 			}
 			root.add(f)
@@ -130,8 +130,8 @@ func (c *ctx) dissectIGMP(b []byte, base int) {
 		info = fmt.Sprintf("IGMPv3 report records=%d", nrec)
 	default:
 		root.add(
-			newField("Max Response Time: "+igmpMaxResp(b[1]), "", base+1, 1),
-			newField("Group Address: "+group, "", base+4, 4),
+			c.newField("Max Response Time: "+igmpMaxResp(b[1]), "", base+1, 1),
+			c.newField("Group Address: "+group, "", base+4, 4),
 		)
 	}
 
@@ -142,7 +142,7 @@ func (c *ctx) dissectIGMP(b []byte, base int) {
 func (c *ctx) dissectMPLS(b []byte, base int) {
 	c.addLayer("mpls")
 	c.proto = "mpls"
-	root := newNode("MultiProtocol Label Switching Header", base, len(b))
+	root := c.newNode("MultiProtocol Label Switching Header", base, len(b))
 	off := 0
 	firstLabel := -1
 	for i := 0; i < 8 && off+4 <= len(b); i++ {
@@ -154,7 +154,7 @@ func (c *ctx) dissectMPLS(b []byte, base int) {
 		if firstLabel < 0 {
 			firstLabel = int(label)
 		}
-		root.add(newField(fmt.Sprintf("Label %d: %d, TC: %d, S: %d, TTL: %d", i, label, tc, bos, ttl), "", base+off, 4))
+		root.add(c.newField(fmt.Sprintf("Label %d: %d, TC: %d, S: %d, TTL: %d", i, label, tc, bos, ttl), "", base+off, 4))
 		off += 4
 		if bos == 1 {
 			break
@@ -184,11 +184,11 @@ func (c *ctx) addInnerFrame(b []byte, base int, label string) {
 		return
 	}
 	if c.depth >= maxTunnelDepth {
-		c.addRoot(newField(label+" (tunnel depth limit)", "", base, len(b)))
+		c.addRoot(c.newField(label+" (tunnel depth limit)", "", base, len(b)))
 		return
 	}
-	res := decode(b, packet.LinkEthernet, len(b), c.depth+1)
-	group := newNode(label, base, len(b))
+	res := decode(b, packet.LinkEthernet, len(b), c.depth+1, c.noFields)
+	group := c.newNode(label, base, len(b))
 	group.Children = shiftFields(res.Fields, base)
 	c.addRoot(group)
 }
@@ -197,7 +197,7 @@ func (c *ctx) dissectGRE(b []byte, base int) {
 	c.addLayer("gre")
 	c.proto = "gre"
 	if len(b) < 4 {
-		c.addRoot(newNode("Generic Routing Encapsulation (truncated)", base, len(b)))
+		c.addRoot(c.newNode("Generic Routing Encapsulation (truncated)", base, len(b)))
 		return
 	}
 	flags := be16(b[0:2])
@@ -216,11 +216,11 @@ func (c *ctx) dissectGRE(b []byte, base int) {
 	if off > len(b) {
 		off = len(b)
 	}
-	root := newNode("Generic Routing Encapsulation", base, len(b))
+	root := c.newNode("Generic Routing Encapsulation", base, len(b))
 	root.add(
-		newField(fmt.Sprintf("Flags: 0x%04x", flags), "", base, 2),
-		newField(fmt.Sprintf("Version: %d", version), "", base, 1),
-		newField(fmt.Sprintf("Protocol Type: %s (0x%04x)", etherTypeName(proto), proto), "", base+2, 2),
+		c.newField(fmt.Sprintf("Flags: 0x%04x", flags), "", base, 2),
+		c.newField(fmt.Sprintf("Version: %d", version), "", base, 1),
+		c.newField(fmt.Sprintf("Protocol Type: %s (0x%04x)", etherTypeName(proto), proto), "", base+2, 2),
 	)
 	c.addRoot(root)
 	if off < len(b) {
@@ -438,41 +438,41 @@ func (c *ctx) dissectDHCP(b []byte, base int) bool {
 
 	c.addLayer("dhcp")
 	c.proto = "dhcp"
-	root := newNode("Dynamic Host Configuration Protocol", base, len(b))
+	root := c.newNode("Dynamic Host Configuration Protocol", base, len(b))
 	root.add(
-		newField(fmt.Sprintf("Message type: %s", map[byte]string{1: "BOOTREQUEST", 2: "BOOTREPLY"}[b[0]]), "", base, 1),
-		newField("Hardware type: "+arpHwName(be16(b[1:3])), "", base+1, 2),
-		newField(fmt.Sprintf("Hardware address length: %d", b[2]), "", base+2, 1),
-		newField(fmt.Sprintf("Hops: %d", b[3]), "", base+3, 1),
-		newField(fmt.Sprintf("Transaction ID: 0x%08x", be32(b[4:8])), "", base+4, 4),
-		newField(fmt.Sprintf("Seconds elapsed: %d", be16(b[8:10])), "", base+8, 2),
-		newField(fmt.Sprintf("Flags: 0x%04x%s", be16(b[10:12]), func() string {
+		c.newField(fmt.Sprintf("Message type: %s", map[byte]string{1: "BOOTREQUEST", 2: "BOOTREPLY"}[b[0]]), "", base, 1),
+		c.newField("Hardware type: "+arpHwName(be16(b[1:3])), "", base+1, 2),
+		c.newField(fmt.Sprintf("Hardware address length: %d", b[2]), "", base+2, 1),
+		c.newField(fmt.Sprintf("Hops: %d", b[3]), "", base+3, 1),
+		c.newField(fmt.Sprintf("Transaction ID: 0x%08x", be32(b[4:8])), "", base+4, 4),
+		c.newField(fmt.Sprintf("Seconds elapsed: %d", be16(b[8:10])), "", base+8, 2),
+		c.newField(fmt.Sprintf("Flags: 0x%04x%s", be16(b[10:12]), func() string {
 			if be16(b[10:12])&0x8000 != 0 {
 				return " (broadcast)"
 			}
 			return ""
 		}()), "", base+10, 2),
-		newField("Client IP address: "+ip4String(be32(b[12:16])), "", base+12, 4),
-		newField("Your (client) IP address: "+ip4String(be32(b[16:20])), "", base+16, 4),
-		newField("Next server IP address: "+ip4String(be32(b[20:24])), "", base+20, 4),
-		newField("Relay agent IP address: "+ip4String(be32(b[24:28])), "", base+24, 4),
-		newField("Client MAC address: "+macString(b[28:34]), "", base+28, 6),
+		c.newField("Client IP address: "+ip4String(be32(b[12:16])), "", base+12, 4),
+		c.newField("Your (client) IP address: "+ip4String(be32(b[16:20])), "", base+16, 4),
+		c.newField("Next server IP address: "+ip4String(be32(b[20:24])), "", base+20, 4),
+		c.newField("Relay agent IP address: "+ip4String(be32(b[24:28])), "", base+24, 4),
+		c.newField("Client MAC address: "+macString(b[28:34]), "", base+28, 6),
 	)
 	if s := trimNul(b[44:108]); s != "" {
-		root.add(newField("Server host name: "+s, "", base+44, 64))
+		root.add(c.newField("Server host name: "+s, "", base+44, 64))
 	}
 	if f := trimNul(b[108:236]); f != "" {
-		root.add(newField("Boot file name: "+f, "", base+108, 128))
+		root.add(c.newField("Boot file name: "+f, "", base+108, 128))
 	}
 	magic := be32(b[236:240])
-	root.add(newField(fmt.Sprintf("Magic Cookie: 0x%08x", magic), "", base+236, 4))
+	root.add(c.newField(fmt.Sprintf("Magic Cookie: 0x%08x", magic), "", base+236, 4))
 
 	var parseOptions func(opts []byte, optBase int, section string)
 	parseOptions = func(opts []byte, optBase int, section string) {
 		for off := 0; off < len(opts); {
 			opt := opts[off]
 			if opt == 255 {
-				root.add(newField("End Option", "", optBase+off, 1))
+				root.add(c.newField("End Option", "", optBase+off, 1))
 				break
 			}
 			if opt == 0 {
@@ -492,7 +492,7 @@ func (c *ctx) dissectDHCP(b []byte, base int) bool {
 			if section != "" {
 				label = section + ": " + label
 			}
-			root.add(newField(label, "", optBase+off, 2+l))
+			root.add(c.newField(label, "", optBase+off, 2+l))
 			switch opt {
 			case 53:
 				if len(v) > 0 {

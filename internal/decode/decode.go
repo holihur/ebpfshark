@@ -21,6 +21,7 @@ type Field struct {
 	Length   int      `json:"length"`
 	Severity string   `json:"severity,omitempty"` // "", "note", "warn", "error"
 	Children []*Field `json:"children,omitempty"`
+	discard  bool
 }
 
 // Result is the output of dissecting one frame.
@@ -42,18 +43,28 @@ type ctx struct {
 
 	proto   string // highest-level application protocol (HTTP, DNS, ...)
 	appInfo string // info string provided by the highest-level dissector
+
+	noFields bool
+	discard  *Field
 }
 
 // Decode dissects data. linkType selects the outermost decoder and wireLen is
 // the original on-wire length (which may exceed len(data) when truncated).
 func Decode(data []byte, linkType packet.LinkType, wireLen int) Result {
-	return decode(data, linkType, wireLen, 0)
+	return decode(data, linkType, wireLen, 0, false)
+}
+
+// DecodeSummary parses only the summary/meta needed by the packet list. It
+// skips building the detail field tree, which is generated later on demand.
+func DecodeSummary(data []byte, linkType packet.LinkType, wireLen int) (packet.Summary, packet.Meta) {
+	res := decode(data, linkType, wireLen, 0, true)
+	return res.Summary, res.Meta
 }
 
 const maxTunnelDepth = 4
 
-func decode(data []byte, linkType packet.LinkType, wireLen, depth int) Result {
-	c := &ctx{data: data, wireLen: wireLen, linkType: linkType, depth: depth}
+func decode(data []byte, linkType packet.LinkType, wireLen, depth int, noFields bool) Result {
+	c := &ctx{data: data, wireLen: wireLen, linkType: linkType, depth: depth, noFields: noFields, discard: &Field{discard: true}}
 	c.m.ID = 0
 	c.m.FrameLen = wireLen
 	c.m.CapLen = len(data)
@@ -71,7 +82,7 @@ func decode(data []byte, linkType packet.LinkType, wireLen, depth int) Result {
 		c.dissectEthernet()
 	}
 
-	if len(c.roots) == 0 {
+	if len(c.roots) == 0 && !c.noFields {
 		c.roots = append(c.roots, &Field{
 			Label:    fmt.Sprintf("Frame (%d bytes)", len(data)),
 			Value:    hexPreview(data, 32),
@@ -204,9 +215,23 @@ func (c *ctx) addLayer(name string) {
 }
 
 func (c *ctx) addRoot(f *Field) {
-	if f != nil {
+	if f != nil && !f.discard {
 		c.roots = append(c.roots, f)
 	}
+}
+
+func (c *ctx) newField(label, value string, off, length int) *Field {
+	if c != nil && c.noFields {
+		return c.discard
+	}
+	return newField(label, value, off, length)
+}
+
+func (c *ctx) newNode(label string, off, length int) *Field {
+	if c != nil && c.noFields {
+		return c.discard
+	}
+	return newNode(label, off, length)
 }
 
 var fieldPool = sync.Pool{New: func() any { return &Field{} }}
@@ -243,6 +268,9 @@ func ReleaseFields(fields []*Field) {
 }
 
 func (f *Field) add(children ...*Field) *Field {
+	if f == nil || f.discard {
+		return f
+	}
 	f.Children = append(f.Children, children...)
 	return f
 }

@@ -69,18 +69,18 @@ func (c *ctx) dissectEthernet() {
 		return
 	}
 	if len(c.data) < 14 {
-		c.addRoot(newNode(fmt.Sprintf("Ethernet II (truncated, %d bytes)", len(c.data)), 0, len(c.data)))
+		c.addRoot(c.newNode(fmt.Sprintf("Ethernet II (truncated, %d bytes)", len(c.data)), 0, len(c.data)))
 		return
 	}
 	dst := macString(c.data[0:6])
 	src := macString(c.data[6:12])
 	et := be16(c.data[12:14])
 
-	root := newNode(fmt.Sprintf("Ethernet II, Src: %s, Dst: %s", src, dst), 0, 14)
+	root := c.newNode(fmt.Sprintf("Ethernet II, Src: %s, Dst: %s", src, dst), 0, 14)
 	root.add(
-		newField("Destination: "+dst, "", 0, 6),
-		newField("Source: "+src, "", 6, 6),
-		newField(fmt.Sprintf("Type: %s (0x%04x)", etherTypeName(et), et), "", 12, 2),
+		c.newField("Destination: "+dst, "", 0, 6),
+		c.newField("Source: "+src, "", 6, 6),
+		c.newField(fmt.Sprintf("Type: %s (0x%04x)", etherTypeName(et), et), "", 12, 2),
 	)
 	c.m.EthSrc, c.m.EthDst = src, dst
 	c.addLayer("eth")
@@ -88,7 +88,7 @@ func (c *ctx) dissectEthernet() {
 	off := 14
 	for et == 0x8100 || et == 0x88a8 || et == 0x9100 {
 		if len(c.data) < off+4 {
-			root.add(newField("VLAN (truncated)", "", off, len(c.data)-off))
+			root.add(c.newField("VLAN (truncated)", "", off, len(c.data)-off))
 			c.m.EthType = et
 			c.addRoot(root)
 			return
@@ -97,7 +97,7 @@ func (c *ctx) dissectEthernet() {
 		vid := tci & 0x0fff
 		c.m.VLAN = int(vid)
 		c.addLayer("vlan")
-		root.add(newField(
+		root.add(c.newField(
 			fmt.Sprintf("802.1Q Virtual LAN, PRI: %d, DEI: %d, ID: %d", tci>>13, (tci>>12)&1, vid),
 			"", off, 4,
 		))
@@ -120,7 +120,7 @@ func (c *ctx) dissectEthernet() {
 		c.dissectMPLS(payload, off)
 	default:
 		if len(payload) > 0 {
-			c.addRoot(newNode(fmt.Sprintf("Data (%d bytes)", len(payload)), off, len(payload)))
+			c.addRoot(c.newNode(fmt.Sprintf("Data (%d bytes)", len(payload)), off, len(payload)))
 			c.addLayer("data")
 			c.m.Payload = payload
 		}
@@ -137,7 +137,7 @@ func (c *ctx) dissectRawIP() {
 	case 6:
 		c.dissectIPv6(c.data, 0)
 	default:
-		c.addRoot(newNode(fmt.Sprintf("Raw IP (version %d)", c.data[0]>>4), 0, len(c.data)))
+		c.addRoot(c.newNode(fmt.Sprintf("Raw IP (version %d)", c.data[0]>>4), 0, len(c.data)))
 	}
 }
 
@@ -147,7 +147,7 @@ func (c *ctx) dissectSLL(v2 bool) {
 		hdrLen = 20
 	}
 	if len(c.data) < hdrLen {
-		c.addRoot(newNode(fmt.Sprintf("Linux cooked capture (truncated, %d bytes)", len(c.data)), 0, len(c.data)))
+		c.addRoot(c.newNode(fmt.Sprintf("Linux cooked capture (truncated, %d bytes)", len(c.data)), 0, len(c.data)))
 		return
 	}
 	var proto uint16
@@ -169,12 +169,12 @@ func (c *ctx) dissectSLL(v2 bool) {
 	if v2 {
 		label = "Linux cooked capture v2"
 	}
-	root := newNode(fmt.Sprintf("%s, Protocol: %s (0x%04x)", label, etherTypeName(proto), proto), 0, hdrLen)
+	root := c.newNode(fmt.Sprintf("%s, Protocol: %s (0x%04x)", label, etherTypeName(proto), proto), 0, hdrLen)
 	root.add(
-		newField(fmt.Sprintf("Packet type: %d", pktType), "", 0, 2),
-		newField(fmt.Sprintf("Interface index: %d", ifIndex), "", 4, 4),
-		newField("Link-layer address: "+macString(addr), "", 6, 8),
-		newField(fmt.Sprintf("Protocol: %s (0x%04x)", etherTypeName(proto), proto), "", hdrLen-2, 2),
+		c.newField(fmt.Sprintf("Packet type: %d", pktType), "", 0, 2),
+		c.newField(fmt.Sprintf("Interface index: %d", ifIndex), "", 4, 4),
+		c.newField("Link-layer address: "+macString(addr), "", 6, 8),
+		c.newField(fmt.Sprintf("Protocol: %s (0x%04x)", etherTypeName(proto), proto), "", hdrLen-2, 2),
 	)
 	c.addRoot(root)
 	c.addLayer("sll")
@@ -195,7 +195,7 @@ func (c *ctx) dissectSLL(v2 bool) {
 func (c *ctx) dissectARP(b []byte, base int) {
 	c.addLayer("arp")
 	if len(b) < 8 {
-		c.addRoot(newNode("Address Resolution Protocol (truncated)", base, len(b)))
+		c.addRoot(c.newNode("Address Resolution Protocol (truncated)", base, len(b)))
 		return
 	}
 	htype := be16(b[0:2])
@@ -204,8 +204,8 @@ func (c *ctx) dissectARP(b []byte, base int) {
 	plen := b[5]
 	op := be16(b[6:8])
 
-	root := newNode(fmt.Sprintf("Address Resolution Protocol (%s)", arpOpName(op)), base, len(b))
-	root.add(newField(fmt.Sprintf("Hardware type: %s (%d)", arpHwName(htype), htype), "", base, 2))
+	root := c.newNode(fmt.Sprintf("Address Resolution Protocol (%s)", arpOpName(op)), base, len(b))
+	root.add(c.newField(fmt.Sprintf("Hardware type: %s (%d)", arpHwName(htype), htype), "", base, 2))
 
 	off := 8
 	var srcMAC, dstMAC string
@@ -216,18 +216,18 @@ func (c *ctx) dissectARP(b []byte, base int) {
 		dstMAC = macString(b[off+10 : off+16])
 		dstIP = netip.AddrFrom4([4]byte{b[off+16], b[off+17], b[off+18], b[off+19]})
 		root.add(
-			newField("Sender MAC address: "+srcMAC, "", base+off, 6),
-			newField("Sender IP address: "+srcIP.String(), "", base+off+6, 4),
-			newField("Target MAC address: "+dstMAC, "", base+off+10, 6),
-			newField("Target IP address: "+dstIP.String(), "", base+off+16, 4),
+			c.newField("Sender MAC address: "+srcMAC, "", base+off, 6),
+			c.newField("Sender IP address: "+srcIP.String(), "", base+off+6, 4),
+			c.newField("Target MAC address: "+dstMAC, "", base+off+10, 6),
+			c.newField("Target IP address: "+dstIP.String(), "", base+off+16, 4),
 		)
 	}
 
 	root.add(
-		newField(fmt.Sprintf("Protocol type: %s (0x%04x)", etherTypeName(ptype), ptype), "", base+2, 2),
-		newField(fmt.Sprintf("Hardware size: %d", hlen), "", base+4, 1),
-		newField(fmt.Sprintf("Protocol size: %d", plen), "", base+5, 1),
-		newField(fmt.Sprintf("Opcode: %s (%d)", arpOpName(op), op), "", base+6, 2),
+		c.newField(fmt.Sprintf("Protocol type: %s (0x%04x)", etherTypeName(ptype), ptype), "", base+2, 2),
+		c.newField(fmt.Sprintf("Hardware size: %d", hlen), "", base+4, 1),
+		c.newField(fmt.Sprintf("Protocol size: %d", plen), "", base+5, 1),
+		c.newField(fmt.Sprintf("Opcode: %s (%d)", arpOpName(op), op), "", base+6, 2),
 	)
 	c.addRoot(root)
 
@@ -284,5 +284,5 @@ func (c *ctx) dissectData(b []byte, base int) {
 	}
 	c.addLayer("data")
 	c.m.Payload = b
-	c.addRoot(newField(fmt.Sprintf("Data (%d bytes)", len(b)), hexPreview(b, 64), base, len(b)))
+	c.addRoot(c.newField(fmt.Sprintf("Data (%d bytes)", len(b)), hexPreview(b, 64), base, len(b)))
 }
