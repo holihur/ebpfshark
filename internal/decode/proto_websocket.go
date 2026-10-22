@@ -55,8 +55,11 @@ func (c *ctx) dissectWebSocket(b []byte, base int) bool {
 		mask = b[off : off+4]
 		off += 4
 	}
-	if off+l > len(b) {
+	if l < 0 || off > len(b) || l > len(b)-off {
 		l = len(b) - off
+	}
+	if l < 0 {
+		l = 0
 	}
 	payload := append([]byte(nil), b[off:off+l]...)
 	if masked {
