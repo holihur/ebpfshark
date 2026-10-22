@@ -226,7 +226,7 @@ go test -tags full ./...
 | 传输层 | TCP | 端口、序列号、标志位、窗口、常用选项、校验和 |
 | 传输层 | UDP | 端口、长度、校验和 |
 | 传输层 | TLS | 记录层、ClientHello/ServerHello、SNI/ALPN、X.509 证书链、Alert；SSLKEYLOGFILE 解密 TLS 1.3 AES-GCM、TLS 1.2 AES-GCM/CBC |
-| 传输层 | QUIC | Long/Short Header、Initial 解密、帧解析、CRYPTO/TLS SNI；keylog 解密 Handshake/1-RTT |
+| 传输层 | QUIC | Long/Short Header、Initial 解密、帧解析、CRYPTO/TLS SNI；HTTP/3 帧 + QPACK 静态表；keylog 解密 Handshake/1-RTT |
 | 应用层 | DNS | A/AAAA/CNAME/NS/PTR/MX/TXT/SOA/SRV/CAA/NAPTR/TLSA/SVCB/HTTPS；EDNS0/DNSSEC 标志；mDNS/LLMNR |
 | 应用层 | HTTP/1.x | 请求行/状态行、Header、Body 预览 |
 | 应用层 | HTTP/2 | 全部帧、HPACK 静态/动态表/Huffman、HEADERS+CONTINUATION、DATA 预览 |
@@ -247,7 +247,7 @@ go test -tags full ./...
 **过滤器**：新增协议同样支持协议谓词，例如 `mqtt`、`redis`、`vxlan`、`bgp`、
 `ssh`、`quic`、`http2`、`postgresql`、`igmp`、`wireguard`。
 
-**尚未支持**：QUIC QPACK/HTTP3、TLS 1.2 ChaCha20/CCM 解密、WebSocket/gRPC、
+**尚未支持**：QUIC QPACK 动态表、TLS CCM 解密、WebSocket/gRPC、
 SCTP、MySQL、RADIUS/LDAP/Kerberos、RTP/RTCP、NetFlow/IPFIX。
 
 ## 过滤器构造器
@@ -630,22 +630,23 @@ curl -s -b /tmp/ebpfshark.cookie \
   顶层 reply 与命令的区分依赖已知命令表。
 - **DNS/DHCP**：DNS 未覆盖全部 RR 类型；DHCP 未实现全部 255 个 option。
 - **TLS 解密**：需要启动时通过 `-tls-keylog` / `SSLKEYLOGFILE` 提供密钥；TLS 1.3
-  支持 AES-128/256-GCM，TLS 1.2 支持 AES-GCM 与 AES-CBC；ChaCha20/CCM 套件暂不解密。
+  支持 AES-128/256-GCM 与 ChaCha20-Poly1305，TLS 1.2 支持 AES-GCM、AES-CBC 与
+  ChaCha20-Poly1305；CCM 套件暂不解密。
   若抓包从握手中间开始，缺少 ClientHello/ServerHello/序列号状态时只能显示密文。
 - **TLS 证书**：只做 X.509 解析，不做证书链信任校验；证书消息必须完整捕获，
   snaplen 截断时只能显示部分 DER。
 - **HTTP/2 HPACK**：动态表按 TCP 流保存在有上限的 flow store 中；HEADERS 与
   CONTINUATION 支持跨 TCP 段合并；从连接中间开始抓包时仍可能缺少动态表上下文。
 - **QUIC**：Initial 使用 RFC 9001 v1/v2 固定盐解密；Handshake/1-RTT 需要 keylog 且
-  必须先捕获 ClientHello。Short Header 默认按 8 字节 DCID 解析；HTTP/3 QPACK
-  尚未解码，只能看到 STREAM 明文帧。
+  必须先捕获 ClientHello。Short Header 默认按 8 字节 DCID 解析。HTTP/3 帧与 QPACK
+  静态表已支持；QPACK 动态表尚未实现，动态索引会显示为占位符。
 - **SSH**：仍只解析明文消息；加密后的 KEX/用户认证/通道数据无法解密，未实现
   SSH 私钥导入。
 
 ## Roadmap
 
 - [ ] 内核态预过滤（把常用显示过滤器编译成 cBPF/eBPF）
-- [x] HTTP/2 HPACK、QUIC Initial/keylog（HTTP/3 QPACK 仍待补）
+- [x] HTTP/2 HPACK、QUIC Initial/keylog、HTTP/3 + QPACK 静态表
 - [ ] 抓包文件分片、时间范围导出
 - [ ] 报文着色规则与自定义列
 - [ ] Prometheus metrics / OpenTelemetry 导出
