@@ -671,7 +671,8 @@ func isProtoName(s string) bool {
 		"dns", "http", "tls", "ssl", "dhcp", "vlan", "eth",
 		"ntp", "snmp", "syslog", "stun", "mqtt", "redis", "postgresql", "postgres",
 		"bgp", "ssh", "ssdp", "sip", "quic", "http2", "vxlan", "mpls", "gre",
-		"igmp", "wireguard", "wg":
+		"igmp", "wireguard", "wg", "sctp", "mysql", "radius", "netflow",
+		"rtp", "rtcp", "websocket":
 		return true
 	}
 	return false

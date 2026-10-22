@@ -132,6 +132,7 @@ sudo ./bin/ebpfshark -capture eth0,lo -snaplen 2048 -sample-rate 1
 -no-mcp                  关闭 HTTP MCP 端点
 -tls-keylog ""           NSS SSLKEYLOGFILE，用于 TLS 1.2/1.3 与 QUIC 解密
 -pprof-addr ""           可选本地 profiling 地址，例如 127.0.0.1:6060
+-ssh-keys ""             可选 SSH 会话密钥 JSON（仅 AES-CTR）
 -auto-update            自动更新开关（默认 true）
 -update-interval 10m    自动更新检查间隔
 -update-url ""          自动更新 manifest URL
