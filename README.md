@@ -133,6 +133,7 @@ sudo ./bin/ebpfshark -capture eth0,lo -snaplen 2048 -sample-rate 1
 -tls-keylog ""           NSS SSLKEYLOGFILE，用于 TLS 1.2/1.3 与 QUIC 解密
 -pprof-addr ""           可选本地 profiling 地址，例如 127.0.0.1:6060
 -ssh-keys ""             可选 SSH 会话密钥 JSON（仅 AES-CTR）
+-wifi-psk ""             可选 WPA2-PSK 口令，解密 CCMP 无线数据帧
 -auto-update            自动更新开关（默认 true）
 -update-interval 10m    自动更新检查间隔
 -update-url ""          自动更新 manifest URL
@@ -143,7 +144,7 @@ sudo ./bin/ebpfshark -capture eth0,lo -snaplen 2048 -sample-rate 1
 环境变量：`EBPFSHARK_ADDR`、`EBPFSHARK_MAX_PACKETS`、`EBPFSHARK_IFACE`、`EBPFSHARK_WEB_DIR`、
 `EBPFSHARK_LOG_LEVEL`、`EBPFSHARK_AUTH_USER`、`EBPFSHARK_AUTH_PASS`、
 `EBPFSHARK_STREAM_BUDGET`、`EBPFSHARK_MCP_TOKEN`、`EBPFSHARK_AUTO_UPDATE`、
-`EBPFSHARK_UPDATE_INTERVAL`、`EBPFSHARK_UPDATE_URL`、`EBPFSHARK_TLS_KEYLOG`、`EBPFSHARK_PPROF_ADDR`。
+`EBPFSHARK_UPDATE_INTERVAL`、`EBPFSHARK_UPDATE_URL`、`EBPFSHARK_TLS_KEYLOG`、`EBPFSHARK_PPROF_ADDR`、`EBPFSHARK_WIFI_PSK`、`EBPFSHARK_SSH_KEYS`。
 `SSLKEYLOGFILE` 也会作为 `-tls-keylog` 的默认值。
 
 ### 开发模式
@@ -216,7 +217,7 @@ go test -tags full ./...
 | 链路层 | 802.1Q / QinQ VLAN | 最多 4 层 VLAN 标签 |
 | 链路层 | ARP / RARP | 请求/响应、发送方/目标地址 |
 | 链路层 | MPLS | 标签栈、TTL，递归解析内层 IPv4/IPv6 |
-| 链路层 | Radiotap / IEEE 802.11 | 无线 monitor 帧、Beacon/Probe/Assoc、SSID/BSSID、数据帧 LLC/SNAP |
+| 链路层 | Radiotap / IEEE 802.11 | 无线 monitor 帧、Beacon/Probe/Assoc、SSID/BSSID、RSN/WPA/EAPOL、WPA2-PSK CCMP 解密 |
 | 链路层 | Linux SLL / SLL2 | pcap/pcapng 导入的 cooked capture |
 | 链路层 | Raw IP | wg/tun 等无二层头接口自动识别 |
 | 网络层 | IPv4 | 选项、分片、TTL、校验和 |
@@ -615,7 +616,8 @@ curl -s -b /tmp/ebpfshark.cookie \
 - TCX 需要内核 ≥ 6.6 且启用 BTF；旧内核暂不支持。
 - 隧道网卡（wg/tun）上没有二层头，解析器会自动识别裸 IP。
 - 无线 monitor 接口按 `ARPHRD_IEEE80211` / `ARPHRD_IEEE80211_RADIOTAP` 选择链路类型；VLAN 子接口会作为普通接口列出，可直接选择抓包。
-- 无线当前只解析 Radiotap/802.11 明文帧；WPA/WPA2/WPA3 加密载荷不解密，Radiotap 只展开常用字段。
+- 无线支持 WPA2-PSK/CCMP 解密：需要 `-wifi-psk`、SSID Beacon/Probe Response、完整 4-way 握手。
+  WPA/WPA3、GCMP、TKIP、分片重组尚未解密；Radiotap 只展开标准字段。
 - 同时在 ingress/egress 抓同一个包会在 loopback 上看到重复记录（两个钩子各一次）。
 - 只有单用户认证，没有角色/多用户权限；会话存于内存，服务重启后失效。
 - 不内置 TLS；公网访问请使用 HTTPS 反向代理并启用 `-secure-cookie`。

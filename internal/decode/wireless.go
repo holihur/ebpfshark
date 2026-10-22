@@ -444,6 +444,22 @@ func (c *ctx) dissectDot11(b []byte, base int) {
 		}
 	case 2:
 		if fc&0x4000 != 0 {
+			pt, ap, ok := wifiDecryptFrame(b, hdr, fc, addr1, addr2, addr3)
+			if ok {
+				apMAC, staMAC := dot11APSTA(fc, addr1, addr2, addr3)
+				_ = ap
+				root.add(c.newField(fmt.Sprintf("Decrypted CCMP MSDU (%d bytes)", len(pt)), printablePreview(pt, 96), base+hdr+8, len(pt)))
+				c.addRoot(root)
+				c.dot11LLC(pt, fc, addr1, addr2, addr3, base+hdr+8)
+				info += " [decrypted]"
+				if c.appInfo != "" {
+					info += " " + c.appInfo
+				}
+				c.appInfo = info
+				_ = apMAC
+				_ = staMAC
+				return
+			}
 			root.add(c.newField("Protected Frame: encrypted payload not decoded", "", base+1, 1))
 			info += " [protected]"
 		} else {
@@ -463,7 +479,8 @@ func (c *ctx) dissectDot11(b []byte, base int) {
 				root.add(c.newField(fmt.Sprintf("LLC/SNAP EtherType: 0x%04x", et), "", base+hdr+6, 2))
 				c.addRoot(root)
 				if et == 0x888e {
-					c.dissectEAPOL(b[hdr+8:], base+hdr+8)
+					apMAC, staMAC := dot11APSTA(fc, addr1, addr2, addr3)
+					c.dissectEAPOL(b[hdr+8:], base+hdr+8, apMAC, staMAC)
 				} else {
 					switch et {
 					case etherTypeIPv4:
@@ -484,6 +501,43 @@ func (c *ctx) dissectDot11(b []byte, base int) {
 	}
 	c.addRoot(root)
 	c.appInfo = info
+}
+
+func dot11APSTA(fc uint16, addr1, addr2, addr3 string) (string, string) {
+	toDS, fromDS := fc&0x0100 != 0, fc&0x0200 != 0
+	switch {
+	case toDS && !fromDS:
+		return addr1, addr2
+	case fromDS && !toDS:
+		return addr2, addr1
+	case toDS && fromDS:
+		return addr1, addr3
+	default:
+		return addr3, addr2
+	}
+}
+
+func (c *ctx) dot11LLC(payload []byte, fc uint16, addr1, addr2, addr3 string, base int) {
+	if len(payload) < 8 || payload[0] != 0xaa || payload[1] != 0xaa || payload[2] != 0x03 {
+		if len(payload) > 0 {
+			c.addRoot(c.newField(fmt.Sprintf("Data (%d bytes)", len(payload)), hexPreview(payload, 48), base, len(payload)))
+		}
+		return
+	}
+	et := be16(payload[6:8])
+	if et == 0x888e {
+		ap, sta := dot11APSTA(fc, addr1, addr2, addr3)
+		c.dissectEAPOL(payload[8:], base+8, ap, sta)
+		return
+	}
+	switch et {
+	case etherTypeIPv4:
+		c.dissectIPv4(payload[8:], base+8)
+	case etherTypeIPv6:
+		c.dissectIPv6(payload[8:], base+8)
+	case etherTypeARP:
+		c.dissectARP(payload[8:], base+8)
+	}
 }
 
 func (c *ctx) dot11Management(b []byte, base int, fc uint16, hdr int, root *Field, info *string) {
@@ -552,7 +606,7 @@ func (c *ctx) dot11AMSDU(b []byte, base int, root *Field) {
 	}
 }
 
-func (c *ctx) dissectEAPOL(b []byte, base int) {
+func (c *ctx) dissectEAPOL(b []byte, base int, ap, sta string) {
 	if len(b) < 4 {
 		return
 	}

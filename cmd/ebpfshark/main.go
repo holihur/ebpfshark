@@ -56,6 +56,7 @@ func main() {
 	pprofAddr := flag.String("pprof-addr", env("EBPFSHARK_PPROF_ADDR", ""), "optional local profiling address, e.g. 127.0.0.1:6060")
 	tlsKeylog := flag.String("tls-keylog", env("EBPFSHARK_TLS_KEYLOG", env("SSLKEYLOGFILE", "")), "NSS SSLKEYLOGFILE for TLS 1.2/1.3 decryption")
 	sshKeys := flag.String("ssh-keys", env("EBPFSHARK_SSH_KEYS", ""), "JSON session keys for opt-in SSH AES-CTR decryption")
+	wifiPSK := flag.String("wifi-psk", env("EBPFSHARK_WIFI_PSK", ""), "WPA2-PSK passphrase for CCMP frame decryption")
 	noMCP := flag.Bool("no-mcp", false, "disable the HTTP MCP endpoint")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
@@ -72,6 +73,10 @@ func main() {
 				log.Error("pprof server stopped", "err", err)
 			}
 		}()
+	}
+	if *wifiPSK != "" {
+		decode.LoadWiFiPSK(*wifiPSK)
+		log.Info("WPA2-PSK decryption enabled")
 	}
 	if *sshKeys != "" {
 		if err := decode.LoadSSHKeys(*sshKeys); err != nil {
