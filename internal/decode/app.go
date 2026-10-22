@@ -927,18 +927,33 @@ func (c *ctx) parseServerHello(b []byte, base int, node *Field, flow *tlsFlow) {
 	flow.observeServerHello(c, random, version, suite)
 }
 
-var tlsCertCache sync.Map // sha256(DER) -> *x509.Certificate
+var tlsCertCache = struct {
+	sync.Mutex
+	m map[[32]byte]*x509.Certificate
+}{m: make(map[[32]byte]*x509.Certificate)}
 
 func tlsParseCert(der []byte) (*x509.Certificate, error) {
 	key := sha256.Sum256(der)
-	if v, ok := tlsCertCache.Load(key); ok {
-		return v.(*x509.Certificate), nil
+	tlsCertCache.Lock()
+	cert, ok := tlsCertCache.m[key]
+	tlsCertCache.Unlock()
+	if ok {
+		return cert, nil
 	}
 	cert, err := x509.ParseCertificate(der)
-	if err == nil {
-		tlsCertCache.Store(key, cert)
+	if err != nil {
+		return nil, err
 	}
-	return cert, err
+	tlsCertCache.Lock()
+	if len(tlsCertCache.m) >= 512 {
+		for k := range tlsCertCache.m {
+			delete(tlsCertCache.m, k)
+			break
+		}
+	}
+	tlsCertCache.m[key] = cert
+	tlsCertCache.Unlock()
+	return cert, nil
 }
 
 func (c *ctx) parseTLSCertificates(b []byte, base int, node *Field, flow *tlsFlow) {

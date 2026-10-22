@@ -12,7 +12,7 @@ GENERATED := internal/capture/capture_bpfel.go internal/capture/capture_bpfel.o
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo 0.1.0-dev)
 LDFLAGS := -X ebpfshark/internal/server.Version=$(VERSION)
 
-.PHONY: all build generate web go-build go-build-full dev dev-web run test test-full vet deps clean help
+.PHONY: all build generate web go-build go-build-full dev dev-web run test test-full bench vet deps clean help
 
 all: build
 
@@ -28,6 +28,7 @@ help:
 	@echo "  make dev-web    Run the Vite dev server on :5173 (proxies to :9999)"
 	@echo "  make test       Run core + full Go tests and TypeScript checks"
 	@echo "  make test-full  Run Go tests with all protocol dissectors"
+	@echo "  make bench      Run decode/filter/stream benchmarks"
 	@echo "  make deps       Install eBPF build dependencies (Debian/Ubuntu)"
 	@echo "  make clean      Remove build artifacts"
 
@@ -74,6 +75,9 @@ test: $(GENERATED)
 
 test-full: $(GENERATED)
 	$(GO) test -tags full ./...
+
+bench: $(GENERATED)
+	$(GO) test -run=^$$ -bench=. -benchmem -benchtime=100ms ./internal/decode ./internal/filter ./internal/stream
 
 vet: $(GENERATED)
 	$(GO) vet ./...

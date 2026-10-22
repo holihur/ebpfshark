@@ -55,6 +55,18 @@ jobs:
       - name: Test full with race detector
         run: go test -race -tags full ./...
 
+      - name: Fuzz core decode
+        run: go test -run=^$ -fuzz=FuzzDecode -fuzztime=8s ./internal/decode
+
+      - name: Fuzz core protocol payloads
+        run: go test -run=^$ -fuzz=FuzzProtocolPayloads -fuzztime=8s ./internal/decode
+
+      - name: Fuzz full decode
+        run: go test -tags full -run=^$ -fuzz=FuzzDecode -fuzztime=8s ./internal/decode
+
+      - name: Benchmark smoke
+        run: go test -run=^$ -bench=. -benchmem -benchtime=50ms ./internal/decode ./internal/filter ./internal/stream
+
       - name: Build core
         run: make go-build
 
