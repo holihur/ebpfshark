@@ -587,6 +587,9 @@ curl -s -b /tmp/ebpfshark.cookie \
 - 详情字段树使用对象池，减少反复点击详情的 GC 压力。
 - 十六进制预览改为查表输出，避免逐字节 `fmt.Fprintf`。
 - 相同过滤表达式的多个 SSE 订阅者只计算一次过滤结果。
+- flow 统计使用结构体 key，不再每包拼接 IP/端口字符串；flow 锁与 ring buffer 锁分离。
+- 详情字段树有 256 条 LRU 缓存，避免重复点击重复解码。
+- SSE 批量 JSON 复用 buffer，减少 map/临时分配。
 - TLS/HTTP2 per-flow 状态有上限；流量表/重组表超限时批量淘汰，避免每包 O(n) 扫描。
 
 ## 已知限制

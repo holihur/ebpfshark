@@ -3,6 +3,7 @@
 package store
 
 import (
+	"net/netip"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -49,6 +50,41 @@ type Flow struct {
 	TCPFlags uint8     `json:"tcpFlags"`
 }
 
+type flowProto uint8
+
+const (
+	flowIP flowProto = iota
+	flowTCP
+	flowUDP
+	flowICMP
+	flowIPv6
+)
+
+func (p flowProto) String() string {
+	switch p {
+	case flowTCP:
+		return "TCP"
+	case flowUDP:
+		return "UDP"
+	case flowICMP:
+		return "ICMP"
+	case flowIPv6:
+		return "IPv6"
+	default:
+		return "IP"
+	}
+}
+
+type flowKey struct {
+	aIP, bIP     netip.Addr
+	aPort, bPort uint16
+	proto        flowProto
+}
+
+func (k flowKey) String() string {
+	return k.aIP.String() + "|" + k.bIP.String() + "|" + k.proto.String() + "|" + itoa(k.aPort) + "|" + itoa(k.bPort)
+}
+
 type rateBucket struct {
 	packets uint64
 	bytes   uint64
@@ -71,7 +107,8 @@ type Store struct {
 	dropped atomic.Uint64
 
 	protoCounts map[string]uint64
-	flows       map[string]*Flow
+	flowMu      sync.Mutex
+	flows       map[flowKey]*Flow
 	maxFlows    int
 
 	buckets    []rateBucket
@@ -94,7 +131,7 @@ func New(maxPackets int) *Store {
 		buf:         make([]*packet.Packet, maxPackets),
 		maxPackets:  maxPackets,
 		protoCounts: make(map[string]uint64),
-		flows:       make(map[string]*Flow),
+		flows:       make(map[flowKey]*Flow),
 		maxFlows:    20000,
 		buckets:     make([]rateBucket, 60),
 		bucketSecs:  time.Now().Unix(),
@@ -152,17 +189,27 @@ func (s *Store) Add(p *packet.Packet) {
 	}
 	s.protoCounts[proto]++
 	s.updateRates(p)
+	subs := make([]*Subscriber, 0, len(s.subs))
+	for _, sub := range s.subs {
+		subs = append(subs, sub)
+	}
+	s.mu.Unlock()
+
+	// Flow accounting and subscriber matching do not need the ring-buffer lock.
 	s.updateFlow(p)
 
 	var recipients []*Subscriber
-	matches := make(map[string]bool)
-	for _, sub := range s.subs {
+	var matches map[string]bool
+	for _, sub := range subs {
 		if sub.Filter == nil {
 			recipients = append(recipients, sub)
 			continue
 		}
 		ok := false
 		if key := sub.FilterKey; key != "" {
+			if matches == nil {
+				matches = make(map[string]bool)
+			}
 			if v, hit := matches[key]; hit {
 				ok = v
 			} else {
@@ -176,7 +223,6 @@ func (s *Store) Add(p *packet.Packet) {
 			recipients = append(recipients, sub)
 		}
 	}
-	s.mu.Unlock()
 
 	for _, sub := range recipients {
 		select {
@@ -216,62 +262,65 @@ func (s *Store) updateRates(p *packet.Packet) {
 
 func (s *Store) updateFlow(p *packet.Packet) {
 	m := &p.Meta
-	if m.SrcIP.IsValid() && m.DstIP.IsValid() {
-		// normalise endpoint order
-		aIP, bIP := m.SrcIP, m.DstIP
-		aPort, bPort := m.SrcPort, m.DstPort
-		reverse := false
-		if aIP.String() > bIP.String() || (aIP == bIP && aPort > bPort) {
-			aIP, bIP = bIP, aIP
-			aPort, bPort = bPort, aPort
-			reverse = true
+	if !m.SrcIP.IsValid() || !m.DstIP.IsValid() {
+		return
+	}
+	aIP, bIP := m.SrcIP, m.DstIP
+	aPort, bPort := m.SrcPort, m.DstPort
+	reverse := false
+	if aIP.Compare(bIP) > 0 || (aIP == bIP && aPort > bPort) {
+		aIP, bIP = bIP, aIP
+		aPort, bPort = bPort, aPort
+		reverse = true
+	}
+	proto := flowIP
+	if m.HasLayer("tcp") {
+		proto = flowTCP
+	} else if m.HasLayer("udp") {
+		proto = flowUDP
+	} else if m.HasLayer("icmp") || m.HasLayer("icmpv6") {
+		proto = flowICMP
+	} else if m.HasLayer("ipv6") {
+		proto = flowIPv6
+	}
+	key := flowKey{aIP: aIP, bIP: bIP, aPort: aPort, bPort: bPort, proto: proto}
+
+	s.flowMu.Lock()
+	defer s.flowMu.Unlock()
+	f, ok := s.flows[key]
+	if !ok {
+		if len(s.flows) >= s.maxFlows+s.maxFlows/16 {
+			s.evictFlow()
 		}
-		proto := "IP"
-		if m.HasLayer("tcp") {
-			proto = "TCP"
-		} else if m.HasLayer("udp") {
-			proto = "UDP"
-		} else if m.HasLayer("icmp") || m.HasLayer("icmpv6") {
-			proto = "ICMP"
-		} else if m.HasLayer("ipv6") {
-			proto = "IPv6"
+		f = &Flow{
+			Key:      key.String(),
+			Protocol: proto.String(),
+			Src:      aIP.String(),
+			Dst:      bIP.String(),
+			SrcPort:  aPort,
+			DstPort:  bPort,
+			First:    p.Time,
 		}
-		key := aIP.String() + "|" + bIP.String() + "|" + proto + "|" + itoa(aPort) + "|" + itoa(bPort)
-		f, ok := s.flows[key]
-		if !ok {
-			if len(s.flows) >= s.maxFlows+s.maxFlows/16 {
-				s.evictFlow()
-			}
-			f = &Flow{
-				Key:      key,
-				Protocol: proto,
-				Src:      aIP.String(),
-				Dst:      bIP.String(),
-				SrcPort:  aPort,
-				DstPort:  bPort,
-				First:    p.Time,
-			}
-			s.flows[key] = f
-		}
-		f.Last = p.Time
-		f.Packets++
-		f.Bytes += uint64(p.WireLen)
-		if reverse {
-			f.PacketsB++
-			f.BytesB += uint64(p.WireLen)
-		} else {
-			f.PacketsA++
-			f.BytesA += uint64(p.WireLen)
-		}
-		if m.HasLayer("tcp") {
-			f.TCPFlags |= m.TCPFlags
-			f.State = tcpState(f.TCPFlags)
-		} else if f.State == "" {
-			f.State = "—"
-		}
-		if m.App != "" && f.App == "" {
-			f.App = appName(m.App)
-		}
+		s.flows[key] = f
+	}
+	f.Last = p.Time
+	f.Packets++
+	f.Bytes += uint64(p.WireLen)
+	if reverse {
+		f.PacketsB++
+		f.BytesB += uint64(p.WireLen)
+	} else {
+		f.PacketsA++
+		f.BytesA += uint64(p.WireLen)
+	}
+	if m.HasLayer("tcp") {
+		f.TCPFlags |= m.TCPFlags
+		f.State = tcpState(m.TCPFlags)
+	} else if f.State == "" {
+		f.State = "—"
+	}
+	if m.App != "" && f.App == "" {
+		f.App = appName(m.App)
 	}
 }
 
@@ -321,7 +370,7 @@ func tcpState(flags uint8) string {
 
 func (s *Store) evictFlow() {
 	type item struct {
-		key  string
+		key  flowKey
 		last time.Time
 	}
 	items := make([]item, 0, len(s.flows))
@@ -439,7 +488,9 @@ func (s *Store) Clear() {
 	s.total, s.bytes, s.evicted = 0, 0, 0
 	s.dropped.Store(0)
 	s.protoCounts = make(map[string]uint64)
-	s.flows = make(map[string]*Flow)
+	s.flowMu.Lock()
+	s.flows = make(map[flowKey]*Flow)
+	s.flowMu.Unlock()
 	for i := range s.buckets {
 		s.buckets[i] = rateBucket{}
 	}
@@ -508,13 +559,13 @@ func (s *Store) Stats() Stats {
 
 // Flows returns conversations sorted by bytes, descending.
 func (s *Store) Flows(limit int) []*Flow {
-	s.mu.RLock()
+	s.flowMu.Lock()
 	out := make([]*Flow, 0, len(s.flows))
 	for _, f := range s.flows {
 		cp := *f
 		out = append(out, &cp)
 	}
-	s.mu.RUnlock()
+	s.flowMu.Unlock()
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Bytes == out[j].Bytes {
 			return out[i].Packets > out[j].Packets

@@ -1,6 +1,8 @@
 package server
 
 import (
+	"bytes"
+	"container/list"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
@@ -16,6 +18,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"ebpfshark/internal/auth"
@@ -46,6 +49,20 @@ type Server struct {
 	secureCookie bool
 	mcpHandler   http.Handler
 	updateStatus func() any
+
+	detailMu    sync.Mutex
+	detailLRU   *list.List
+	detailCache map[detailKey]*list.Element
+}
+
+type detailKey struct {
+	id   uint64
+	time int64
+}
+
+type detailEntry struct {
+	key    detailKey
+	fields []*decode.Field
 }
 
 // SetSecureCookie forces the Secure attribute on session cookies. Use it when
@@ -64,15 +81,17 @@ func New(st *store.Store, mgr *capture.Manager, log *slog.Logger, webFS fs.FS, s
 	var id [6]byte
 	_, _ = rand.Read(id[:])
 	return &Server{
-		store:      st,
-		mgr:        mgr,
-		log:        log,
-		web:        webFS,
-		start:      time.Now(),
-		importLock: make(chan struct{}, 1),
-		instance:   hex.EncodeToString(id[:]),
-		selfPort:   selfPort,
-		auth:       authSvc,
+		store:       st,
+		mgr:         mgr,
+		log:         log,
+		web:         webFS,
+		start:       time.Now(),
+		importLock:  make(chan struct{}, 1),
+		instance:    hex.EncodeToString(id[:]),
+		selfPort:    selfPort,
+		auth:        authSvc,
+		detailLRU:   list.New(),
+		detailCache: make(map[detailKey]*list.Element),
 	}
 }
 
@@ -433,6 +452,40 @@ type detailResponse struct {
 	LinkType uint32          `json:"linkType"`
 }
 
+func (s *Server) cachedDetail(key detailKey) ([]*decode.Field, bool) {
+	s.detailMu.Lock()
+	defer s.detailMu.Unlock()
+	el, ok := s.detailCache[key]
+	if !ok {
+		return nil, false
+	}
+	s.detailLRU.MoveToFront(el)
+	return el.Value.(*detailEntry).fields, true
+}
+
+func (s *Server) putDetail(key detailKey, fields []*decode.Field) {
+	const maxEntries = 256
+	s.detailMu.Lock()
+	defer s.detailMu.Unlock()
+	if el, ok := s.detailCache[key]; ok {
+		el.Value.(*detailEntry).fields = fields
+		s.detailLRU.MoveToFront(el)
+		return
+	}
+	for s.detailLRU.Len() >= maxEntries {
+		old := s.detailLRU.Back()
+		if old == nil {
+			break
+		}
+		entry := old.Value.(*detailEntry)
+		delete(s.detailCache, entry.key)
+		s.detailLRU.Remove(old)
+		decode.ReleaseFields(entry.fields)
+	}
+	entry := &detailEntry{key: key, fields: fields}
+	s.detailCache[key] = s.detailLRU.PushFront(entry)
+}
+
 func (s *Server) handlePacketDetail(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -444,11 +497,16 @@ func (s *Server) handlePacketDetail(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "packet not found (it may have been evicted)")
 		return
 	}
-	res := decode.Decode(p.Data, p.LinkType, int(p.WireLen))
-	defer decode.ReleaseFields(res.Fields)
+	key := detailKey{id: p.ID, time: p.Time.UnixNano()}
+	fields, ok := s.cachedDetail(key)
+	if !ok {
+		res := decode.Decode(p.Data, p.LinkType, int(p.WireLen))
+		fields = res.Fields
+		s.putDetail(key, fields)
+	}
 	writeJSON(w, http.StatusOK, detailResponse{
 		Packet:   toPacketJSON(p),
-		Fields:   res.Fields,
+		Fields:   fields,
 		Data:     base64.StdEncoding.EncodeToString(p.Data),
 		DataLen:  len(p.Data),
 		LinkType: uint32(p.LinkType),
@@ -544,15 +602,21 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	flusher.Flush()
 
 	batch := make([]packetJSON, 0, 256)
+	var jsonBuf bytes.Buffer
 	flush := func() error {
 		if len(batch) == 0 {
 			return nil
 		}
-		payload, err := json.Marshal(map[string]any{"packets": batch})
+		payload, err := json.Marshal(batch)
 		if err != nil {
 			return err
 		}
-		if _, err := fmt.Fprintf(w, "event: packets\ndata: %s\n\n", payload); err != nil {
+		jsonBuf.Reset()
+		jsonBuf.Grow(len(payload) + 16)
+		jsonBuf.WriteString(`{"packets":`)
+		jsonBuf.Write(payload)
+		jsonBuf.WriteByte('}')
+		if _, err := fmt.Fprintf(w, "event: packets\ndata: %s\n\n", jsonBuf.Bytes()); err != nil {
 			return err
 		}
 		flusher.Flush()
