@@ -1,11 +1,13 @@
 package decode
 
 import (
+	"crypto/sha256"
 	"crypto/x509"
 	"fmt"
 	"net/netip"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // ---------------------------------------------------------------- dispatchers
@@ -925,6 +927,20 @@ func (c *ctx) parseServerHello(b []byte, base int, node *Field, flow *tlsFlow) {
 	flow.observeServerHello(c, random, version, suite)
 }
 
+var tlsCertCache sync.Map // sha256(DER) -> *x509.Certificate
+
+func tlsParseCert(der []byte) (*x509.Certificate, error) {
+	key := sha256.Sum256(der)
+	if v, ok := tlsCertCache.Load(key); ok {
+		return v.(*x509.Certificate), nil
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err == nil {
+		tlsCertCache.Store(key, cert)
+	}
+	return cert, err
+}
+
 func (c *ctx) parseTLSCertificates(b []byte, base int, node *Field, flow *tlsFlow) {
 	if c.noFields {
 		return
@@ -961,7 +977,7 @@ func (c *ctx) parseTLSCertificates(b []byte, base int, node *Field, flow *tlsFlo
 		}
 		der := b[off : off+clen]
 		cf := c.newNode(fmt.Sprintf("Certificate %d (%d bytes)", idx+1, clen), base+off, clen)
-		if cert, err := x509.ParseCertificate(der); err == nil {
+		if cert, err := tlsParseCert(der); err == nil {
 			cf.add(
 				c.newField("Subject: "+cert.Subject.String(), "", 0, 0),
 				c.newField("Issuer: "+cert.Issuer.String(), "", 0, 0),

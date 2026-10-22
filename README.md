@@ -590,6 +590,8 @@ curl -s -b /tmp/ebpfshark.cookie \
 - flow 统计使用结构体 key，不再每包拼接 IP/端口字符串；flow 锁与 ring buffer 锁分离。
 - 详情字段树有 256 条 LRU 缓存，避免重复点击重复解码。
 - SSE 批量 JSON 复用 buffer，减少 map/临时分配。
+- TCP 重组改为 owned chunk 列表，避免大流反复扩容拷贝。
+- X.509 证书按 DER SHA-256 缓存，重复证书不重复解析。
 - TLS/HTTP2 per-flow 状态有上限；流量表/重组表超限时批量淘汰，避免每包 O(n) 扫描。
 
 ## 已知限制

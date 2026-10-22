@@ -266,7 +266,8 @@ func canonical(srcIP string, srcPort uint16, dstIP string, dstPort uint16) (key 
 type assembler struct {
 	started   bool
 	base      uint32
-	buf       []byte
+	chunks    [][]byte
+	length    int
 	gaps      map[int64][]byte
 	limit     int
 	truncated bool
@@ -287,7 +288,7 @@ func (a *assembler) start(base uint32) {
 	a.base = base
 }
 
-func (a *assembler) size() int { return len(a.buf) }
+func (a *assembler) size() int { return a.length }
 
 func (a *assembler) add(seq uint32, data []byte) {
 	if len(data) == 0 {
@@ -297,7 +298,7 @@ func (a *assembler) add(seq uint32, data []byte) {
 		a.started = true
 		a.base = seq
 	}
-	if a.truncated && len(a.buf) >= a.limit {
+	if a.truncated && a.length >= a.limit {
 		return
 	}
 
@@ -311,7 +312,7 @@ func (a *assembler) add(seq uint32, data []byte) {
 		off = 0
 	}
 
-	cur := int64(len(a.buf))
+	cur := int64(a.length)
 	end := off + int64(len(data))
 	if off <= cur {
 		if end <= cur {
@@ -324,7 +325,7 @@ func (a *assembler) add(seq uint32, data []byte) {
 	if off == cur {
 		a.appendBytes(data)
 		for {
-			next := int64(len(a.buf))
+			next := int64(a.length)
 			gap, ok := a.gaps[next]
 			if !ok {
 				break
@@ -351,7 +352,7 @@ func (a *assembler) appendBytes(data []byte) {
 	if len(data) == 0 {
 		return
 	}
-	remain := a.limit - len(a.buf)
+	remain := a.limit - a.length
 	if remain <= 0 {
 		a.truncated = true
 		return
@@ -360,12 +361,27 @@ func (a *assembler) appendBytes(data []byte) {
 		data = data[:remain]
 		a.truncated = true
 	}
-	a.buf = append(a.buf, data...)
+	cp := make([]byte, len(data))
+	copy(cp, data)
+	a.chunks = append(a.chunks, cp)
+	a.length += len(cp)
+}
+
+func (a *assembler) bytes() []byte {
+	data := make([]byte, a.length)
+	off := 0
+	for _, ch := range a.chunks {
+		off += copy(data[off:], ch)
+	}
+	return data
 }
 
 func (a *assembler) snapshot(from, to Endpoint) Direction {
-	data := make([]byte, len(a.buf))
-	copy(data, a.buf)
+	data := make([]byte, a.length)
+	off := 0
+	for _, ch := range a.chunks {
+		off += copy(data[off:], ch)
+	}
 	return Direction{
 		From:      from,
 		To:        to,

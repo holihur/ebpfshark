@@ -370,6 +370,12 @@ func (s *Server) handleClear(w http.ResponseWriter, r *http.Request) {
 }
 
 // packetJSON is the compact representation streamed to the UI.
+type packetsResponse struct {
+	Packets []packetJSON `json:"packets"`
+	Count   int          `json:"count"`
+	Stored  int          `json:"stored"`
+}
+
 type packetJSON struct {
 	ID        uint64   `json:"id"`
 	Time      int64    `json:"time"`
@@ -437,10 +443,10 @@ func (s *Server) handlePackets(w http.ResponseWriter, r *http.Request) {
 	for _, p := range pkts {
 		out = append(out, toPacketJSON(p))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"packets": out,
-		"count":   len(out),
-		"stored":  s.store.Stats().Stored,
+	writeJSON(w, http.StatusOK, packetsResponse{
+		Packets: out,
+		Count:   len(out),
+		Stored:  s.store.Stats().Stored,
 	})
 }
 

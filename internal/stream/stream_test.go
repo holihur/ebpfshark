@@ -114,14 +114,14 @@ func TestAssemblerTruncation(t *testing.T) {
 	a := newAssembler(5)
 	a.start(1)
 	a.add(1, []byte("abcdefgh"))
-	if got := string(a.buf); got != "abcde" {
+	if got := string(a.bytes()); got != "abcde" {
 		t.Fatalf("buf = %q", got)
 	}
 	if !a.truncated {
 		t.Fatal("expected truncation")
 	}
 	a.add(6, []byte("fgh"))
-	if got := string(a.buf); got != "abcde" {
+	if got := string(a.bytes()); got != "abcde" {
 		t.Fatalf("buf after truncation = %q", got)
 	}
 }
