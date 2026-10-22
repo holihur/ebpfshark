@@ -263,9 +263,17 @@ func (c *ctx) dissectRTP(b []byte, base int) bool {
 		xlen := int(be16(b[off+2:off+4])) * 4
 		root.add(newField(fmt.Sprintf("Extension (%d bytes)", xlen), "", base+off, 4+xlen))
 		off += 4 + xlen
+		if off > len(b) {
+			off = len(b)
+		}
 	}
 	if pad && len(b) > off {
-		off = len(b) - int(b[len(b)-1])
+		padLen := int(b[len(b)-1])
+		if padLen > len(b)-off {
+			off = len(b)
+		} else {
+			off = len(b) - padLen
+		}
 	}
 	if off < len(b) {
 		root.add(newField(fmt.Sprintf("Payload (%d bytes)", len(b)-off), hexPreview(b[off:], 32), base+off, len(b)-off))
