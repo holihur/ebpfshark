@@ -138,19 +138,10 @@ func decode(data []byte, linkType packet.LinkType, wireLen, depth int, noFields 
 }
 
 func (c *ctx) topProtocol() string {
-	switch c.proto {
-	case "http2":
-		return "HTTP/2"
-	case "postgresql":
-		return "PostgreSQL"
-	case "wireguard":
-		return "WireGuard"
-	case "syslog":
-		return "Syslog"
-	case "redis":
-		return "Redis"
-	}
 	if c.proto != "" {
+		if name := displayName(c.proto); name != "" {
+			return name
+		}
 		return strings.ToUpper(c.proto)
 	}
 	if c.m.HasLayer("icmpv6") {

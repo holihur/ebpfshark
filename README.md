@@ -70,6 +70,8 @@ sudo ./install.sh
 
 完整说明见 **[docs/INSTALL.md](docs/INSTALL.md)**。
 
+协议插件、core/full 构建和新增协议步骤见 **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**。
+
 ### 方式二：手动构建
 
 ```bash
