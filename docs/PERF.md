@@ -7,16 +7,16 @@ go test -run=^$ -bench=. -benchmem -benchtime=50ms \
   ./internal/decode ./internal/filter ./internal/stream
 ```
 
-Latest smoke run: `39783951563`.
+Latest smoke run: `39787092592`.
 
 | Benchmark | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: |
-| `DecodeHTTPDetail` | 10337 | 4349 | 149 |
-| `DecodeHTTPSummary` | 8092 | 3593 | 132 |
-| `DecodeTLSHandshake` | 12715 | 5318 | 171 |
-| `DecodeDNS` | 8685 | 3684 | 114 |
-| `FilterMatchTCPTLS` | 39.25 | 0 | 0 |
-| `AssemblerInOrder` | 1201 | 3733 | 8 |
+| `DecodeHTTPDetail` | 12464 | 4414 | 151 |
+| `DecodeHTTPSummary` | 4503 | 2248 | 67 |
+| `DecodeTLSHandshake` | 15278 | 5383 | 173 |
+| `DecodeDNS` | 10435 | 3684 | 114 |
+| `FilterMatchTCPTLS` | 52.83 | 0 | 0 |
+| `AssemblerInOrder` | 1207 | 3729 | 8 |
 
 ## Profiling
 
@@ -41,5 +41,6 @@ go tool pprof -http=:0 /tmp/store.cpu
 
 - These numbers are for regression detection, not cross-machine comparisons.
 - GitHub runner performance varies; use `benchstat` with several runs before drawing conclusions.
-- `DecodeHTTPSummary` still evaluates many field-formatting arguments even though it
-  discards the tree. Lazy field formatting is the next expected win.
+- Summary path now skips Ethernet/IP/TCP/UDP field construction and its allocation
+  count dropped from 132 to 67 in the CI smoke run. Remaining summary cost is mostly
+  app-layer field formatting and packet metadata strings.
