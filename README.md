@@ -10,6 +10,7 @@ ebpfshark 使用 TCX（TC eXpress）把两个很小的 eBPF 程序挂到网卡�
 
 - **实时抓包**：多网卡、ingress + egress 双向、snaplen 可调（256 B – 2 KB）、按 1/N 采样。
 - **进程 / cgroup / Pod 范围抓包**：按 cgroup v2 ID、cgroup 路径、PID、Pod/容器 cgroup 片段过滤，而不是只按网卡和端口。
+- **应用函数调用追踪（实验）**：对显式指定的 `binary:symbol` 挂 uprobe/uretprobe，输出函数耗时、PID/TID、comm；不做任意函数全量采集。
 - **内核态统计**：抓包数、字节数、ringbuffer 丢弃数、采样配置全部来自 eBPF map。
 - **自动排除自身流量**：在内核态丢弃 HTTP API 端口（默认 `:9999`）的 TCP/UDP 报文，
   避免 UI 轮询/SSE 把分析工具自己的请求混进抓包结果。
@@ -181,6 +182,31 @@ sudo ./bin/ebpfshark -capture eth0 -cgroup pod:payment-7f9c
 ```
 
 过滤发生在 eBPF TCX 路径，使用 socket 的 cgroup ID；只有属于目标 cgroup（及其子 cgroup）的 socket 流量会进入 ring buffer。转发流量、无 socket 归属的包 cgroup ID 为 0，会被过滤掉。
+
+应用函数调用追踪（实验）：
+
+```bash
+sudo ./bin/ebpfshark trace \
+  -pid 1234 \
+  -func /usr/local/bin/my-service:main.handleRequest \
+  -duration 10s
+```
+
+也可以一次指定多个函数：
+
+```bash
+sudo ./bin/ebpfshark trace -pid 1234 \
+  -func /usr/local/bin/my-service:main.handleRequest,/usr/local/bin/my-service:main.dbQuery
+```
+
+说明：
+
+- 只追踪显式给出的函数，不是全量函数调用采集
+- 使用 uprobe/uretprobe，输出函数返回耗时、PID/TID、comm
+- 需要 root 或 `CAP_BPF` / `CAP_PERFMON`
+- 符号必须存在于目标 ELF；stripped binary 可能无法解析
+- 当前是 CLI 实验功能，尚未接入 Web 时间线
+- 共享库、Go/JVM/Node 运行时符号和参数/返回值捕获仍在后续范围
 
 常用参数：
 
@@ -802,11 +828,13 @@ curl -s -b /tmp/ebpfshark.cookie \
 - [x] TLS 1.2 CCM、gRPC/protobuf、NetFlow v9/IPFIX 模板展开、DASH manifest、RTMP
 - [x] pcapng 导出、按时间范围导出
 - [x] 按进程 / cgroup / Pod 范围抓包
+- [x] 显式函数 uprobe/uretprobe 调用耗时（CLI 实验）
 - [x] 协议支持程度矩阵、RFC 参考、与 Wireshark/tcpdump 对比
 
 ### P0：协议覆盖
 
 - [ ] 音视频补齐：完整 SDP 编解码映射
+- [ ] 函数调用追踪 Web 时间线、参数/返回值、USDT/运行时符号
 - [ ] 物联网补齐：CoAP over TCP/DTLS、MQTT-SN 完整 QoS、Modbus RTU
 - [ ] LDAP/Kerberos
 - [ ] SCTP 分片重组

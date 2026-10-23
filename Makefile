@@ -72,7 +72,7 @@ $(PROBE_GENERATED): $(VMLINUX) internal/probe/bpf/probe.c internal/probe/generat
 run: go-build
 	./$(BIN) -addr :9999
 
-dev: $(GENERATED)
+dev: $(GENERATED) $(PROBE_GENERATED)
 	$(GO) run ./cmd/ebpfshark -addr :9999 -log-level debug
 
 dev-web:
