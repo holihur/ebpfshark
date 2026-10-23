@@ -211,6 +211,9 @@ func (c *ctx) dissectHTTP2(b []byte, base int) bool {
 				if hf.Name == "content-type" {
 					h2CT = hf.Value
 				}
+				if hf.Name == "content-encoding" {
+					h2CE = hf.Value
+				}
 				if hf.Name == ":method" || hf.Name == ":path" || hf.Name == ":status" || hf.Name == ":authority" {
 					if info == "HTTP2" {
 						info += " " + hf.Name + "=" + hf.Value
@@ -218,8 +221,8 @@ func (c *ctx) dissectHTTP2(b []byte, base int) bool {
 				}
 			}
 			f.add(hn)
-			if h2Path != "" || h2CT != "" {
-				flow.setMeta(stream, h2Path, h2CT)
+			if h2Path != "" || h2CT != "" || h2CE != "" {
+				flow.setMeta(stream, h2Path, h2CT, h2CE)
 			}
 		}
 		root.add(f)
