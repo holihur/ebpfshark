@@ -80,6 +80,7 @@ func (c *ctx) dissectAI(body []byte, base int, root *Field, path, contentType st
 	if text, ok := obj["output_text"].(string); ok && text != "" {
 		n.add(c.newField("Output Text: "+shorten(text, 300), "", base, 0))
 	}
+	addAIJSONTree(c, n, obj, base, 0, &[]int{0}[0])
 	root.add(n)
 	summary := fmt.Sprintf("%s %s", name, aiInfoSuffix(provider, request, obj))
 	c.appInfo = shorten(strings.TrimSpace(summary), 180)
@@ -217,6 +218,42 @@ func addAIContent(c *ctx, root *Field, list []any, label string, base int) {
 		}
 	}
 	root.add(n)
+}
+
+func addAIJSONTree(c *ctx, root *Field, obj map[string]any, base, depth int, count *int) {
+	if depth > 5 || *count > 256 {
+		return
+	}
+	for key, v := range obj {
+		if *count > 256 {
+			return
+		}
+		*count++
+		switch x := v.(type) {
+		case map[string]any:
+			n := c.newField(key, "", base, 0)
+			addAIJSONTree(c, n, x, base, depth+1, count)
+			root.add(n)
+		case []any:
+			n := c.newField(fmt.Sprintf("%s (%d)", key, len(x)), "", base, 0)
+			for i, item := range x {
+				if i >= 32 || *count > 256 {
+					break
+				}
+				switch y := item.(type) {
+				case map[string]any:
+					ch := c.newField(fmt.Sprintf("%d", i+1), "", base, 0)
+					addAIJSONTree(c, ch, y, base, depth+1, count)
+					n.add(ch)
+				default:
+					n.add(c.newField(fmt.Sprintf("%d: %s", i+1, shorten(fmt.Sprint(y), 240)), "", base, 0))
+				}
+			}
+			root.add(n)
+		default:
+			root.add(c.newField(key+": "+shorten(fmt.Sprint(v), 300), "", base, 0))
+		}
+	}
 }
 
 func (c *ctx) dissectAISSE(body []byte, base int, root *Field, path string, request bool) (string, bool) {

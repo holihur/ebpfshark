@@ -23,6 +23,7 @@ type h2Flow struct {
 	pending            map[uint32]*h2Pending
 	paths              map[uint32]string
 	contentTypes       map[uint32]string
+	bodies             map[uint32][]byte
 }
 
 var h2Flows = flowStore[*h2Flow]{max: 2048}
@@ -45,6 +46,7 @@ func h2FlowFor(c *ctx) *h2Flow {
 			cache:        make(map[string][]hpack.HeaderField),
 			paths:        make(map[uint32]string),
 			contentTypes: make(map[uint32]string),
+			bodies:       make(map[uint32][]byte),
 		}
 	})
 }
@@ -84,6 +86,22 @@ func (f *h2Flow) decodeHeaders(c *ctx, block []byte, seq uint32, off int) ([]hpa
 	}
 	f.cache[cacheKey] = fields
 	return fields, nil
+}
+
+func (f *h2Flow) appendBody(stream uint32, chunk []byte, end bool, limit int) []byte {
+	f.Lock()
+	defer f.Unlock()
+	b := append(f.bodies[stream], chunk...)
+	if len(b) > limit {
+		b = nil
+	}
+	if end {
+		delete(f.bodies, stream)
+	}
+	if b == nil {
+		return nil
+	}
+	return append([]byte(nil), b...)
 }
 
 func (f *h2Flow) setMeta(stream uint32, path, contentType string) {

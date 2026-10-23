@@ -134,13 +134,27 @@ func (c *ctx) dissectHTTP2(b []byte, base int) bool {
 				hdrOff = 4
 			}
 			if typ == 0 {
-				f.add(c.newField(fmt.Sprintf("Payload (%d bytes)", len(body)), printablePreview(body, 300), base+off+9, len(body)))
-				if summary, ok := c.dissectGRPC(body, base+off+9, f); ok {
-					info = summary
-				} else {
-					path, ct := flow.meta(stream)
-					if summary, ok := c.dissectAI(body, base+off+9, f, path, ct, false); ok {
+				data := body
+				if flags&0x8 != 0 && len(data) > 0 {
+					pad := int(data[0])
+					if pad <= len(data)-1 {
+						data = data[1 : len(data)-pad]
+					} else {
+						data = nil
+					}
+				}
+				if len(data) > 0 {
+					f.add(c.newField(fmt.Sprintf("Payload (%d bytes)", len(data)), printablePreview(data, 300), base+off+9, len(data)))
+				}
+				fullBody := flow.appendBody(stream, data, flags&0x1 != 0, 4<<20)
+				if len(fullBody) > 0 {
+					if summary, ok := c.dissectGRPC(fullBody, base+off+9, f); ok {
 						info = summary
+					} else {
+						path, ct := flow.meta(stream)
+						if summary, ok := c.dissectAI(fullBody, base+off+9, f, path, ct, false); ok {
+							info = summary
+						}
 					}
 				}
 				break

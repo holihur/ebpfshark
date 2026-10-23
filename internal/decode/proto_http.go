@@ -104,6 +104,12 @@ func (c *ctx) dissectHTTP(b []byte, base int) bool {
 	}
 
 	body := b[headerEnd:]
+	aiBody := body
+	if strings.Contains(strings.ToLower(headers["transfer-encoding"]), "chunked") {
+		if decoded, ok := dechunkHTTP(body); ok {
+			aiBody = decoded
+		}
+	}
 	if len(body) > 0 {
 		root.add(c.newField(fmt.Sprintf("Body (%d bytes)", len(body)), hexPreview(body, 32), base+headerEnd, len(body)))
 	}
@@ -148,22 +154,55 @@ func (c *ctx) dissectHTTP(b []byte, base int) bool {
 		}
 	}
 
-	if len(body) > 0 && looksLikeHLS(body) {
-		c.dissectHLS(body, base+headerEnd, root)
-	} else if len(body) > 0 && looksLikeDASH(body) {
-		c.dissectDASH(body, base+headerEnd, root)
-	} else if len(body) > 0 {
+	if len(aiBody) > 0 && looksLikeHLS(aiBody) {
+		c.dissectHLS(aiBody, base+headerEnd, root)
+	} else if len(aiBody) > 0 && looksLikeDASH(aiBody) {
+		c.dissectDASH(aiBody, base+headerEnd, root)
+	} else if len(aiBody) > 0 {
 		path := ""
 		if isRequest && len(parts) > 1 {
 			path = parts[1]
 		}
-		c.dissectAI(body, base+headerEnd, root, path, headers["content-type"], isRequest)
+		c.dissectAI(aiBody, base+headerEnd, root, path, headers["content-type"], isRequest)
 	}
 
 	// Prepend a line field for the start line (offset points at the line).
 	root.Children = append([]*Field{c.newField(firstLine, "", base, nl)}, root.Children...)
 	c.addRoot(root)
 	return true
+}
+
+func dechunkHTTP(b []byte) ([]byte, bool) {
+	var out []byte
+	off := 0
+	for off < len(b) {
+		nl := strings.Index(string(b[off:]), "\r\n")
+		if nl < 0 {
+			return nil, false
+		}
+		line := strings.TrimSpace(string(b[off : off+nl]))
+		if i := strings.IndexByte(line, ';'); i >= 0 {
+			line = line[:i]
+		}
+		n, err := strconv.ParseInt(line, 16, 64)
+		if err != nil || n < 0 {
+			return nil, false
+		}
+		off += nl + 2
+		if n == 0 {
+			return out, true
+		}
+		if n > int64(len(b)-off) {
+			return nil, false
+		}
+		out = append(out, b[off:off+int(n)]...)
+		off += int(n)
+		if off+2 > len(b) || b[off] != '\r' || b[off+1] != '\n' {
+			return nil, false
+		}
+		off += 2
+	}
+	return out, true
 }
 
 func canonicalHeader(k string) string {
