@@ -2,10 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import {
   AlertCircle,
   Check,
+  ChevronDown,
   Code2,
   Loader2,
   Plus,
   RotateCcw,
+  Search,
   Trash2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -27,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { api } from "@/lib/api"
 import { useI18n, type MessageKey } from "@/i18n"
 import { cn } from "@/lib/utils"
@@ -58,8 +61,6 @@ const GROUP_KEYS: Record<string, MessageKey> = {
   Payload: "filter.group.payload",
 }
 
-const ANY_PROTOCOL = "__any__"
-
 export function FilterBuilder({
   open,
   onOpenChange,
@@ -72,6 +73,8 @@ export function FilterBuilder({
   const [fieldsError, setFieldsError] = useState<string | null>(null)
   const [rows, setRows] = useState<Row[]>([])
   const [protocol, setProtocol] = useState("")
+  const [protocolOpen, setProtocolOpen] = useState(false)
+  const [protocolQuery, setProtocolQuery] = useState("")
   const [combinator, setCombinator] = useState<"and" | "or">("and")
   const [validation, setValidation] = useState<{ valid: boolean; error?: string } | null>(null)
   const [validating, setValidating] = useState(false)
@@ -82,6 +85,11 @@ export function FilterBuilder({
   const fieldMap = useMemo(() => new Map(fields.map((f) => [f.name, f])), [fields])
   const rowFields = useMemo(() => fields.filter((f) => f.type !== "layer"), [fields])
   const layers = useMemo(() => fields.filter((f) => f.type === "layer"), [fields])
+  const filteredLayers = useMemo(() => {
+    const query = protocolQuery.trim().toLowerCase()
+    if (!query) return layers
+    return layers.filter((field) => field.name.toLowerCase().includes(query))
+  }, [layers, protocolQuery])
   const grouped = useMemo(() => {
     const groups = new Map<string, FilterField[]>()
     for (const field of rowFields) {
@@ -293,22 +301,85 @@ export function FilterBuilder({
           <div className="flex flex-wrap items-end gap-3">
             <div className="space-y-1">
               <div className="text-2xs text-muted-foreground">{t("filter.protocol")}</div>
-              <Select
-                value={protocol || ANY_PROTOCOL}
-                onValueChange={(value) => setProtocol(value === ANY_PROTOCOL ? "" : value)}
+              <Popover
+                open={protocolOpen}
+                onOpenChange={(open) => {
+                  setProtocolOpen(open)
+                  if (!open) setProtocolQuery("")
+                }}
               >
-                <SelectTrigger className="h-7 w-[150px] font-mono text-[11px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ANY_PROTOCOL}>{t("filter.anyProtocol")}</SelectItem>
-                  {layers.map((field) => (
-                    <SelectItem key={field.name} value={field.name} className="font-mono text-[11px]">
-                      {field.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 w-[150px] justify-between px-2 font-mono text-[11px] font-normal"
+                  >
+                    <span className={cn("truncate", !protocol && "text-muted-foreground")}>
+                      {protocol || t("filter.anyProtocol")}
+                    </span>
+                    <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-60" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-[220px] p-0">
+                  <div className="relative border-b p-2">
+                    <Search className="pointer-events-none absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={protocolQuery}
+                      autoFocus
+                      spellCheck={false}
+                      placeholder={t("filter.searchProtocol")}
+                      className="h-7 pl-7 font-mono text-[11px]"
+                      onChange={(e) => setProtocolQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && filteredLayers.length > 0) {
+                          setProtocol(filteredLayers[0].name)
+                          setProtocolOpen(false)
+                          setProtocolQuery("")
+                        }
+                        if (e.key === "Escape") setProtocolOpen(false)
+                      }}
+                    />
+                  </div>
+                  <div className="max-h-64 overflow-auto p-1 scrollbar-thin">
+                    <button
+                      type="button"
+                      className={cn(
+                        "flex w-full items-center rounded px-2 py-1.5 text-left font-mono text-[11px] hover:bg-accent",
+                        !protocol && "bg-primary/10 text-primary",
+                      )}
+                      onClick={() => {
+                        setProtocol("")
+                        setProtocolOpen(false)
+                        setProtocolQuery("")
+                      }}
+                    >
+                      {t("filter.anyProtocol")}
+                    </button>
+                    {filteredLayers.map((field) => (
+                      <button
+                        key={field.name}
+                        type="button"
+                        className={cn(
+                          "flex w-full items-center rounded px-2 py-1.5 text-left font-mono text-[11px] hover:bg-accent",
+                          protocol === field.name && "bg-primary/10 text-primary",
+                        )}
+                        onClick={() => {
+                          setProtocol(field.name)
+                          setProtocolOpen(false)
+                          setProtocolQuery("")
+                        }}
+                      >
+                        {field.name}
+                      </button>
+                    ))}
+                    {filteredLayers.length === 0 && (
+                      <div className="px-2 py-3 text-center text-2xs text-muted-foreground">
+                        {t("filter.noProtocol")}
+                      </div>
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
             <div className="space-y-1">
               <div className="text-2xs text-muted-foreground">{t("filter.combinator")}</div>

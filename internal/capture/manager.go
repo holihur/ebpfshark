@@ -207,16 +207,7 @@ func (m *Manager) Start(opts Options) error {
 	if excludePort > 65535 {
 		excludePort = 0
 	}
-	cfg := captureCaptureConfig{
-		Enabled:     0,
-		Snaplen:     opts.Snaplen,
-		SampleRate:  opts.SampleRate,
-		ExcludePort: excludePort,
-		CgroupId:    opts.CgroupID,
-	}
-	if opts.CgroupID != 0 {
-		cfg.FilterCgroup = 1
-	}
+	cfg := captureConfigFor(opts, 0, excludePort)
 	if err := objs.CaptureCfg.Put(uint32(0), cfg); err != nil {
 		cleanup()
 		return fmt.Errorf("configure map: %w", err)
