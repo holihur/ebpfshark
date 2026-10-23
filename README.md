@@ -35,6 +35,31 @@ ebpfshark 使用 TCX（TC eXpress）把两个很小的 eBPF 程序挂到网卡�
   收纳到 `…` 菜单。
 - **深色 / 浅色主题**、虚拟滚动列表、SSE 实时推送、键盘导航。
 
+## 与 Wireshark / tcpdump 对比
+
+ebpfshark 不是 Wireshark/tcpdump 的替代品。三者的定位不同：
+
+| | ebpfshark | Wireshark | tcpdump |
+| --- | --- | --- | --- |
+| 形态 | Web UI + HTTP/SSE + MCP | 桌面 GUI + `tshark` | 命令行 |
+| 实时抓包 | Linux eBPF TCX | libpcap/dumpcap | libpcap |
+| 平台 | Linux ≥ 6.6 + BTF | Windows/macOS/Linux/BSD | Linux/macOS/BSD |
+| 协议深度 | 45+ 协议，重点协议较深 | 上千种 dissector | 以链路/网络/传输层为主 |
+| 显示过滤 | Wireshark/tcpdump 风格子集 | 完整 Wireshark 过滤语言 | 仅 BPF capture filter |
+| 内核侧过滤 | 暂未实现（用户态过滤） | dumpcap BPF | 原生 BPF |
+| TCP 流查看 | UI Follow Stream | 内置多种 Follow 流 | 无内置流 UI |
+| 解密 | TLS/QUIC keylog、WPA2、可选 SSH 会话密钥 | 更广的 TLS/QUIC/WPA 解密 | 无 |
+| 远程/自动化 | API、SSE、MCP | extcap/sshdump、`tshark` | SSH + `-w` |
+| 适合场景 | 浏览器实时查看、常驻抓包服务、MCP | 深度协议分析、桌面排障 | 远程快速抓包、低开销、BPF 过滤 |
+
+简单选择：
+
+- **Wireshark**：需要最全协议、完整过滤语言、深度 GUI 分析。
+- **tcpdump**：需要最低开销、远程抓包、内核 BPF 过滤、pcap 交接。
+- **ebpfshark**：需要 Linux 上浏览器实时查看、HTTP/MCP 自动化和一体化流分析。
+
+详细对比、过滤差异、互操作方式和性能/安全边界见 **[docs/COMPARISON.md](docs/COMPARISON.md)**。
+
 ## 环境要求
 
 | 组件 | 要求 |
