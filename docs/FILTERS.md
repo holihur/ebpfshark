@@ -12,6 +12,30 @@
 - 实时预览表达式，并调用 `/api/filter/validate` 做语法校验；无效时禁止应用。
 - 字段目录由后端 `GET /api/filter/schema` 提供，包含类型、可用运算符、枚举值和输入建议。
 
+## 混合过滤
+
+过滤器采用两层执行：
+
+1. **eBPF 预过滤**：只下推保守的 L2–L4 条件，例如 `tcp`、`udp`、`port 443`、`host 10.0.0.5`、`vlan.id`。
+2. **用户态精确匹配**：应用层字段、`contains`、OR/NOT 等继续由 Go AST 匹配。
+
+只有 AND 组合中的安全条件会被下推。例如：
+
+```text
+tcp port 443                 -> proto=tcp, port=443 下推
+tcp and (port 80 or 443)     -> 只下推 tcp
+http.host contains example   -> 完全用户态
+```
+
+API：
+
+```text
+POST /api/capture/start   {filter}
+POST /api/capture/filter  {filter}
+```
+
+下推过滤器不会改变显示结果；它只减少进入 ring buffer 的无关报文。若过滤器无法安全下推，系统自动回退到纯用户态过滤。
+
 ## 显示过滤器
 
 支持 `and` / `or` / `not`（也可写 `&&` / `||` / `!`）与括号；比较运算支持

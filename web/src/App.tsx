@@ -112,6 +112,7 @@ export default function App() {
         snaplen,
         sampleRate,
         clear: clearOnStart,
+        filter: capture.filter,
       })
       toast.success(t("toast.captureStarted"), {
         description: t("toast.captureStartedDesc", {

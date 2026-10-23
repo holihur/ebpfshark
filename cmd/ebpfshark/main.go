@@ -23,6 +23,7 @@ import (
 	"ebpfshark/internal/auth"
 	"ebpfshark/internal/capture"
 	"ebpfshark/internal/decode"
+	"ebpfshark/internal/filter"
 	"ebpfshark/internal/mcpserver"
 	"ebpfshark/internal/probe"
 	"ebpfshark/internal/server"
@@ -63,6 +64,7 @@ func main() {
 	tlsKeylog := flag.String("tls-keylog", env("EBPFSHARK_TLS_KEYLOG", env("SSLKEYLOGFILE", "")), "NSS SSLKEYLOGFILE for TLS 1.2/1.3 decryption")
 	plugins := flag.String("plugins", env("EBPFSHARK_PLUGINS", ""), "comma separated Go .so dissector plugins")
 	cgroup := flag.String("cgroup", env("EBPFSHARK_CGROUP", ""), "capture only sockets in a cgroup: ID, path, pid:N, pod:NAME or container:ID")
+	captureFilter := flag.String("capture-filter", env("EBPFSHARK_CAPTURE_FILTER", ""), "display filter whose safe L2-L4 subset is applied in eBPF")
 	pluginDir := flag.String("plugin-dir", env("EBPFSHARK_PLUGIN_DIR", ""), "directory containing .so dissector plugins")
 	sshKeys := flag.String("ssh-keys", env("EBPFSHARK_SSH_KEYS", ""), "JSON session keys for opt-in SSH AES-CTR decryption")
 	wifiPSK := flag.String("wifi-psk", env("EBPFSHARK_WIFI_PSK", ""), "WPA2-PSK passphrase for CCMP frame decryption")
@@ -117,6 +119,15 @@ func main() {
 		}
 	}
 
+	var targetFilter filter.CaptureSpec
+	if *captureFilter != "" {
+		spec, err := filter.CompileCapture(*captureFilter)
+		if err != nil {
+			log.Error("compile capture filter failed", "filter", *captureFilter, "err", err)
+			os.Exit(1)
+		}
+		targetFilter = spec
+	}
 	var targetCgroup uint64
 	if *cgroup != "" {
 		id, err := capture.ResolveCgroup(*cgroup)
@@ -231,12 +242,13 @@ func main() {
 	if *iface != "" {
 		names := splitNames(*iface)
 		if err := mgr.Start(capture.Options{
-			Interfaces:  names,
-			Snaplen:     uint32(*snaplen),
-			SampleRate:  uint32(*sampleRate),
-			RingSize:    uint32(*ringSize),
-			ExcludePort: uint32(selfPort),
-			CgroupID:    targetCgroup,
+			Interfaces:    names,
+			Snaplen:       uint32(*snaplen),
+			SampleRate:    uint32(*sampleRate),
+			RingSize:      uint32(*ringSize),
+			ExcludePort:   uint32(selfPort),
+			CgroupID:      targetCgroup,
+			CaptureFilter: targetFilter,
 		}); err != nil {
 			log.Error("auto-start capture failed", "err", err)
 		}

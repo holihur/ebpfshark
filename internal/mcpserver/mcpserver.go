@@ -168,6 +168,7 @@ type startCaptureInput struct {
 	RingSize   uint32   `json:"ringSize,omitempty" jsonschema:"BPF ring buffer size in bytes (default 32 MiB)"`
 	Clear      bool     `json:"clear,omitempty" jsonschema:"clear the packet buffer before starting"`
 	Cgroup     string   `json:"cgroup,omitempty" jsonschema:"capture only sockets in a cgroup: ID, path, pid:N, pod:NAME or container:ID"`
+	Filter     string   `json:"filter,omitempty" jsonschema:"optional display filter; its safe L2-L4 subset is applied in the kernel"`
 }
 
 func addCaptureTools(srv *mcp.Server, st *store.Store, mgr *capture.Manager, apiPort uint32) {
@@ -192,16 +193,25 @@ func addCaptureTools(srv *mcp.Server, st *store.Store, mgr *capture.Manager, api
 				return nil, nil, err
 			}
 		}
+		var captureFilter filter.CaptureSpec
+		if in.Filter != "" {
+			var err error
+			captureFilter, err = filter.CompileCapture(in.Filter)
+			if err != nil {
+				return nil, nil, err
+			}
+		}
 		if in.Clear {
 			st.Clear()
 		}
 		if err := mgr.Start(capture.Options{
-			Interfaces:  in.Interfaces,
-			Snaplen:     in.Snaplen,
-			SampleRate:  in.SampleRate,
-			RingSize:    in.RingSize,
-			ExcludePort: apiPort,
-			CgroupID:    cgroupID,
+			Interfaces:    in.Interfaces,
+			Snaplen:       in.Snaplen,
+			SampleRate:    in.SampleRate,
+			RingSize:      in.RingSize,
+			ExcludePort:   apiPort,
+			CgroupID:      cgroupID,
+			CaptureFilter: captureFilter,
 		}); err != nil {
 			return nil, nil, err
 		}

@@ -17,6 +17,7 @@ import (
 	"github.com/cilium/ebpf/rlimit"
 	"golang.org/x/sys/unix"
 
+	"ebpfshark/internal/filter"
 	"ebpfshark/internal/packet"
 	"ebpfshark/internal/store"
 )
@@ -34,24 +35,27 @@ type Options struct {
 	ExcludePort uint32 `json:"excludePort"`
 	// CgroupID limits capture to sockets in one cgroup v2. 0 disables it.
 	CgroupID uint64 `json:"cgroupID,omitempty"`
+	// CaptureFilter is the conservative L2-L4 subset pushed into eBPF.
+	CaptureFilter filter.CaptureSpec `json:"captureFilter,omitempty"`
 }
 
 // Status describes the current capture session.
 type Status struct {
-	Running        bool     `json:"running"`
-	Interfaces     []string `json:"interfaces"`
-	Snaplen        uint32   `json:"snaplen"`
-	SampleRate     uint32   `json:"sampleRate"`
-	RingSize       uint32   `json:"ringSize"`
-	KernelPackets  uint64   `json:"kernelPackets"`
-	KernelBytes    uint64   `json:"kernelBytes"`
-	KernelSkipped  uint64   `json:"kernelSkipped"`
-	KernelFiltered uint64   `json:"kernelFiltered"`
-	ExcludePort    uint32   `json:"excludePort"`
-	CgroupID       uint64   `json:"cgroupID,omitempty"`
-	UptimeSeconds  float64  `json:"uptimeSeconds"`
-	AttachErrors   []string `json:"attachErrors,omitempty"`
-	LastError      string   `json:"lastError,omitempty"`
+	Running        bool               `json:"running"`
+	Interfaces     []string           `json:"interfaces"`
+	Snaplen        uint32             `json:"snaplen"`
+	SampleRate     uint32             `json:"sampleRate"`
+	RingSize       uint32             `json:"ringSize"`
+	KernelPackets  uint64             `json:"kernelPackets"`
+	KernelBytes    uint64             `json:"kernelBytes"`
+	KernelSkipped  uint64             `json:"kernelSkipped"`
+	KernelFiltered uint64             `json:"kernelFiltered"`
+	ExcludePort    uint32             `json:"excludePort"`
+	CgroupID       uint64             `json:"cgroupID,omitempty"`
+	CaptureFilter  filter.CaptureSpec `json:"captureFilter,omitempty"`
+	UptimeSeconds  float64            `json:"uptimeSeconds"`
+	AttachErrors   []string           `json:"attachErrors,omitempty"`
+	LastError      string             `json:"lastError,omitempty"`
 }
 
 // Manager owns the eBPF objects and TCX attachments for one capture session.
@@ -86,6 +90,60 @@ type Manager struct {
 // NewManager creates a capture manager feeding packets into st.
 func NewManager(st *store.Store, log *slog.Logger) *Manager {
 	return &Manager{store: st, log: log}
+}
+
+func captureConfigFor(opts Options, enabled, excludePort uint32) captureCaptureConfig {
+	cfg := captureCaptureConfig{
+		Enabled: enabled, Snaplen: opts.Snaplen, SampleRate: opts.SampleRate,
+		ExcludePort: excludePort, CgroupId: opts.CgroupID,
+	}
+	if opts.CgroupID != 0 {
+		cfg.FilterCgroup = 1
+	}
+	f := opts.CaptureFilter
+	if f.Proto != 0 {
+		cfg.FilterFlags |= 1
+		cfg.FilterProto = uint32(f.Proto)
+	}
+	if f.IPVersion != 0 {
+		cfg.FilterFlags |= 2
+		cfg.FilterIpver = uint32(f.IPVersion)
+	}
+	if f.SrcPortLo != 0 || f.SrcPortHi != 0 {
+		cfg.FilterFlags |= 4
+		cfg.SportLo, cfg.SportHi = uint32(f.SrcPortLo), uint32(f.SrcPortHi)
+	}
+	if f.DstPortLo != 0 || f.DstPortHi != 0 {
+		cfg.FilterFlags |= 8
+		cfg.DportLo, cfg.DportHi = uint32(f.DstPortLo), uint32(f.DstPortHi)
+	}
+	if f.HasVLAN {
+		cfg.FilterFlags |= 16
+		cfg.FilterVlan = uint32(f.VLAN)
+	}
+	if f.SrcIPv4.Is4() {
+		cfg.FilterFlags |= 32
+		a := f.SrcIPv4.As4()
+		cfg.SrcIp4 = binary.BigEndian.Uint32(a[:])
+	}
+	if f.DstIPv4.Is4() {
+		cfg.FilterFlags |= 64
+		a := f.DstIPv4.As4()
+		cfg.DstIp4 = binary.BigEndian.Uint32(a[:])
+	}
+	return cfg
+}
+
+// SetCaptureFilter updates the kernel prefilter without restarting capture.
+func (m *Manager) SetCaptureFilter(spec filter.CaptureSpec) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.opts.CaptureFilter = spec
+	if m.objs == nil {
+		return nil
+	}
+	cfg := captureConfigFor(m.opts, 1, m.opts.ExcludePort)
+	return m.objs.CaptureCfg.Put(uint32(0), cfg)
 }
 
 // Start tears down any running session and starts a new one.
@@ -350,15 +408,16 @@ func (m *Manager) Status() Status {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	st := Status{
-		Running:      m.running,
-		Interfaces:   append([]string(nil), m.opts.Interfaces...),
-		Snaplen:      m.opts.Snaplen,
-		SampleRate:   m.opts.SampleRate,
-		RingSize:     m.opts.RingSize,
-		ExcludePort:  m.opts.ExcludePort,
-		CgroupID:     m.opts.CgroupID,
-		AttachErrors: append([]string(nil), m.attachErrors...),
-		LastError:    m.lastError,
+		Running:       m.running,
+		Interfaces:    append([]string(nil), m.opts.Interfaces...),
+		Snaplen:       m.opts.Snaplen,
+		SampleRate:    m.opts.SampleRate,
+		RingSize:      m.opts.RingSize,
+		ExcludePort:   m.opts.ExcludePort,
+		CgroupID:      m.opts.CgroupID,
+		CaptureFilter: m.opts.CaptureFilter,
+		AttachErrors:  append([]string(nil), m.attachErrors...),
+		LastError:     m.lastError,
 	}
 	if st.Interfaces == nil {
 		st.Interfaces = []string{}

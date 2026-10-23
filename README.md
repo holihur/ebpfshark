@@ -11,6 +11,7 @@ ebpfshark 通过 TCX 在 Linux 网卡 ingress/egress 抓包，浏览器中提供
 - **实时抓包**：多网卡、ingress + egress、snaplen、采样率；支持 pcap/pcapng 导入导出。
 - **浏览器分析**：报文列表、可展开协议树、hex/ASCII、字段高亮、虚拟滚动。
 - **显示过滤器**：字段比较、CIDR、端口范围、布尔表达式、`contains`，以及可视化构造器。
+- **混合过滤**：安全可下推的 L2–L4 条件编译进 eBPF，应用层字段和复杂表达式继续在用户态精确匹配。
 - **TCP 流分析**：乱序/重传/重叠处理、Follow Stream、双向会话统计。
 - **AI API 解析**：Anthropic Messages、OpenAI Chat Completions、OpenAI Responses，支持 JSON/SSE。
 - **范围抓包**：按进程当前 cgroup、cgroup v2 路径、Pod/容器 cgroup 片段过滤。
@@ -87,6 +88,7 @@ Web 侧栏 **Trace** 标签和 MCP 的 `start_function_trace` / `query_function_
 -max-packets 100000      内存中保留的报文数
 -snaplen 2048            每包捕获字节数
 -sample-rate 1           每 N 个包抓 1 个
+-capture-filter ""       可选显示过滤器；其 L2–L4 子集会在 eBPF 中预过滤
 -tls-keylog ""           NSS SSLKEYLOGFILE，用于 TLS 解密
 -wifi-psk ""             WPA2-PSK，解密 CCMP/GCMP 无线数据帧
 -plugins ""              动态 Go .so 协议插件
@@ -101,7 +103,7 @@ Web 侧栏 **Trace** 标签和 MCP 的 `start_function_trace` / `query_function_
 ## 已知限制
 
 - 需要 Linux ≥ 6.6、BTF 和 root / `CAP_BPF` + `CAP_NET_ADMIN`。
-- 显示过滤器在用户态执行，暂未实现内核态预过滤；高流量场景建议配合采样/snaplen。
+- 显示过滤器采用混合过滤：L2–L4 安全子集在 eBPF 预过滤，应用层/复杂表达式仍在用户态执行；无法下推的过滤器不会减少内核复制。
 - 协议覆盖和深度不及 Wireshark；长期存储/检索不及 Arkime。
 - cgroup 抓包要求 cgroup v2；按 PID 实际是解析该 PID 当前 cgroup。
 - 函数调用追踪是实验功能，只支持显式符号；已支持基础事件列表、build-id/容器检查和 cgroup 时间窗关联，尚无参数/返回值/USDT。

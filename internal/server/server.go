@@ -116,6 +116,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/capture/start", s.handleStart)
 	mux.HandleFunc("POST /api/capture/stop", s.handleStop)
 	mux.HandleFunc("POST /api/capture/clear", s.handleClear)
+	mux.HandleFunc("POST /api/capture/filter", s.handleCaptureFilter)
 	mux.HandleFunc("GET /api/packets", s.handlePackets)
 	mux.HandleFunc("GET /api/packets/{id}", s.handlePacketDetail)
 	mux.HandleFunc("GET /api/packets/{id}/stream", s.handlePacketStream)
@@ -337,6 +338,7 @@ type startRequest struct {
 	RingSize   uint32   `json:"ringSize"`
 	Clear      bool     `json:"clear"`
 	Cgroup     string   `json:"cgroup,omitempty"`
+	Filter     string   `json:"filter,omitempty"`
 }
 
 func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
@@ -362,6 +364,15 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	var captureFilter filter.CaptureSpec
+	if req.Filter != "" {
+		var err error
+		captureFilter, err = filter.CompileCapture(req.Filter)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
 	if req.Clear {
 		s.store.Clear()
 	}
@@ -372,8 +383,9 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 		RingSize:   req.RingSize,
 		// Exclude the analyzer's own HTTP API traffic from captures so the UI
 		// polling and SSE stream do not feed back into the packet list.
-		ExcludePort: uint32(s.selfPort),
-		CgroupID:    cgroupID,
+		ExcludePort:   uint32(s.selfPort),
+		CgroupID:      cgroupID,
+		CaptureFilter: captureFilter,
 	})
 	if err != nil {
 		s.log.Error("start capture", "err", err)
@@ -386,6 +398,26 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleStop(w http.ResponseWriter, r *http.Request) {
 	s.mgr.Stop()
 	writeJSON(w, http.StatusOK, s.mgr.Status())
+}
+
+func (s *Server) handleCaptureFilter(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Filter string `json:"filter"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	spec, err := filter.CompileCapture(req.Filter)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := s.mgr.SetCaptureFilter(spec); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"filter": req.Filter, "captureFilter": spec})
 }
 
 func (s *Server) handleClear(w http.ResponseWriter, r *http.Request) {

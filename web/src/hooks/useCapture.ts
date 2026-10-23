@@ -8,6 +8,7 @@ export interface StartOptions {
   snaplen: number
   sampleRate: number
   clear?: boolean
+  filter?: string
 }
 
 export function useCapture() {
@@ -124,6 +125,7 @@ export function useCapture() {
     if (!trimmed) {
       setFilter("")
       setFilterError(null)
+      try { await api.captureFilter("") } catch { /* ignore */ }
       return true
     }
     try {
@@ -134,6 +136,11 @@ export function useCapture() {
       }
       setFilterError(null)
       setFilter(trimmed)
+      try {
+        await api.captureFilter(trimmed)
+      } catch {
+        /* capture may not be running; the next start sends the filter */
+      }
       return true
     } catch (err) {
       setFilterError(err instanceof Error ? err.message : String(err))
@@ -148,6 +155,7 @@ export function useCapture() {
         snaplen: opts.snaplen,
         sampleRate: opts.sampleRate,
         clear: opts.clear ?? true,
+        filter: opts.filter ?? "",
       })
       if (opts.clear ?? true) packetStore.clear()
       setStatus((prev) => (prev ? { ...prev, capture: res } : prev))

@@ -10,9 +10,10 @@
 | GET | `/api/health` | 健康检查（公开） |
 | GET | `/api/status` | 抓包状态、统计、网卡列表 |
 | GET | `/api/interfaces` | 网卡列表 |
-| POST | `/api/capture/start` | `{interfaces, snaplen, sampleRate, clear, cgroup}` |
+| POST | `/api/capture/start` | `{interfaces, snaplen, sampleRate, clear, cgroup, filter}` |
 | POST | `/api/capture/stop` | 停止抓包 |
 | POST | `/api/capture/clear` | 清空缓冲区 |
+| POST | `/api/capture/filter` | `{filter}` 更新 eBPF 预过滤（安全 L2–L4 子集） |
 | GET | `/api/packets?filter=&limit=` | 最近 N 条匹配报文 |
 | GET | `/api/packets/{id}` | 协议树 + base64 原始字节 |
 | GET | `/api/packets/{id}/stream` | 该 TCP 报文所属会话的双向重组负载 |

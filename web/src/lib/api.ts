@@ -79,12 +79,18 @@ export const api = {
     snaplen: number
     sampleRate: number
     clear: boolean
+    filter?: string
   }) =>
     request<StatusResponse["capture"]>("/api/capture/start", {
       method: "POST",
       body: JSON.stringify(body),
     }),
   stop: () => request<StatusResponse["capture"]>("/api/capture/stop", { method: "POST" }),
+  captureFilter: (filter: string) =>
+    request<{ filter: string }>("/api/capture/filter", {
+      method: "POST",
+      body: JSON.stringify({ filter }),
+    }),
   clear: () => request<{ ok: boolean }>("/api/capture/clear", { method: "POST" }),
   validate: (filter: string) =>
     request<FilterValidation>("/api/filter/validate", {
