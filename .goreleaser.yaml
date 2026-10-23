@@ -1,0 +1,135 @@
+version: 2
+
+project_name: ebpfshark
+
+before:
+  hooks:
+    - make generate
+    - make web
+
+builds:
+  - id: core
+    main: ./cmd/ebpfshark
+    binary: ebpfshark
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X ebpfshark/internal/server.Version={{ .Version }}
+
+  - id: full
+    main: ./cmd/ebpfshark
+    binary: ebpfshark
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    tags:
+      - full
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X ebpfshark/internal/server.Version={{ .Version }}
+
+  - id: dynamic
+    main: ./cmd/ebpfshark
+    binary: ebpfshark
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - linux
+    goarch:
+      - amd64
+    tags:
+      - full
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X ebpfshark/internal/server.Version={{ .Version }}
+
+archives:
+  - id: core
+    ids:
+      - core
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_core_{{ .Os }}_{{ .Arch }}
+    files:
+      - LICENSE
+      - README.md
+      - docs/COMPARISON.md
+      - docs/DOCKER.md
+      - docs/PLUGINS.md
+
+  - id: full
+    ids:
+      - full
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_full_{{ .Os }}_{{ .Arch }}
+    files:
+      - LICENSE
+      - README.md
+      - docs/COMPARISON.md
+      - docs/DOCKER.md
+      - docs/PLUGINS.md
+
+  - id: dynamic
+    ids:
+      - dynamic
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_dynamic_{{ .Os }}_{{ .Arch }}
+    files:
+      - LICENSE
+      - README.md
+      - docs/COMPARISON.md
+      - docs/DOCKER.md
+      - docs/PLUGINS.md
+
+checksum:
+  name_template: checksums.txt
+
+signs:
+  - cmd: cosign
+    artifacts: checksum
+    signature: "${artifact}.sig"
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - --yes
+      - --output-signature=${signature}
+      - --output-certificate=${certificate}
+      - ${artifact}
+
+release:
+  github:
+    owner: holihur
+    name: ebpfshark
+  draft: false
+  prerelease: auto
+  mode: replace
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"

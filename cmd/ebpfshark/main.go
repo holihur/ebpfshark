@@ -24,6 +24,7 @@ import (
 	"ebpfshark/internal/capture"
 	"ebpfshark/internal/decode"
 	"ebpfshark/internal/mcpserver"
+	"ebpfshark/internal/probe"
 	"ebpfshark/internal/server"
 	"ebpfshark/internal/store"
 	"ebpfshark/internal/update"
@@ -32,6 +33,10 @@ import (
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "mcp" {
 		runMCPStdio(os.Args[2:])
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "trace" {
+		runTrace(os.Args[2:])
 		return
 	}
 
@@ -57,6 +62,7 @@ func main() {
 	pprofAddr := flag.String("pprof-addr", env("EBPFSHARK_PPROF_ADDR", ""), "optional local profiling address, e.g. 127.0.0.1:6060")
 	tlsKeylog := flag.String("tls-keylog", env("EBPFSHARK_TLS_KEYLOG", env("SSLKEYLOGFILE", "")), "NSS SSLKEYLOGFILE for TLS 1.2/1.3 decryption")
 	plugins := flag.String("plugins", env("EBPFSHARK_PLUGINS", ""), "comma separated Go .so dissector plugins")
+	cgroup := flag.String("cgroup", env("EBPFSHARK_CGROUP", ""), "capture only sockets in a cgroup: ID, path, pid:N, pod:NAME or container:ID")
 	pluginDir := flag.String("plugin-dir", env("EBPFSHARK_PLUGIN_DIR", ""), "directory containing .so dissector plugins")
 	sshKeys := flag.String("ssh-keys", env("EBPFSHARK_SSH_KEYS", ""), "JSON session keys for opt-in SSH AES-CTR decryption")
 	wifiPSK := flag.String("wifi-psk", env("EBPFSHARK_WIFI_PSK", ""), "WPA2-PSK passphrase for CCMP frame decryption")
@@ -109,6 +115,17 @@ func main() {
 		} else {
 			log.Info("loaded TLS keylog", "path", *tlsKeylog)
 		}
+	}
+
+	var targetCgroup uint64
+	if *cgroup != "" {
+		id, err := capture.ResolveCgroup(*cgroup)
+		if err != nil {
+			log.Error("resolve cgroup failed", "cgroup", *cgroup, "err", err)
+			os.Exit(1)
+		}
+		targetCgroup = id
+		log.Info("capture cgroup filter enabled", "cgroupID", id)
 	}
 
 	var webFS fs.FS
@@ -218,6 +235,7 @@ func main() {
 			SampleRate:  uint32(*sampleRate),
 			RingSize:    uint32(*ringSize),
 			ExcludePort: uint32(selfPort),
+			CgroupID:    targetCgroup,
 		}); err != nil {
 			log.Error("auto-start capture failed", "err", err)
 		}
@@ -245,6 +263,56 @@ func main() {
 
 // runMCPStdio runs the MCP server over stdin/stdout for local MCP clients.
 // Logs go to stderr so stdout stays a clean JSON-RPC stream.
+func runTrace(args []string) {
+	fs := flag.NewFlagSet("trace", flag.ExitOnError)
+	pid := fs.Int("pid", 0, "trace only this PID (0 = all processes loading the binary)")
+	functions := fs.String("func", "", "comma separated binary:symbol uprobe targets")
+	duration := fs.Duration("duration", 0, "stop after this duration (0 = until Ctrl-C)")
+	_ = fs.Parse(args)
+	if *functions == "" {
+		fmt.Fprintln(os.Stderr, "usage: ebpfshark trace -pid PID -func /path/to/bin:symbol[,binary:symbol...]")
+		os.Exit(2)
+	}
+	fns, err := probe.ParseFunctions(*functions)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "invalid -func:", err)
+		os.Exit(2)
+	}
+	if *pid < 0 {
+		fmt.Fprintln(os.Stderr, "invalid -pid")
+		os.Exit(2)
+	}
+	tracer, err := probe.Start(probe.Options{PID: *pid, Functions: fns})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "start trace:", err)
+		os.Exit(1)
+	}
+	defer tracer.Close()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	var timer <-chan time.Time
+	if *duration > 0 {
+		t := time.NewTimer(*duration)
+		defer t.Stop()
+		timer = t.C
+	}
+	fmt.Fprintf(os.Stderr, "tracing %d function(s) pid=%d (Ctrl-C to stop)\n", len(fns), *pid)
+	for {
+		select {
+		case ev, ok := <-tracer.Events():
+			if !ok {
+				return
+			}
+			fmt.Printf("%s %-28s pid=%d tid=%d dur=%s comm=%s\n",
+				ev.Time.Format("15:04:05.000000"), ev.Function, ev.PID, ev.TID, ev.Duration, ev.Comm)
+		case <-timer:
+			return
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
 func runMCPStdio(args []string) {
 	fs := flag.NewFlagSet("mcp", flag.ExitOnError)
 	maxPackets := fs.Int("max-packets", envInt("EBPFSHARK_MAX_PACKETS", 100000), "packets kept in the ring buffer")

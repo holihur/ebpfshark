@@ -325,6 +325,7 @@ type startRequest struct {
 	SampleRate uint32   `json:"sampleRate"`
 	RingSize   uint32   `json:"ringSize"`
 	Clear      bool     `json:"clear"`
+	Cgroup     string   `json:"cgroup,omitempty"`
 }
 
 func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
@@ -341,6 +342,15 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	var cgroupID uint64
+	if req.Cgroup != "" {
+		var err error
+		cgroupID, err = capture.ResolveCgroup(req.Cgroup)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
 	if req.Clear {
 		s.store.Clear()
 	}
@@ -352,6 +362,7 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 		// Exclude the analyzer's own HTTP API traffic from captures so the UI
 		// polling and SSE stream do not feed back into the packet list.
 		ExcludePort: uint32(s.selfPort),
+		CgroupID:    cgroupID,
 	})
 	if err != nil {
 		s.log.Error("start capture", "err", err)
@@ -393,6 +404,7 @@ type packetJSON struct {
 	SrcPort   uint16   `json:"srcPort,omitempty"`
 	DstPort   uint16   `json:"dstPort,omitempty"`
 	Info      string   `json:"info"`
+	CgroupID  uint64   `json:"cgroupID,omitempty"`
 }
 
 func toPacketJSON(p *packet.Packet) packetJSON {
@@ -415,6 +427,7 @@ func toPacketJSON(p *packet.Packet) packetJSON {
 		SrcPort:   p.Summary.SrcPort,
 		DstPort:   p.Summary.DstPort,
 		Info:      p.Summary.Info,
+		CgroupID:  p.CgroupID,
 	}
 }
 

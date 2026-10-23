@@ -9,6 +9,7 @@ ebpfshark 使用 TCX（TC eXpress）把两个很小的 eBPF 程序挂到网卡�
 ## 功能
 
 - **实时抓包**：多网卡、ingress + egress 双向、snaplen 可调（256 B – 2 KB）、按 1/N 采样。
+- **进程 / cgroup / Pod 范围抓包**：按 cgroup v2 ID、cgroup 路径、PID、Pod/容器 cgroup 片段过滤，而不是只按网卡和端口。
 - **内核态统计**：抓包数、字节数、ringbuffer 丢弃数、采样配置全部来自 eBPF map。
 - **自动排除自身流量**：在内核态丢弃 HTTP API 端口（默认 `:9999`）的 TCP/UDP 报文，
   避免 UI 轮询/SSE 把分析工具自己的请求混进抓包结果。
@@ -162,12 +163,32 @@ sudo ./bin/ebpfshark -addr :9999 -capture eth0
 sudo ./bin/ebpfshark -capture eth0,lo -snaplen 2048 -sample-rate 1
 ```
 
+按进程 / cgroup / Pod 抓包：
+
+```bash
+# 按 PID 当前 cgroup
+sudo ./bin/ebpfshark -capture eth0 -cgroup pid:1234
+
+# 按 cgroup v2 路径
+sudo ./bin/ebpfshark -capture eth0 \
+  -cgroup /sys/fs/cgroup/system.slice/my-service.service
+
+# 按 cgroup ID
+sudo ./bin/ebpfshark -capture eth0 -cgroup 12345
+
+# 按 Pod/容器 cgroup 路径片段（取第一个匹配）
+sudo ./bin/ebpfshark -capture eth0 -cgroup pod:payment-7f9c
+```
+
+过滤发生在 eBPF TCX 路径，使用 socket 的 cgroup ID；只有属于目标 cgroup（及其子 cgroup）的 socket 流量会进入 ring buffer。转发流量、无 socket 归属的包 cgroup ID 为 0，会被过滤掉。
+
 常用参数：
 
 ```
 -addr :9999              监听地址
 -max-packets 100000      内存中保留的报文数（环形缓冲）
 -capture eth0,lo         启动即抓包的网卡列表
+-cgroup ""               只抓指定 cgroup：ID、路径、pid:N、pod:NAME 或 container:ID
 -snaplen 2048            每包捕获字节数（≤2048）
 -sample-rate 1           每 N 个包抓 1 个
 -ring-size 33554432      eBPF ringbuffer 大小（字节，默认 32 MiB）
@@ -395,6 +416,8 @@ go test -tags full ./...
 - 状态接口：`GET /api/update`（需要登录）。
 
 详细安装、systemd、manifest 发布和回滚说明见 **[docs/INSTALL.md](docs/INSTALL.md)**。
+
+GoReleaser 构建、归档命名和签名说明见 **[docs/RELEASE.md](docs/RELEASE.md)**。
 
 ## MCP 支持
 
@@ -650,7 +673,7 @@ web/                        React + Vite + Tailwind + shadcn/ui
 | GET | `/api/health` | 健康检查（公开） |
 | GET | `/api/status` | 抓包状态、统计、网卡列表 |
 | GET | `/api/interfaces` | 网卡列表 |
-| POST | `/api/capture/start` | `{interfaces, snaplen, sampleRate, clear}` |
+| POST | `/api/capture/start` | `{interfaces, snaplen, sampleRate, clear, cgroup}` |
 | POST | `/api/capture/stop` | 停止抓包 |
 | POST | `/api/capture/clear` | 清空缓冲区 |
 | GET | `/api/packets?filter=&limit=` | 最近 N 条匹配报文 |
@@ -723,6 +746,7 @@ curl -s -b /tmp/ebpfshark.cookie \
   完整 4-way 握手。缺少握手或 WPA3 时可使用 `-wifi-keys` 直接导入 PMK/PTK：
   `{"sessions":[{"ap":"...","sta":"...","ssid":"...","pmk":"hex","ptk":"hex"}]}`。
   TKIP、SAE 密钥推导、802.11 分片重组仍未实现。
+- cgroup 抓包要求 cgroup v2；按 PID 过滤实际是解析该 PID 当前 cgroup，不是逐 PID 精确匹配；转发/无 socket 流量无法归属 cgroup。
 - 同时在 ingress/egress 抓同一个包会在 loopback 上看到重复记录（两个钩子各一次）。
 - 只有单用户认证，没有角色/多用户权限；会话存于内存，服务重启后失效。
 - 不内置 TLS；公网访问请使用 HTTPS 反向代理并启用 `-secure-cookie`。
@@ -777,6 +801,7 @@ curl -s -b /tmp/ebpfshark.cookie \
 - [x] CoAP、MQTT-SN、Modbus TCP、AMQP、BACnet/IP、OPC UA、LoRaWAN
 - [x] TLS 1.2 CCM、gRPC/protobuf、NetFlow v9/IPFIX 模板展开、DASH manifest、RTMP
 - [x] pcapng 导出、按时间范围导出
+- [x] 按进程 / cgroup / Pod 范围抓包
 - [x] 协议支持程度矩阵、RFC 参考、与 Wireshark/tcpdump 对比
 
 ### P0：协议覆盖

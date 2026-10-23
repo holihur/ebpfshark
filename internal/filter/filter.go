@@ -327,6 +327,8 @@ func numberField(m *packet.Meta, f string) (uint64, bool) {
 		return uint64(m.CapLen), true
 	case "frame.number":
 		return m.Number, true
+	case "cgroup.id":
+		return m.CgroupID, m.CgroupID != 0
 	case "vlan.id":
 		return uint64(m.VLAN), m.HasLayer("vlan")
 	case "eth.type":
@@ -1054,7 +1056,7 @@ func isStringField(f string) bool {
 
 // knownFields lists every field accepted by the parser.
 var knownFields = map[string]bool{
-	"frame.len": true, "frame.cap_len": true, "frame.number": true, "frame.protocols": true,
+	"frame.len": true, "frame.cap_len": true, "frame.number": true, "frame.protocols": true, "cgroup.id": true,
 	"vlan.id": true, "eth.src": true, "eth.dst": true, "eth.type": true,
 	"ip.version": true, "ip.proto": true, "ip.protocol": true, "ip.ttl": true, "ip.len": true,
 	"ip.src": true, "ip.dst": true, "ip.addr": true,

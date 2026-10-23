@@ -154,6 +154,7 @@ type startCaptureInput struct {
 	SampleRate uint32   `json:"sampleRate,omitempty" jsonschema:"capture 1 out of every N packets (default 1)"`
 	RingSize   uint32   `json:"ringSize,omitempty" jsonschema:"BPF ring buffer size in bytes (default 32 MiB)"`
 	Clear      bool     `json:"clear,omitempty" jsonschema:"clear the packet buffer before starting"`
+	Cgroup     string   `json:"cgroup,omitempty" jsonschema:"capture only sockets in a cgroup: ID, path, pid:N, pod:NAME or container:ID"`
 }
 
 func addCaptureTools(srv *mcp.Server, st *store.Store, mgr *capture.Manager, apiPort uint32) {
@@ -170,6 +171,14 @@ func addCaptureTools(srv *mcp.Server, st *store.Store, mgr *capture.Manager, api
 		if in.SampleRate == 0 {
 			in.SampleRate = 1
 		}
+		var cgroupID uint64
+		if in.Cgroup != "" {
+			var err error
+			cgroupID, err = capture.ResolveCgroup(in.Cgroup)
+			if err != nil {
+				return nil, nil, err
+			}
+		}
 		if in.Clear {
 			st.Clear()
 		}
@@ -179,6 +188,7 @@ func addCaptureTools(srv *mcp.Server, st *store.Store, mgr *capture.Manager, api
 			SampleRate:  in.SampleRate,
 			RingSize:    in.RingSize,
 			ExcludePort: apiPort,
+			CgroupID:    cgroupID,
 		}); err != nil {
 			return nil, nil, err
 		}

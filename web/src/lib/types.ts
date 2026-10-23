@@ -29,6 +29,7 @@ export interface Packet {
   id: number
   time: number
   iface: string
+  cgroupID?: number
   direction: "ingress" | "egress"
   len: number
   capLen: number

@@ -11,6 +11,8 @@ internal/server/webdist/*
 internal/capture/bpf/vmlinux.h
 internal/capture/capture_bpfel.go
 internal/capture/capture_bpfel.o
+internal/probe/probe_bpfel.go
+internal/probe/probe_bpfel.o
 *.log
 .env.local
 .DS_Store

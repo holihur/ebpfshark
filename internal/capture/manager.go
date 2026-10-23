@@ -21,7 +21,7 @@ import (
 	"ebpfshark/internal/store"
 )
 
-const eventHeaderLen = 24 // sizeof(struct pkt_event)
+const eventHeaderLen = 32 // sizeof(struct pkt_event)
 
 // Options configures a capture session.
 type Options struct {
@@ -32,6 +32,8 @@ type Options struct {
 	// ExcludePort drops TCP/UDP packets whose source or destination port
 	// matches it (the analyzer's own HTTP API). 0 disables the filter.
 	ExcludePort uint32 `json:"excludePort"`
+	// CgroupID limits capture to sockets in one cgroup v2. 0 disables it.
+	CgroupID uint64 `json:"cgroupID,omitempty"`
 }
 
 // Status describes the current capture session.
@@ -46,6 +48,7 @@ type Status struct {
 	KernelSkipped  uint64   `json:"kernelSkipped"`
 	KernelFiltered uint64   `json:"kernelFiltered"`
 	ExcludePort    uint32   `json:"excludePort"`
+	CgroupID       uint64   `json:"cgroupID,omitempty"`
 	UptimeSeconds  float64  `json:"uptimeSeconds"`
 	AttachErrors   []string `json:"attachErrors,omitempty"`
 	LastError      string   `json:"lastError,omitempty"`
@@ -141,6 +144,10 @@ func (m *Manager) Start(opts Options) error {
 		Snaplen:     opts.Snaplen,
 		SampleRate:  opts.SampleRate,
 		ExcludePort: excludePort,
+		CgroupId:    opts.CgroupID,
+	}
+	if opts.CgroupID != 0 {
+		cfg.FilterCgroup = 1
 	}
 	if err := objs.CaptureCfg.Put(uint32(0), cfg); err != nil {
 		cleanup()
@@ -297,6 +304,7 @@ func (m *Manager) readLoop(rd *ringbuf.Reader) {
 		capLen := binary.LittleEndian.Uint32(sample[16:20])
 		dir := sample[22]
 		flags := sample[23]
+		cgroupID := binary.LittleEndian.Uint64(sample[24:32])
 
 		if capLen > uint32(len(sample)-eventHeaderLen) {
 			continue
@@ -316,6 +324,7 @@ func (m *Manager) readLoop(rd *ringbuf.Reader) {
 			CapLen:    capLen,
 			Truncated: flags&1 != 0,
 			LinkType:  m.linkType(ifIndex),
+			CgroupID:  cgroupID,
 			Data:      data,
 		}
 		m.store.Add(p)
@@ -347,6 +356,7 @@ func (m *Manager) Status() Status {
 		SampleRate:   m.opts.SampleRate,
 		RingSize:     m.opts.RingSize,
 		ExcludePort:  m.opts.ExcludePort,
+		CgroupID:     m.opts.CgroupID,
 		AttachErrors: append([]string(nil), m.attachErrors...),
 		LastError:    m.lastError,
 	}

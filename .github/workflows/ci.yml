@@ -80,6 +80,13 @@ jobs:
       - name: Build full
         run: make go-build-full
 
+      - name: Validate GoReleaser config
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: check
+
       - name: Build example dynamic plugin
         run: go build -buildmode=plugin -o /tmp/ebpfshark-demo.so ./examples/plugins/demo
 

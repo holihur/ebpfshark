@@ -167,6 +167,7 @@ func (s *Store) Add(p *packet.Packet) {
 	p.ID = id + 1
 	p.Meta.ID = p.ID
 	p.Meta.Number = p.ID
+	p.Meta.CgroupID = p.CgroupID
 
 	if s.n == s.maxPackets {
 		// overwrite oldest

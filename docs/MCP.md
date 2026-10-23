@@ -230,6 +230,7 @@ youruser ALL=(root) NOPASSWD: /root/ebpf/bin/ebpfshark mcp
 | `snaplen` | number | 2048 | 每包捕获字节数，最大 2048 |
 | `sampleRate` | number | 1 | 每 N 个包抓 1 个 |
 | `ringSize` | number | 32 MiB | eBPF ringbuffer 字节数 |
+| `cgroup` | string | 空 | 只抓指定 cgroup：ID、路径、`pid:N`、`pod:NAME`、`container:ID` |
 | `clear` | boolean | false | 启动前清空报文缓冲 |
 
 ```json

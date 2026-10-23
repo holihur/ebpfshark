@@ -129,6 +129,7 @@ type Packet struct {
 	CapLen    uint32    `json:"capLen"`
 	Truncated bool      `json:"truncated"`
 	LinkType  LinkType  `json:"linkType"`
+	CgroupID  uint64    `json:"cgroupID,omitempty"`
 	Data      []byte    `json:"-"`
 	Summary   Summary   `json:"summary"`
 	Meta      Meta      `json:"-"`
@@ -157,6 +158,7 @@ type Meta struct {
 	CapLen   int
 
 	LinkType  LinkType
+	CgroupID  uint64
 	Layers    []string
 	LayerMask LayerMask
 

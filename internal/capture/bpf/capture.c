@@ -22,6 +22,9 @@ struct capture_config {
 	__u32 snaplen;
 	__u32 sample_rate;
 	__u32 exclude_port; /* host byte order, 0 = disabled */
+	__u64 cgroup_id;    /* target cgroup v2 id, 0 = no cgroup filter */
+	__u32 filter_cgroup;
+	__u32 _pad;
 };
 
 struct capture_stats {
@@ -39,6 +42,7 @@ struct pkt_event {
 	__u16 protocol; /* Ethernet protocol, network byte order */
 	__u8 direction; /* 0 = ingress, 1 = egress */
 	__u8 flags;
+	__u64 cgroup_id; /* cgroup v2 id of the socket, 0 if not attributable */
 	__u8 data[];
 } __attribute__((packed));
 
@@ -160,6 +164,16 @@ static __always_inline int capture_pkt(struct __sk_buff *skb, __u8 direction)
 	if (!st)
 		return ACT_OK;
 
+	/* Optional cgroup/process scoping. bpf_skb_cgroup_id is available in TC
+	 * programs on modern kernels and returns 0 for forwarded/no-socket skbs. */
+	__u64 cgroup_id = bpf_skb_cgroup_id(skb);
+	if (cfg->filter_cgroup) {
+		if (cgroup_id == 0 || cgroup_id != cfg->cgroup_id) {
+			st->filtered += 1;
+			return ACT_OK;
+		}
+	}
+
 	/* Drop traffic belonging to the analyzer's own HTTP API. */
 	if (cfg->exclude_port) {
 		__u16 sport = 0, dport = 0;
@@ -208,6 +222,7 @@ static __always_inline int capture_pkt(struct __sk_buff *skb, __u8 direction)
 	e->protocol = (__u16)skb->protocol;
 	e->direction = direction;
 	e->flags = snaplen < wirelen ? 1 : 0;
+	e->cgroup_id = cgroup_id;
 	if (bpf_skb_load_bytes(skb, 0, e->data, snaplen) < 0) {
 		bpf_ringbuf_discard(e, 0);
 		st->skipped += 1;

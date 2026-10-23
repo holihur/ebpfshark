@@ -49,6 +49,7 @@ func Schema() []FieldSchema {
 		num("frame.len", "Frame"),
 		num("frame.cap_len", "Frame"),
 		num("frame.number", "Frame"),
+		num("cgroup.id", "Frame"),
 		str("frame.protocols", "Frame"),
 
 		str("eth.src", "Link"),
