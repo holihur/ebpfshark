@@ -27,7 +27,7 @@ func aiHTTPFlowKey(c *ctx) string {
 // parsed incrementally from the accumulated buffer.
 func (c *ctx) dissectAIHTTP(body []byte, base int, root *Field, headers map[string]string, path string, request bool) bool {
 	ct := strings.ToLower(headers["content-type"])
-	if !aiHTTPCandidate(path, ct, body) {
+	if !aiHTTPCandidate(path, ct, headers["content-encoding"], body) {
 		return false
 	}
 	st := aiHTTPFlows.GetOrCreate(aiHTTPFlowKey(c), func() *aiHTTPState { return &aiHTTPState{} })
@@ -84,6 +84,11 @@ func (c *ctx) processAIHTTPLocked(st *aiHTTPState, body []byte, base int, root *
 			return false
 		}
 	}
+	decoded, ok := decodeAIBody(payload, st.headers["content-encoding"])
+	if !ok {
+		return false
+	}
+	payload = decoded
 	if _, ok := c.dissectAI(payload, base, root, st.path, st.ct, st.request); !ok {
 		return false
 	}
@@ -99,12 +104,15 @@ func cloneHeaders(in map[string]string) map[string]string {
 	return out
 }
 
-func aiHTTPCandidate(path, ct string, body []byte) bool {
+func aiHTTPCandidate(path, ct, encoding string, body []byte) bool {
 	p := strings.ToLower(path)
 	if strings.Contains(p, "/v1/messages") || strings.Contains(p, "/v1/chat/completions") || strings.Contains(p, "/v1/responses") || strings.Contains(p, "anthropic") {
 		return true
 	}
 	if strings.Contains(ct, "text/event-stream") {
+		return true
+	}
+	if strings.Contains(ct, "json") && strings.TrimSpace(encoding) != "" && strings.TrimSpace(encoding) != "identity" {
 		return true
 	}
 	s := strings.ToLower(string(body))

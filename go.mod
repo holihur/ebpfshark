@@ -8,6 +8,8 @@ require (
 	golang.org/x/sys v0.49.0
 )
 
+require github.com/andybalholm/brotli v1.2.6
+
 require (
 	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/modelcontextprotocol/go-sdk v1.8.0

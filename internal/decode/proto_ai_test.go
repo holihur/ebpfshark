@@ -1,6 +1,8 @@
 package decode
 
 import (
+	"bytes"
+	"compress/gzip"
 	"strconv"
 	"strings"
 	"testing"
@@ -53,5 +55,18 @@ func TestAISplitBody(t *testing.T) {
 	c2 := appCtx(payload[20:])
 	if !c2.dissectAIHTTPContinuation(payload[20:], 0) || !c2.m.HasLayer("ai") {
 		t.Fatalf("layers=%v info=%q", c2.m.Layers, c2.appInfo)
+	}
+}
+
+func TestAIGzipBody(t *testing.T) {
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	_, _ = zw.Write([]byte(`{"model":"gpt-4o","messages":[{"role":"user","content":"hello"}]}`))
+	_ = zw.Close()
+	head := []byte("POST /v1/chat/completions HTTP/1.1\r\nContent-Type: application/json\r\nContent-Encoding: gzip\r\nContent-Length: " + strconv.Itoa(buf.Len()) + "\r\n\r\n")
+	b := append(head, buf.Bytes()...)
+	c := appCtx(b)
+	if !c.dissectHTTP(b, 0) || !c.m.HasLayer("ai") {
+		t.Fatalf("layers=%v info=%q", c.m.Layers, c.appInfo)
 	}
 }

@@ -151,8 +151,12 @@ func (c *ctx) dissectHTTP2(b []byte, base int) bool {
 					if summary, ok := c.dissectGRPC(fullBody, base+off+9, f); ok {
 						info = summary
 					} else {
-						path, ct := flow.meta(stream)
-						if summary, ok := c.dissectAI(fullBody, base+off+9, f, path, ct, false); ok {
+						path, ct, ce := flow.meta(stream)
+						decoded, ok := decodeAIBody(fullBody, ce)
+						if !ok {
+							decoded = fullBody
+						}
+						if summary, ok := c.dissectAI(decoded, base+off+9, f, path, ct, false); ok {
 							info = summary
 						}
 					}
@@ -198,7 +202,7 @@ func (c *ctx) dissectHTTP2(b []byte, base int) bool {
 				break
 			}
 			hn := c.newField(fmt.Sprintf("Decoded Headers (%d)", len(fields)), "", base+off+9+hdrOff, len(block))
-			var h2Path, h2CT string
+			var h2Path, h2CT, h2CE string
 			for _, hf := range fields {
 				hn.add(c.newField(hf.Name+": "+hf.Value, "", 0, 0))
 				if hf.Name == ":path" {
