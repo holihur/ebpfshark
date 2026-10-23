@@ -16,7 +16,7 @@
 
 过滤器采用两层执行：
 
-1. **eBPF 预过滤**：只下推保守的 L2–L4 条件，例如 `tcp`、`udp`、`port 443`、`host 10.0.0.5`、`vlan.id`。
+1. **eBPF 预过滤**：只下推保守的 L2–L4 条件，例如 `tcp`、`udp`、`port 443`、IPv4 `host`/`net`（含 CIDR）、`vlan.id`。
 2. **用户态精确匹配**：应用层字段、`contains`、OR/NOT 等继续由 Go AST 匹配。
 
 只有 AND 组合中的安全条件会被下推。例如：
@@ -34,7 +34,7 @@ POST /api/capture/start   {filter}
 POST /api/capture/filter  {filter}
 ```
 
-下推过滤器不会改变显示结果；它只减少进入 ring buffer 的无关报文。若过滤器无法安全下推，系统自动回退到纯用户态过滤。
+下推过滤器不会改变显示结果；它只减少进入 ring buffer 的无关报文。IPv6 扩展头、IPv4 非首分片等无法安全判断的包会被保留并交给用户态。若过滤器无法安全下推，系统自动回退到纯用户态过滤。
 
 ## 显示过滤器
 

@@ -36,6 +36,8 @@ struct capture_config {
 	__u32 filter_vlan;
 	__u32 src_ip4;      /* host byte order */
 	__u32 dst_ip4;      /* host byte order */
+	__u32 src_mask4;
+	__u32 dst_mask4;
 };
 
 #define FILTER_PROTO  1
@@ -240,13 +242,18 @@ static __always_inline int capture_filter_match(struct __sk_buff *skb,
 			return 1;
 		if ((flags & FILTER_PROTO) && proto != cfg->filter_proto)
 			return 0;
+		__u8 frag[2];
+		if (bpf_skb_load_bytes(skb, off + 6, frag, 2) < 0)
+			return 1;
+		if ((read_be16(frag) & 0x1fff) != 0)
+			return 1; /* non-first fragment: ports are not at ihl */
 		if (bpf_skb_load_bytes(skb, off + 12, addrs, 8) < 0)
 			return 1;
 		__u32 src = bpf_ntohl(*(__u32 *)&addrs[0]);
 		__u32 dst = bpf_ntohl(*(__u32 *)&addrs[4]);
-		if ((flags & FILTER_SRC4) && src != cfg->src_ip4)
+		if ((flags & FILTER_SRC4) && (src & cfg->src_mask4) != (cfg->src_ip4 & cfg->src_mask4))
 			return 0;
-		if ((flags & FILTER_DST4) && dst != cfg->dst_ip4)
+		if ((flags & FILTER_DST4) && (dst & cfg->dst_mask4) != (cfg->dst_ip4 & cfg->dst_mask4))
 			return 0;
 		if (flags & (FILTER_SPORT | FILTER_DPORT)) {
 			if (proto != 6 && proto != 17)
@@ -265,18 +272,56 @@ static __always_inline int capture_filter_match(struct __sk_buff *skb,
 	}
 
 	if (ver == 6) {
-		__u8 next;
 		if (flags & (FILTER_SRC4 | FILTER_DST4))
 			return 0;
+		__u8 next;
 		if (bpf_skb_load_bytes(skb, off + 6, &next, 1) < 0)
 			return 1;
+		__u32 l4off = off + 40;
+		int resolved = 0;
+#pragma unroll
+		for (int i = 0; i < 6; i++) {
+			if (next == 0 || next == 43 || next == 60) {
+				__u8 nh, hlen;
+				if (bpf_skb_load_bytes(skb, l4off, &nh, 1) < 0 ||
+				    bpf_skb_load_bytes(skb, l4off + 1, &hlen, 1) < 0)
+					return 1;
+				next = nh;
+				l4off += ((__u32)hlen + 1) * 8;
+				continue;
+			}
+			if (next == 44) {
+				__u8 nh, frag[2];
+				if (bpf_skb_load_bytes(skb, l4off, &nh, 1) < 0 ||
+				    bpf_skb_load_bytes(skb, l4off + 2, frag, 2) < 0)
+					return 1;
+				if ((read_be16(frag) & 0xfff8) != 0)
+					return 1; /* non-first fragment */
+				next = nh;
+				l4off += 8;
+				continue;
+			}
+			if (next == 51) {
+				__u8 nh, hlen;
+				if (bpf_skb_load_bytes(skb, l4off, &nh, 1) < 0 ||
+				    bpf_skb_load_bytes(skb, l4off + 1, &hlen, 1) < 0)
+					return 1;
+				next = nh;
+				l4off += ((__u32)hlen + 2) * 4;
+				continue;
+			}
+			resolved = 1;
+			break;
+		}
+		if (!resolved)
+			return 1; /* unknown extension chain: let user space decide */
 		if ((flags & FILTER_PROTO) && next != cfg->filter_proto)
 			return 0;
 		if (flags & (FILTER_SPORT | FILTER_DPORT)) {
 			if (next != 6 && next != 17)
 				return 0;
 			__u8 ports[4];
-			if (bpf_skb_load_bytes(skb, off + 40, ports, 4) < 0)
+			if (bpf_skb_load_bytes(skb, l4off, ports, 4) < 0)
 				return 1;
 			__u16 sp = read_be16(ports);
 			__u16 dp = read_be16(ports + 2);

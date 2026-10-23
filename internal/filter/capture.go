@@ -16,7 +16,9 @@ type CaptureSpec struct {
 	VLAN      uint16     `json:"vlan,omitempty"`
 	HasVLAN   bool       `json:"hasVLAN,omitempty"`
 	SrcIPv4   netip.Addr `json:"srcIPv4,omitempty"`
+	SrcMask   uint8      `json:"srcMask,omitempty"`
 	DstIPv4   netip.Addr `json:"dstIPv4,omitempty"`
+	DstMask   uint8      `json:"dstMask,omitempty"`
 }
 
 func (s CaptureSpec) Empty() bool {
@@ -59,13 +61,13 @@ func ExtractCapture(f Filter) CaptureSpec {
 		}
 		return s
 	case hostNode:
-		if n.prefix.Addr().Is4() && n.prefix.Bits() == 32 {
+		if n.prefix.Addr().Is4() && n.prefix.Bits() >= 0 && n.prefix.Bits() <= 32 {
 			s := CaptureSpec{}
 			if n.dir != 2 {
-				s.SrcIPv4 = n.prefix.Addr()
+				s.SrcIPv4, s.SrcMask = n.prefix.Addr(), uint8(n.prefix.Bits())
 			}
 			if n.dir != 1 {
-				s.DstIPv4 = n.prefix.Addr()
+				s.DstIPv4, s.DstMask = n.prefix.Addr(), uint8(n.prefix.Bits())
 			}
 			return s
 		}
@@ -92,8 +94,7 @@ func layerCapture(name string) CaptureSpec {
 	case "ipv6", "ip6":
 		s.IPVersion = 6
 	case "vlan":
-		s.HasVLAN = true
-		s.VLAN = 0xffff
+		s.HasVLAN, s.VLAN = true, 0xffff
 	}
 	return s
 }
@@ -106,16 +107,17 @@ func cmpCapture(n cmpNode) CaptureSpec {
 			s.Proto = uint8(n.num)
 		}
 	case "ip.src", "ipv6.src", "ip6.src":
-		if n.op == "==" && n.addr.Addr().Is4() && n.addr.Bits() == 32 {
-			s.SrcIPv4 = n.addr.Addr()
+		if n.op == "==" && n.addr.Addr().Is4() && n.addr.Bits() >= 0 && n.addr.Bits() <= 32 {
+			s.SrcIPv4, s.SrcMask = n.addr.Addr(), uint8(n.addr.Bits())
 		}
 	case "ip.dst", "ipv6.dst", "ip6.dst":
-		if n.op == "==" && n.addr.Addr().Is4() && n.addr.Bits() == 32 {
-			s.DstIPv4 = n.addr.Addr()
+		if n.op == "==" && n.addr.Addr().Is4() && n.addr.Bits() >= 0 && n.addr.Bits() <= 32 {
+			s.DstIPv4, s.DstMask = n.addr.Addr(), uint8(n.addr.Bits())
 		}
 	case "ip.addr", "ipv6.addr", "ip6.addr":
-		if n.op == "==" && n.addr.Addr().Is4() && n.addr.Bits() == 32 {
-			s.SrcIPv4, s.DstIPv4 = n.addr.Addr(), n.addr.Addr()
+		if n.op == "==" && n.addr.Addr().Is4() && n.addr.Bits() >= 0 && n.addr.Bits() <= 32 {
+			s.SrcIPv4, s.SrcMask = n.addr.Addr(), uint8(n.addr.Bits())
+			s.DstIPv4, s.DstMask = n.addr.Addr(), uint8(n.addr.Bits())
 		}
 	case "tcp.srcport", "udp.srcport":
 		if n.op == "==" && n.num <= 65535 {
@@ -156,14 +158,14 @@ func mergeCapture(a, b CaptureSpec) CaptureSpec {
 		out.HasVLAN, out.VLAN = false, 0
 	}
 	if !out.SrcIPv4.IsValid() {
-		out.SrcIPv4 = b.SrcIPv4
-	} else if b.SrcIPv4.IsValid() && b.SrcIPv4 != out.SrcIPv4 {
-		out.SrcIPv4 = netip.Addr{}
+		out.SrcIPv4, out.SrcMask = b.SrcIPv4, b.SrcMask
+	} else if b.SrcIPv4.IsValid() && (b.SrcIPv4 != out.SrcIPv4 || b.SrcMask != out.SrcMask) {
+		out.SrcIPv4, out.SrcMask = netip.Addr{}, 0
 	}
 	if !out.DstIPv4.IsValid() {
-		out.DstIPv4 = b.DstIPv4
-	} else if b.DstIPv4.IsValid() && b.DstIPv4 != out.DstIPv4 {
-		out.DstIPv4 = netip.Addr{}
+		out.DstIPv4, out.DstMask = b.DstIPv4, b.DstMask
+	} else if b.DstIPv4.IsValid() && (b.DstIPv4 != out.DstIPv4 || b.DstMask != out.DstMask) {
+		out.DstIPv4, out.DstMask = netip.Addr{}, 0
 	}
 	out.SrcPortLo, out.SrcPortHi = mergeRange(out.SrcPortLo, out.SrcPortHi, b.SrcPortLo, b.SrcPortHi)
 	out.DstPortLo, out.DstPortHi = mergeRange(out.DstPortLo, out.DstPortHi, b.DstPortLo, b.DstPortHi)

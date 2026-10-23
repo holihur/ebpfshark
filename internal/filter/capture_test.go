@@ -14,6 +14,10 @@ func TestCompileCapture(t *testing.T) {
 	if s.Proto != 17 || !s.SrcIPv4.IsValid() || !s.DstIPv4.IsValid() {
 		t.Fatalf("spec=%+v", s)
 	}
+	s, _ = CompileCapture("net 10.0.0.0/8")
+	if s.SrcMask != 8 || s.DstMask != 8 || !s.SrcIPv4.IsValid() {
+		t.Fatalf("cidr spec=%+v", s)
+	}
 	if s, _ = CompileCapture("http.host contains example"); !s.Empty() {
 		t.Fatalf("app filter must not push kernel filter: %+v", s)
 	}

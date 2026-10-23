@@ -92,6 +92,16 @@ func NewManager(st *store.Store, log *slog.Logger) *Manager {
 	return &Manager{store: st, log: log}
 }
 
+func mask4(bits uint8) uint32 {
+	if bits == 0 {
+		return 0
+	}
+	if bits >= 32 {
+		return 0xffffffff
+	}
+	return 0xffffffff << (32 - bits)
+}
+
 func captureConfigFor(opts Options, enabled, excludePort uint32) captureCaptureConfig {
 	cfg := captureCaptureConfig{
 		Enabled: enabled, Snaplen: opts.Snaplen, SampleRate: opts.SampleRate,
@@ -124,12 +134,12 @@ func captureConfigFor(opts Options, enabled, excludePort uint32) captureCaptureC
 	if f.SrcIPv4.Is4() {
 		cfg.FilterFlags |= 32
 		a := f.SrcIPv4.As4()
-		cfg.SrcIp4 = binary.BigEndian.Uint32(a[:])
+		cfg.SrcIp4, cfg.SrcMask4 = binary.BigEndian.Uint32(a[:]), mask4(f.SrcMask)
 	}
 	if f.DstIPv4.Is4() {
 		cfg.FilterFlags |= 64
 		a := f.DstIPv4.As4()
-		cfg.DstIp4 = binary.BigEndian.Uint32(a[:])
+		cfg.DstIp4, cfg.DstMask4 = binary.BigEndian.Uint32(a[:]), mask4(f.DstMask)
 	}
 	return cfg
 }
