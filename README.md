@@ -14,7 +14,7 @@ ebpfshark 通过 TCX 在 Linux 网卡 ingress/egress 抓包，浏览器中提供
 - **混合过滤**：安全可下推的 L2–L4 条件编译进 eBPF，应用层字段和复杂表达式继续在用户态精确匹配。
 - **TCP 流分析**：乱序/重传/重叠处理、Follow Stream、双向会话统计。
 - **AI API 解析**：Anthropic Messages、OpenAI Chat Completions、OpenAI Responses，支持 JSON/SSE。
-- **范围抓包**：按进程当前 cgroup、cgroup v2 路径、Pod/容器 cgroup 片段过滤。
+- **范围抓包**：左侧进程列表直接按 cgroup 过滤；也支持 cgroup v2 路径、Pod/容器片段。
 - **函数调用追踪（实验）**：CLI、Web 页面和 MCP 均可对显式 `binary:symbol` 挂 uprobe/uretprobe，查看调用耗时。
 - **服务化访问**：登录认证、SSE 实时推送、HTTP API、MCP；支持单二进制、Docker 和动态插件。
 

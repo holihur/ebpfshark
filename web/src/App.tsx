@@ -12,7 +12,7 @@ import { useCapture } from "@/hooks/useCapture"
 import { useTheme } from "@/hooks/useTheme"
 import { useI18n } from "@/i18n"
 import { api } from "@/lib/api"
-import type { PacketDetail } from "@/lib/types"
+import type { PacketDetail, ProcessInfo } from "@/lib/types"
 
 function errorMessage(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err)
@@ -33,6 +33,7 @@ export default function App() {
   const [snaplen, setSnaplen] = useState(2048)
   const [sampleRate, setSampleRate] = useState(1)
   const [clearOnStart, setClearOnStart] = useState(true)
+  const [cgroupFilter, setCgroupFilter] = useState<ProcessInfo | null>(null)
   const [busy, setBusy] = useState(false)
   const [splitPct, setSplitPct] = useState(44)
 
@@ -102,6 +103,8 @@ export default function App() {
     }
   }, [])
 
+  const activeCgroupID = cgroupFilter?.cgroupID ?? capture.status?.capture.cgroupID ?? 0
+
   const handleStart = useCallback(() =>
     run(async () => {
       if (selectedIfaces.length === 0) {
@@ -113,6 +116,7 @@ export default function App() {
         sampleRate,
         clear: clearOnStart,
         filter: capture.filter,
+        cgroup: activeCgroupID ? String(activeCgroupID) : "",
       })
       toast.success(t("toast.captureStarted"), {
         description: t("toast.captureStartedDesc", {
@@ -121,7 +125,7 @@ export default function App() {
           rate: res.sampleRate,
         }),
       })
-    }), [run, selectedIfaces, snaplen, sampleRate, clearOnStart, capture.start, t])
+    }), [run, selectedIfaces, snaplen, sampleRate, clearOnStart, capture.start, activeCgroupID, t])
 
   const handleStop = useCallback(() =>
     run(async () => {
@@ -158,6 +162,18 @@ export default function App() {
       if (ok) setSelectedId(null)
     },
     [capture.applyFilter],
+  )
+
+  const handleSelectCgroup = useCallback(
+    (process: ProcessInfo | null) => {
+      setCgroupFilter(process)
+      const id = process?.cgroupID ?? 0
+      void run(async () => {
+        await capture.setCgroup(id ? String(id) : "")
+        setSelectedId(null)
+      })
+    },
+    [capture.setCgroup, run],
   )
 
   const toggleIface = useCallback((name: string) =>
@@ -248,6 +264,8 @@ export default function App() {
             onStop={handleStop}
             onClear={handleClear}
             onImport={handleImport}
+            cgroupID={activeCgroupID}
+            onSelectCgroup={handleSelectCgroup}
           />
 
           <main className="flex min-w-0 flex-1 flex-col">

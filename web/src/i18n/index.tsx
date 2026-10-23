@@ -124,6 +124,7 @@ const en = {
   "detail.follow": "Follow stream",
 
   "sidebar.capture": "Capture",
+  "sidebar.processes": "Procs",
   "sidebar.protocols": "Protocols",
   "sidebar.trace": "Trace",
   "trace.title": "Function trace",
@@ -183,6 +184,18 @@ const en = {
   "sidebar.stopped": "stopped",
   "sidebar.streams": "streams",
   "sidebar.streamMem": "stream memory",
+
+  "process.count": "{count} processes",
+  "process.refresh": "Refresh",
+  "process.search": "Search process, PID or cgroup…",
+  "process.clearSearch": "Clear search",
+  "process.all": "All processes",
+  "process.active": "active",
+  "process.clear": "clear",
+  "process.cgroup": "cgroup #{id}",
+  "process.empty": "No processes found.",
+  "process.emptySearch": "No process matches this search.",
+  "process.hint": "Selecting a process scopes capture to its cgroup. If capture is running, the kernel filter is updated immediately; otherwise it applies on the next start.",
 
   "status.capturing": "capturing {ifaces}",
   "status.idle": "idle",
@@ -362,6 +375,7 @@ const zh: Record<MessageKey, string> = {
   "detail.follow": "追踪流",
 
   "sidebar.capture": "抓包",
+  "sidebar.processes": "进程",
   "sidebar.protocols": "协议",
   "sidebar.trace": "追踪",
   "trace.title": "函数调用追踪",
@@ -421,6 +435,18 @@ const zh: Record<MessageKey, string> = {
   "sidebar.stopped": "已停止",
   "sidebar.streams": "流重组",
   "sidebar.streamMem": "流缓存",
+
+  "process.count": "{count} 个进程",
+  "process.refresh": "刷新",
+  "process.search": "搜索进程、PID 或 cgroup…",
+  "process.clearSearch": "清空搜索",
+  "process.all": "全部进程",
+  "process.active": "当前",
+  "process.clear": "清除",
+  "process.cgroup": "cgroup #{id}",
+  "process.empty": "没有找到进程。",
+  "process.emptySearch": "没有匹配的进程。",
+  "process.hint": "选择进程后按它的 cgroup 过滤抓包。抓包运行中会立即更新内核过滤；未运行则在下次启动时生效。",
 
   "status.capturing": "抓包中 {ifaces}",
   "status.idle": "空闲",

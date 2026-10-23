@@ -62,6 +62,7 @@ export interface PacketDetail {
 
 export interface CaptureStatus {
   running: boolean
+  cgroupID?: number
   interfaces: string[]
   snaplen: number
   sampleRate: number
@@ -74,6 +75,13 @@ export interface CaptureStatus {
   uptimeSeconds: number
   attachErrors?: string[]
   lastError?: string
+}
+
+export interface ProcessInfo {
+  pid: number
+  comm: string
+  cgroupID?: number
+  cgroupPath?: string
 }
 
 export interface RatePoint {

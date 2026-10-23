@@ -144,6 +144,19 @@ func captureConfigFor(opts Options, enabled, excludePort uint32) captureCaptureC
 	return cfg
 }
 
+// SetCgroupID updates the cgroup scope without restarting capture. A zero ID
+// clears the cgroup scope; other packets continue to be captured.
+func (m *Manager) SetCgroupID(id uint64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.opts.CgroupID = id
+	if m.objs == nil {
+		return nil
+	}
+	cfg := captureConfigFor(m.opts, 1, m.opts.ExcludePort)
+	return m.objs.CaptureCfg.Put(uint32(0), cfg)
+}
+
 // SetCaptureFilter updates the kernel prefilter without restarting capture.
 func (m *Manager) SetCaptureFilter(spec filter.CaptureSpec) error {
 	m.mu.Lock()

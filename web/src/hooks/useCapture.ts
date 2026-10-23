@@ -9,6 +9,7 @@ export interface StartOptions {
   sampleRate: number
   clear?: boolean
   filter?: string
+  cgroup?: string
 }
 
 export function useCapture() {
@@ -156,8 +157,19 @@ export function useCapture() {
         sampleRate: opts.sampleRate,
         clear: opts.clear ?? true,
         filter: opts.filter ?? "",
+        cgroup: opts.cgroup,
       })
       if (opts.clear ?? true) packetStore.clear()
+      setStatus((prev) => (prev ? { ...prev, capture: res } : prev))
+      await refreshStatus()
+      return res
+    },
+    [refreshStatus],
+  )
+
+  const setCgroup = useCallback(
+    async (cgroup: string) => {
+      const res = await api.setCgroup(cgroup)
       setStatus((prev) => (prev ? { ...prev, capture: res } : prev))
       await refreshStatus()
       return res
@@ -196,6 +208,7 @@ export function useCapture() {
     connected,
     loadingPackets,
     applyFilter,
+    setCgroup,
     start,
     stop,
     clear,

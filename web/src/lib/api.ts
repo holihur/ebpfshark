@@ -9,6 +9,7 @@ import type {
   PacketStream,
   SessionInfo,
   StatusResponse,
+  ProcessInfo,
   StoreStats,
   TraceInfo,
   TraceResponse,
@@ -80,6 +81,7 @@ export const api = {
     sampleRate: number
     clear: boolean
     filter?: string
+    cgroup?: string
   }) =>
     request<StatusResponse["capture"]>("/api/capture/start", {
       method: "POST",
@@ -91,6 +93,15 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ filter }),
     }),
+  setCgroup: (cgroup: string) =>
+    request<StatusResponse["capture"]>("/api/capture/cgroup", {
+      method: "POST",
+      body: JSON.stringify({ cgroup }),
+    }),
+  processes: (query = "", limit = 300) =>
+    request<{ processes: ProcessInfo[]; count: number }>(
+      `/api/processes?limit=${limit}&q=${encodeURIComponent(query)}`,
+    ),
   clear: () => request<{ ok: boolean }>("/api/capture/clear", { method: "POST" }),
   validate: (filter: string) =>
     request<FilterValidation>("/api/filter/validate", {

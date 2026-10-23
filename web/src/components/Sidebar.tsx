@@ -2,6 +2,7 @@ import { lazy, memo, Suspense, useEffect, useRef, useState } from "react"
 import {
   Activity,
   ArrowLeftRight,
+  Boxes,
   CircleAlert,
   Download,
   FileUp,
@@ -14,6 +15,7 @@ import {
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 const TracePanel = lazy(() => import("@/components/TracePanel").then((m) => ({ default: m.TracePanel })))
+import { ProcessPanel } from "@/components/ProcessPanel"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -32,7 +34,7 @@ import { formatBytes, formatCount, formatDuration } from "@/lib/format"
 import { protoStyle } from "@/lib/protocols"
 import { cn } from "@/lib/utils"
 import { useI18n } from "@/i18n"
-import type { Flow, InterfaceInfo, StatusResponse } from "@/lib/types"
+import type { Flow, InterfaceInfo, ProcessInfo, StatusResponse } from "@/lib/types"
 
 interface SidebarProps {
   status: StatusResponse | null
@@ -53,6 +55,8 @@ interface SidebarProps {
   onStop: () => void
   onClear: () => void
   onImport: (file: File) => void
+  cgroupID?: number
+  onSelectCgroup: (process: ProcessInfo | null) => void
 }
 
 function Section({
@@ -554,9 +558,12 @@ function SidebarImpl(props: SidebarProps) {
     <aside className="hidden w-[268px] shrink-0 flex-col border-r bg-panel/40 md:flex">
       <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
         <div className="shrink-0 border-b p-2">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="capture">
               <Gauge /> {t("sidebar.capture")}
+            </TabsTrigger>
+            <TabsTrigger value="processes">
+              <Boxes /> {t("sidebar.processes")}
             </TabsTrigger>
             <TabsTrigger value="protocols">
               <Layers /> {t("sidebar.protocols")}
@@ -572,6 +579,15 @@ function SidebarImpl(props: SidebarProps) {
         <TabsContent value="capture" className="mt-0 min-h-0 flex-1">
           <ScrollArea className="h-full">
             <CapturePanel {...props} />
+          </ScrollArea>
+        </TabsContent>
+        <TabsContent value="processes" className="mt-0 min-h-0 flex-1">
+          <ScrollArea className="h-full">
+            <ProcessPanel
+              active={tab === "processes"}
+              selectedCgroupID={props.cgroupID}
+              onSelectCgroup={props.onSelectCgroup}
+            />
           </ScrollArea>
         </TabsContent>
         <TabsContent value="protocols" className="mt-0 min-h-0 flex-1">

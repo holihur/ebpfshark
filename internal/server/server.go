@@ -117,6 +117,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/capture/stop", s.handleStop)
 	mux.HandleFunc("POST /api/capture/clear", s.handleClear)
 	mux.HandleFunc("POST /api/capture/filter", s.handleCaptureFilter)
+	mux.HandleFunc("POST /api/capture/cgroup", s.handleCaptureCgroup)
+	mux.HandleFunc("GET /api/processes", s.handleProcesses)
 	mux.HandleFunc("GET /api/packets", s.handlePackets)
 	mux.HandleFunc("GET /api/packets/{id}", s.handlePacketDetail)
 	mux.HandleFunc("GET /api/packets/{id}/stream", s.handlePacketStream)
@@ -397,6 +399,40 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleStop(w http.ResponseWriter, r *http.Request) {
 	s.mgr.Stop()
+	writeJSON(w, http.StatusOK, s.mgr.Status())
+}
+
+func (s *Server) handleProcesses(w http.ResponseWriter, r *http.Request) {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	processes, err := capture.ListProcesses(r.URL.Query().Get("q"), limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"processes": processes, "count": len(processes)})
+}
+
+func (s *Server) handleCaptureCgroup(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Cgroup string `json:"cgroup"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var id uint64
+	if strings.TrimSpace(req.Cgroup) != "" {
+		var err error
+		id, err = capture.ResolveCgroup(req.Cgroup)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	if err := s.mgr.SetCgroupID(id); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, s.mgr.Status())
 }
 
