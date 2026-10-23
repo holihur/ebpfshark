@@ -134,6 +134,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/update", s.handleUpdate)
 	mux.HandleFunc("GET /api/trace", s.handleTrace)
 	mux.HandleFunc("GET /api/trace/inspect", s.handleTraceInspect)
+	mux.HandleFunc("GET /api/trace/symbols", s.handleTraceSymbols)
 	mux.HandleFunc("GET /api/trace/context", s.handleTraceContext)
 	mux.HandleFunc("POST /api/trace/start", s.handleTraceStart)
 	mux.HandleFunc("POST /api/trace/stop", s.handleTraceStop)
@@ -805,6 +806,24 @@ func (s *Server) handleTrace(w http.ResponseWriter, r *http.Request) {
 	after, _ := strconv.ParseUint(r.URL.Query().Get("after"), 10, 64)
 	events, status := s.traceMgr.Events(limit, after)
 	writeJSON(w, http.StatusOK, map[string]any{"events": events, "status": status})
+}
+
+func (s *Server) handleTraceSymbols(w http.ResponseWriter, r *http.Request) {
+	pid, _ := strconv.Atoi(r.URL.Query().Get("pid"))
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	path, symbols, err := probe.ListSymbols(
+		pid,
+		r.URL.Query().Get("binary"),
+		r.URL.Query().Get("q"),
+		limit,
+	)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"path": path, "symbols": symbols, "count": len(symbols),
+	})
 }
 
 func (s *Server) handleTraceInspect(w http.ResponseWriter, r *http.Request) {

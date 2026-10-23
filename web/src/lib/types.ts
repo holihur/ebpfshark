@@ -206,6 +206,12 @@ export interface TraceResponse {
   status: TraceStatus
 }
 
+export interface TraceSymbol {
+  name: string
+  address?: number
+  kind?: string
+}
+
 export interface TraceInfo {
   pid: number
   path: string

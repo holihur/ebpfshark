@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react"
-import { Activity, Play, RefreshCw, Square } from "lucide-react"
+import { Activity, List, Play, RefreshCw, Search, Square } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { api } from "@/lib/api"
 import { useI18n } from "@/i18n"
-import type { TraceEvent, TraceInfo, TraceStatus } from "@/lib/types"
+import type { ProcessInfo, TraceEvent, TraceInfo, TraceStatus, TraceSymbol } from "@/lib/types"
 
 function duration(ns: number): string {
   if (ns < 1000) return `${ns} ns`
@@ -23,6 +23,11 @@ export function TracePanel({ active }: { active: boolean }) {
   const [info, setInfo] = useState<TraceInfo | null>(null)
   const [inspecting, setInspecting] = useState(false)
   const [context, setContext] = useState<Record<number, number>>({})
+  const [processes, setProcesses] = useState<ProcessInfo[]>([])
+  const [symbols, setSymbols] = useState<TraceSymbol[]>([])
+  const [symbolPath, setSymbolPath] = useState("")
+  const [symbolQuery, setSymbolQuery] = useState("")
+  const [symbolLoading, setSymbolLoading] = useState(false)
 
   useEffect(() => {
     if (!active) return
@@ -53,6 +58,42 @@ export function TracePanel({ active }: { active: boolean }) {
       clearInterval(timer)
     }
   }, [active])
+
+  useEffect(() => {
+    if (!active) return
+    let cancelled = false
+    api.processes("", 300)
+      .then((res) => {
+        if (!cancelled) setProcesses(res.processes)
+      })
+      .catch(() => {
+        /* process suggestions are optional */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [active])
+
+  const loadSymbols = async () => {
+    setSymbolLoading(true)
+    setError("")
+    try {
+      const p = Number.parseInt(pid, 10)
+      if (!Number.isFinite(p) || p <= 0) throw new Error("PID required")
+      const binary = info?.path ?? functions.split(",")[0]?.split(":")[0] ?? ""
+      const res = await api.traceSymbols(p, binary)
+      setSymbols(res.symbols)
+      setSymbolPath(res.path)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSymbolLoading(false)
+    }
+  }
+
+  const filteredSymbols = symbolQuery.trim()
+    ? symbols.filter((sym) => sym.name.toLowerCase().includes(symbolQuery.trim().toLowerCase()))
+    : symbols
 
   const start = async () => {
     setBusy(true)
@@ -118,11 +159,24 @@ export function TracePanel({ active }: { active: boolean }) {
         <label className="mb-1 block text-2xs text-muted-foreground">{t("trace.pid")}</label>
         <Input
           value={pid}
-          onChange={(e) => setPid(e.target.value)}
+          onChange={(e) => {
+            setPid(e.target.value)
+            setInfo(null)
+            setSymbols([])
+            setSymbolPath("")
+          }}
           placeholder="1234"
           inputMode="numeric"
+          list="trace-processes"
           className="mb-2 h-8 font-mono text-xs"
         />
+        <datalist id="trace-processes">
+          {processes.map((process) => (
+            <option key={process.pid} value={process.pid}>
+              {process.comm}
+            </option>
+          ))}
+        </datalist>
         <label className="mb-1 block text-2xs text-muted-foreground">{t("trace.functions")}</label>
         <Input
           value={functions}
@@ -141,6 +195,52 @@ export function TracePanel({ active }: { active: boolean }) {
             <Square className="h-3 w-3" /> {t("trace.stop")}
           </Button>
         </div>
+        <Button
+          size="sm"
+          variant="outline"
+          className="mt-2 h-7 w-full"
+          onClick={() => { void loadSymbols() }}
+          disabled={busy || running || symbolLoading}
+        >
+          <List className="h-3 w-3" />
+          {symbolLoading ? t("trace.symbolsLoading") : t("trace.listSymbols")}
+        </Button>
+        {symbols.length > 0 && (
+          <div className="mt-2 rounded border bg-muted/30 p-1.5">
+            <div className="mb-1 flex items-center gap-1 text-[10px] text-muted-foreground">
+              <span className="truncate font-mono" title={symbolPath}>{symbolPath}</span>
+              <span className="ml-auto shrink-0">{symbols.length}</span>
+            </div>
+            <div className="relative mb-1">
+              <Search className="pointer-events-none absolute left-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={symbolQuery}
+                onChange={(e) => setSymbolQuery(e.target.value)}
+                placeholder={t("trace.symbolSearch")}
+                className="h-6 pl-6 font-mono text-[10px]"
+              />
+            </div>
+            <div className="max-h-36 overflow-auto scrollbar-thin">
+              {filteredSymbols.length === 0 ? (
+                <div className="px-1 py-2 text-center text-[10px] text-muted-foreground/60">
+                  {t("trace.symbolEmpty")}
+                </div>
+              ) : (
+                filteredSymbols.map((symbol) => (
+                  <button
+                    key={symbol.name}
+                    type="button"
+                    className="block w-full truncate rounded px-1 py-0.5 text-left font-mono text-[10px] hover:bg-accent"
+                    title={`${symbolPath}:${symbol.name}`}
+                    onClick={() => setFunctions(`${symbolPath}:${symbol.name}`)}
+                  >
+                    {symbol.name}
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        )}
         <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground/60">{t("trace.hint")}</p>
         {info && (
           <div className="mt-2 space-y-0.5 rounded border bg-muted/30 p-1.5 text-[10px] text-muted-foreground">

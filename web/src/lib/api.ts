@@ -13,6 +13,7 @@ import type {
   StoreStats,
   TraceInfo,
   TraceResponse,
+  TraceSymbol,
 } from "./types"
 
 export const UNAUTHORIZED_EVENT = "ebpfshark:unauthorized"
@@ -125,6 +126,10 @@ export const api = {
     request<{ count: number; packets: Packet[] }>(`/api/trace/context?cgroup=${cgroup}&at=${at}&window=${window}`),
   traceInspect: (pid: number, binary = "") =>
     request<TraceInfo>(`/api/trace/inspect?pid=${pid}&binary=${enc(binary)}`),
+  traceSymbols: (pid: number, binary = "", q = "", limit = 1000) =>
+    request<{ path: string; symbols: TraceSymbol[]; count: number }>(
+      `/api/trace/symbols?pid=${pid}&binary=${enc(binary)}&q=${enc(q)}&limit=${limit}`,
+    ),
   traceStart: (pid: number, functions: string) =>
     request<TraceResponse["status"]>("/api/trace/start", {
       method: "POST",

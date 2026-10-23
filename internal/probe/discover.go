@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -28,19 +29,96 @@ type Info struct {
 	Suggestions []string `json:"suggestions"`
 }
 
+// Symbol describes one function-like ELF symbol available for uprobes.
+type Symbol struct {
+	Name    string `json:"name"`
+	Address uint64 `json:"address,omitempty"`
+	Kind    string `json:"kind,omitempty"`
+}
+
+// Symbols lists function symbols from a PID's executable or an explicit ELF.
+// The returned path is the resolved binary used for the lookup.
+func ListSymbols(pid int, binary, query string, limit int) (string, []Symbol, error) {
+	path, err := resolveBinary(pid, binary)
+	if err != nil {
+		return "", nil, err
+	}
+	if limit <= 0 || limit > 2000 {
+		limit = 300
+	}
+	f, err := elf.Open(path)
+	if err != nil {
+		return path, nil, err
+	}
+	defer f.Close()
+	seen := make(map[string]bool)
+	var out []Symbol
+	add := func(syms []elf.Symbol) {
+		for _, sym := range syms {
+			if sym.Name == "" || sym.Value == 0 {
+				continue
+			}
+			info := elf.SymType(sym.Info & 0xf)
+			if info != elf.STT_FUNC && info != elf.STT_NOTYPE && info != elf.STT_GNU_IFUNC {
+				continue
+			}
+			if int(sym.Section) >= len(f.Sections) ||
+				f.Sections[sym.Section].Flags&elf.SHF_EXECINSTR == 0 {
+				continue
+			}
+			if seen[sym.Name] {
+				continue
+			}
+			seen[sym.Name] = true
+			out = append(out, Symbol{Name: sym.Name, Address: sym.Value, Kind: "f"})
+		}
+	}
+	if syms, err := f.Symbols(); err == nil {
+		add(syms)
+	}
+	if syms, err := f.DynamicSymbols(); err == nil {
+		add(syms)
+	}
+	needle := strings.ToLower(strings.TrimSpace(query))
+	if needle != "" {
+		filtered := out[:0]
+		for _, sym := range out {
+			if strings.Contains(strings.ToLower(sym.Name), needle) {
+				filtered = append(filtered, sym)
+			}
+		}
+		out = filtered
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return path, out, nil
+}
+
+func resolveBinary(pid int, binary string) (string, error) {
+	path := binary
+	if path == "" && pid > 0 {
+		p, err := os.Readlink(fmt.Sprintf("/proc/%d/exe", pid))
+		if err != nil {
+			return "", err
+		}
+		path = strings.TrimSuffix(p, " (deleted)")
+	}
+	if path == "" {
+		return "", fmt.Errorf("binary or PID is required")
+	}
+	return path, nil
+}
+
 // Inspect resolves PID/exe and inspects ELF symbols and local debuginfo.
 func Inspect(pid int, binary string) (Info, error) {
 	info := Info{PID: pid, Path: binary}
-	if info.Path == "" && pid > 0 {
-		p, err := os.Readlink(fmt.Sprintf("/proc/%d/exe", pid))
-		if err != nil {
-			return info, err
-		}
-		info.Path = strings.TrimSuffix(p, " (deleted)")
+	path, err := resolveBinary(pid, binary)
+	if err != nil {
+		return info, err
 	}
-	if info.Path == "" {
-		return info, fmt.Errorf("binary or PID is required")
-	}
+	info.Path = path
 	if pid > 0 {
 		if b, err := os.ReadFile(fmt.Sprintf("/proc/%d/comm", pid)); err == nil {
 			info.Comm = strings.TrimSpace(string(b))
