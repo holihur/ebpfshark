@@ -754,13 +754,42 @@ curl -s -b /tmp/ebpfshark.cookie \
 
 ## Roadmap
 
-- [ ] 内核态预过滤（把常用显示过滤器编译成 cBPF/eBPF）
+> 按当前实现更新：已完成项移到“已完成”，未完成项保留优先级，不承诺具体日期。
+
+### 已完成
+
+- [x] core/full 构建拆分 + 编译期协议插件注册
+- [x] 运行时 Go `.so` 动态插件加载层
+- [x] Dockerfile、Compose、Docker CI 和风险文档
 - [x] HTTP/2 HPACK、QUIC Initial/keylog、HTTP/3 + QPACK 静态/动态表
-- [ ] 抓包文件分片、时间范围导出
-- [ ] 报文着色规则与自定义列
+- [x] TLS 1.2/1.3 keylog 解密、WPA2-PSK CCMP/GCMP、SSH 可选会话密钥
+- [x] RTP H.264/H.265/VP8/VP9/AAC/Opus、RTSP、MPEG-TS
+- [x] CoAP、MQTT-SN、Modbus TCP
+- [x] 协议支持程度矩阵、RFC 参考、与 Wireshark/tcpdump 对比
+
+### P0：协议覆盖
+
+- [ ] 音视频补齐：RTMP、HLS/DASH manifest、RTP AV1、完整 SDP 编解码映射
+- [ ] 物联网补齐：AMQP 0-9-1、BACnet/IP、OPC UA Binary、LoRaWAN Packet Forwarder
+- [ ] CoAP over TCP/DTLS、MQTT-SN QoS 状态机、Modbus RTU
+- [ ] TLS 1.2 CCM、gRPC/protobuf、LDAP/Kerberos
+- [ ] 完整 NetFlow v9/IPFIX 模板展开、SCTP 分片重组
+- [ ] IPv4/IPv6 分片重组、802.11 分片重组
+- [ ] WPA3/SAE、WPA-TKIP 无线解密
+
+### P1：抓包与性能
+
+- [ ] 内核态预过滤（把常用显示过滤器编译成 cBPF/eBPF）
+- [ ] pcapng 导出、按时间范围导出、抓包文件分片
+- [ ] 高包速率下的 ring buffer/解码/SSE 压测与背压策略
 - [ ] Prometheus metrics / OpenTelemetry 导出
-- [ ] 多用户 / 角色权限、审计日志
-- [ ] 内置 TLS 与 OIDC / LDAP 登录
+
+### P2：界面与运维
+
+- [ ] 报文着色规则、自定义列、列宽持久化
+- [ ] 多用户 / 角色权限 / 审计日志
+- [ ] 内置 TLS、OIDC / LDAP 登录
+- [ ] 更完整的过滤器字段目录和协议内字段过滤
 
 ## License
 
