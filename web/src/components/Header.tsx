@@ -138,49 +138,6 @@ function HeaderImpl({
         }}
       />
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            disabled={busy}
-            onClick={() => document.getElementById("pcap-input")?.click()}
-          >
-            <FileUp />
-            <span className="sr-only">{t("app.importAria")}</span>
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{t("app.importTip")}</TooltipContent>
-      </Tooltip>
-
-      <DropdownMenu>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" disabled={(status?.store.stored ?? 0) === 0}>
-                <Download />
-                <span className="sr-only">{t("app.exportAria")}</span>
-              </Button>
-            </DropdownMenuTrigger>
-          </TooltipTrigger>
-          <TooltipContent>{t("app.exportTip")}</TooltipContent>
-        </Tooltip>
-        <DropdownMenuContent align="end">
-          <DropdownMenuLabel>{t("app.exportAs")}</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem asChild>
-            <a href={api.exportUrl("")} download>
-              {t("app.exportAll", { count: status?.store.stored ?? 0 })}
-            </a>
-          </DropdownMenuItem>
-          <DropdownMenuItem asChild disabled={!filter}>
-            <a href={filter ? api.exportUrl(filter) : "#"} download>
-              {filter ? t("app.exportFiltered", { filter }) : t("app.exportFilteredNoFilter")}
-            </a>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
       {running ? (
         <Button variant="outline" size="sm" onClick={onStop} disabled={busy} className="gap-1.5">
           <Square className="fill-current" />
@@ -206,6 +163,26 @@ function HeaderImpl({
         </Tooltip>
         <DropdownMenuContent align="end" className="min-w-[13rem]">
           <DropdownMenuLabel>{t("app.more")}</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            disabled={busy}
+            onSelect={() => document.getElementById("pcap-input")?.click()}
+          >
+            <FileUp />
+            {t("app.importTip")}
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild disabled={(status?.store.stored ?? 0) === 0}>
+            <a href={api.exportUrl("")} download>
+              <Download />
+              {t("app.exportAll", { count: status?.store.stored ?? 0 })}
+            </a>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild disabled={!filter}>
+            <a href={filter ? api.exportUrl(filter) : "#"} download>
+              <Download />
+              {filter ? t("app.exportFiltered", { filter }) : t("app.exportFilteredNoFilter")}
+            </a>
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           {authEnabled && (
             <>
