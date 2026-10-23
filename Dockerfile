@@ -20,11 +20,9 @@ ARG BUILD_TARGET=go-build-full
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      clang llvm libbpf-dev linux-tools-common linux-tools-generic \
+      clang llvm libbpf-dev bpftool \
       make git ca-certificates \
- && BPFTOOL="$(find /usr/lib/linux-tools -name bpftool | sort | tail -1)" \
- && test -n "$BPFTOOL" \
- && ln -sf "$(readlink -f "$BPFTOOL")" /usr/local/bin/bpftool \
+ && bpftool version \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 COPY go.mod go.sum ./
