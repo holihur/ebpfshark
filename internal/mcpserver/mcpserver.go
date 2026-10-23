@@ -16,6 +16,7 @@ import (
 	"ebpfshark/internal/decode"
 	"ebpfshark/internal/filter"
 	"ebpfshark/internal/packet"
+	"ebpfshark/internal/probe"
 	"ebpfshark/internal/store"
 	"ebpfshark/internal/stream"
 	"ebpfshark/internal/trace"
@@ -359,6 +360,21 @@ func directionOutput(d stream.Direction, maxBytes int, includeB64 bool) streamDi
 }
 
 func addTraceTools(srv *mcp.Server, c TraceController) {
+	type inspectInput struct {
+		PID    int    `json:"pid,omitempty" jsonschema:"target process ID"`
+		Binary string `json:"binary,omitempty" jsonschema:"optional binary path; inferred from PID when empty"`
+	}
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "inspect_function_target",
+		Description: "Inspect an ELF target for build-id, stripped status, symbol count and debuginfo suggestions before starting a function trace.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in inspectInput) (*mcp.CallToolResult, any, error) {
+		info, err := probe.Inspect(in.PID, in.Binary)
+		if err != nil {
+			return nil, nil, err
+		}
+		return textResult(info)
+	})
+
 	type startInput struct {
 		PID       int    `json:"pid" jsonschema:"target process ID (0 = all processes loading the binary)"`
 		Functions string `json:"functions" jsonschema:"comma separated binary:symbol uprobe targets"`

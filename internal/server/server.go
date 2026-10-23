@@ -129,6 +129,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/version", s.handleVersion)
 	mux.HandleFunc("GET /api/update", s.handleUpdate)
 	mux.HandleFunc("GET /api/trace", s.handleTrace)
+	mux.HandleFunc("GET /api/trace/inspect", s.handleTraceInspect)
 	mux.HandleFunc("POST /api/trace/start", s.handleTraceStart)
 	mux.HandleFunc("POST /api/trace/stop", s.handleTraceStop)
 	mux.Handle("/api/", http.NotFoundHandler())
@@ -734,6 +735,16 @@ func (s *Server) handleTrace(w http.ResponseWriter, r *http.Request) {
 	after, _ := strconv.ParseUint(r.URL.Query().Get("after"), 10, 64)
 	events, status := s.traceMgr.Events(limit, after)
 	writeJSON(w, http.StatusOK, map[string]any{"events": events, "status": status})
+}
+
+func (s *Server) handleTraceInspect(w http.ResponseWriter, r *http.Request) {
+	pid, _ := strconv.Atoi(r.URL.Query().Get("pid"))
+	info, err := probe.Inspect(pid, r.URL.Query().Get("binary"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, info)
 }
 
 func (s *Server) handleTraceStart(w http.ResponseWriter, r *http.Request) {

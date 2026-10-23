@@ -269,6 +269,7 @@ func runTrace(args []string) {
 	pid := fs.Int("pid", 0, "trace only this PID (0 = all processes loading the binary)")
 	functions := fs.String("func", "", "comma separated binary:symbol uprobe targets")
 	duration := fs.Duration("duration", 0, "stop after this duration (0 = until Ctrl-C)")
+	inspectOnly := fs.Bool("inspect", false, "inspect the target ELF for build-id/symbols/debuginfo and exit")
 	_ = fs.Parse(args)
 	if *functions == "" {
 		fmt.Fprintln(os.Stderr, "usage: ebpfshark trace -pid PID -func /path/to/bin:symbol[,binary:symbol...]")
@@ -283,9 +284,36 @@ func runTrace(args []string) {
 		fmt.Fprintln(os.Stderr, "invalid -pid")
 		os.Exit(2)
 	}
+	if *inspectOnly {
+		binary := ""
+		if len(fns) > 0 {
+			binary = fns[0].Binary
+		}
+		info, ierr := probe.Inspect(*pid, binary)
+		if ierr != nil {
+			fmt.Fprintln(os.Stderr, "inspect:", ierr)
+			os.Exit(1)
+		}
+		fmt.Printf("path: %s\nbuild-id: %s\nstripped: %v\nsymbols: %d\ndebuginfo: %s\ndebuginfod: %v\n",
+			info.Path, info.BuildID, info.Stripped, info.Symbols, info.DebugFile, info.Debuginfod)
+		for _, s := range info.Suggestions {
+			fmt.Println("suggestion:", s)
+		}
+		return
+	}
 	tracer, err := probe.Start(probe.Options{PID: *pid, Functions: fns})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "start trace:", err)
+		binary := ""
+		if len(fns) > 0 {
+			binary = fns[0].Binary
+		}
+		if info, ierr := probe.Inspect(*pid, binary); ierr == nil {
+			fmt.Fprintf(os.Stderr, "target: %s build-id=%s stripped=%v symbols=%d\n", info.Path, info.BuildID, info.Stripped, info.Symbols)
+			for _, s := range info.Suggestions {
+				fmt.Fprintln(os.Stderr, "  -", s)
+			}
+		}
 		os.Exit(1)
 	}
 	defer tracer.Close()

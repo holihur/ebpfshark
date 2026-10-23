@@ -10,6 +10,7 @@ import type {
   SessionInfo,
   StatusResponse,
   StoreStats,
+  TraceInfo,
   TraceResponse,
 } from "./types"
 
@@ -103,6 +104,8 @@ export const api = {
   streamUrl: (filter: string) => `/api/stream?filter=${enc(filter)}`,
   trace: (limit = 500, after = 0) =>
     request<TraceResponse>(`/api/trace?limit=${limit}&after=${after}`),
+  traceInspect: (pid: number, binary = "") =>
+    request<TraceInfo>(`/api/trace/inspect?pid=${pid}&binary=${enc(binary)}`),
   traceStart: (pid: number, functions: string) =>
     request<TraceResponse["status"]>("/api/trace/start", {
       method: "POST",

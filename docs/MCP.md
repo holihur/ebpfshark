@@ -455,6 +455,14 @@ frame contains "password"
 
 ---
 
+#### `inspect_function_target`
+
+检查目标 ELF 的 build-id、是否 stripped、符号数量和 debuginfo，再决定如何启动追踪。
+
+```json
+{"name":"inspect_function_target","arguments":{"pid":1234}}
+```
+
 #### `start_function_trace`
 
 启动实验性 uprobe/uretprobe 函数追踪。需要 root/CAP_BPF/CAP_PERFMON，并且目标 ELF 有可用符号。

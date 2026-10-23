@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { api } from "@/lib/api"
 import { useI18n } from "@/i18n"
-import type { TraceEvent, TraceStatus } from "@/lib/types"
+import type { TraceEvent, TraceInfo, TraceStatus } from "@/lib/types"
 
 function duration(ns: number): string {
   if (ns < 1000) return `${ns} ns`
@@ -20,6 +20,8 @@ export function TracePanel({ active }: { active: boolean }) {
   const [events, setEvents] = useState<TraceEvent[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
+  const [info, setInfo] = useState<TraceInfo | null>(null)
+  const [inspecting, setInspecting] = useState(false)
 
   useEffect(() => {
     if (!active) return
@@ -67,6 +69,21 @@ export function TracePanel({ active }: { active: boolean }) {
     }
   }
 
+  const inspect = async () => {
+    setInspecting(true)
+    setError("")
+    try {
+      const p = Number.parseInt(pid, 10)
+      if (!Number.isFinite(p) || p < 0) throw new Error("PID required")
+      const binary = functions.split(",")[0]?.split(":")[0] ?? ""
+      setInfo(await api.traceInspect(p, binary))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setInspecting(false)
+    }
+  }
+
   const stop = async () => {
     setBusy(true)
     try {
@@ -103,6 +120,9 @@ export function TracePanel({ active }: { active: boolean }) {
           className="mb-2 h-8 font-mono text-xs"
         />
         <div className="flex gap-2">
+          <Button size="sm" variant="outline" className="h-8" onClick={() => { void inspect() }} disabled={inspecting || running}>
+            {t("trace.detect")}
+          </Button>
           <Button size="sm" className="h-8 flex-1" onClick={() => { void start() }} disabled={busy || running}>
             <Play className="h-3 w-3" /> {t("trace.start")}
           </Button>
@@ -111,6 +131,15 @@ export function TracePanel({ active }: { active: boolean }) {
           </Button>
         </div>
         <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground/60">{t("trace.hint")}</p>
+        {info && (
+          <div className="mt-2 space-y-0.5 rounded border bg-muted/30 p-1.5 text-[10px] text-muted-foreground">
+            <div className="truncate font-mono text-foreground/80">{info.path}</div>
+            <div>build-id: <span className="font-mono">{info.buildId || "?"}</span></div>
+            <div>stripped: {info.stripped ? "yes" : "no"} · symbols: {info.symbols}</div>
+            {info.debugFile && <div className="truncate">debug: {info.debugFile}</div>}
+            {(info.suggestions ?? []).map((s) => <div key={s}>· {s}</div>)}
+          </div>
+        )}
       </div>
 
       {error && <div className="rounded border border-destructive/40 bg-destructive/10 p-2 text-2xs text-destructive">{error}</div>}

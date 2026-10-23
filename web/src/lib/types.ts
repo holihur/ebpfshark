@@ -196,3 +196,15 @@ export interface TraceResponse {
   events: TraceEvent[]
   status: TraceStatus
 }
+
+export interface TraceInfo {
+  pid: number
+  path: string
+  buildId?: string
+  stripped: boolean
+  symbols: number
+  debugFile?: string
+  debuginfod: boolean
+  comm?: string
+  suggestions: string[]
+}

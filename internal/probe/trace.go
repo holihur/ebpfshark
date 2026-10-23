@@ -7,6 +7,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -19,8 +21,9 @@ import (
 
 // Function identifies one uprobe target.
 type Function struct {
-	Binary string
-	Symbol string
+	Binary  string
+	Symbol  string
+	Address uint64 // explicit ELF address/offset; mutually exclusive with Symbol
 }
 
 // Options configures a tracing session. PID=0 traces all processes that load
@@ -64,10 +67,27 @@ func ParseFunctions(s string) ([]Function, error) {
 			continue
 		}
 		i := strings.IndexByte(item, ':')
-		if i <= 0 || i == len(item)-1 {
-			return nil, fmt.Errorf("invalid function %q (want binary:symbol)", item)
+		if i < 0 || i == len(item)-1 {
+			return nil, fmt.Errorf("invalid function %q (want binary:symbol or binary:0xADDR)", item)
 		}
-		out = append(out, Function{Binary: item[:i], Symbol: item[i+1:]})
+		binary, target := item[:i], item[i+1:]
+		f := Function{Binary: binary}
+		if strings.HasPrefix(target, "@") {
+			v, err := strconv.ParseUint(strings.TrimPrefix(target, "@"), 0, 64)
+			if err != nil {
+				return nil, fmt.Errorf("invalid address %q: %w", target, err)
+			}
+			f.Address = v
+		} else if strings.HasPrefix(target, "0x") || strings.HasPrefix(target, "0X") {
+			v, err := strconv.ParseUint(target, 0, 64)
+			if err != nil {
+				return nil, fmt.Errorf("invalid address %q: %w", target, err)
+			}
+			f.Address = v
+		} else {
+			f.Symbol = target
+		}
+		out = append(out, f)
 	}
 	if len(out) == 0 {
 		return nil, errors.New("no functions selected")
@@ -111,26 +131,46 @@ func Start(opts Options) (*Tracer, error) {
 		cleanup()
 	}
 	for i, fn := range opts.Functions {
+		if fn.Binary == "" {
+			if opts.PID <= 0 {
+				closeOnError()
+				return nil, fmt.Errorf("empty binary requires -pid")
+			}
+			p, err := os.Readlink(fmt.Sprintf("/proc/%d/exe", opts.PID))
+			if err != nil {
+				closeOnError()
+				return nil, err
+			}
+			fn.Binary = strings.TrimSuffix(p, " (deleted)")
+		}
 		ex, err := link.OpenExecutable(fn.Binary)
 		if err != nil {
 			closeOnError()
 			return nil, fmt.Errorf("%s: %w", fn.Binary, err)
 		}
 		cookie := uint64(i + 1)
-		upOpts := &link.UprobeOptions{PID: opts.PID, Cookie: cookie}
-		entry, err := ex.Uprobe(fn.Symbol, objs.ProbeEntry, upOpts)
+		upOpts := &link.UprobeOptions{PID: opts.PID, Cookie: cookie, Address: fn.Address}
+		symbol := fn.Symbol
+		if fn.Address != 0 {
+			symbol = ""
+		}
+		entry, err := ex.Uprobe(symbol, objs.ProbeEntry, upOpts)
 		if err != nil {
 			closeOnError()
 			return nil, fmt.Errorf("%s:%s entry: %w", fn.Binary, fn.Symbol, err)
 		}
 		t.links = append(t.links, entry)
-		ret, err := ex.Uretprobe(fn.Symbol, objs.ProbeReturn, upOpts)
+		ret, err := ex.Uretprobe(symbol, objs.ProbeReturn, upOpts)
 		if err != nil {
 			closeOnError()
 			return nil, fmt.Errorf("%s:%s return: %w", fn.Binary, fn.Symbol, err)
 		}
 		t.links = append(t.links, ret)
-		t.names[cookie] = fn.Symbol
+		if fn.Symbol != "" {
+			t.names[cookie] = fn.Symbol
+		} else {
+			t.names[cookie] = fmt.Sprintf("0x%x", fn.Address)
+		}
 	}
 	rd, err := ringbuf.NewReader(objs.Events)
 	if err != nil {

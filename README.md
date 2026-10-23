@@ -52,6 +52,30 @@ sudo ./bin/ebpfshark -addr :9999 -capture eth0
 
 首次打开 `http://localhost:9999`，使用启动时打印的 `admin` 凭据登录。
 
+## 函数调用追踪
+
+CLI：
+
+```bash
+# 检查符号 / build-id / debuginfo
+sudo ./bin/ebpfshark trace -pid 1234 -inspect
+
+# 追踪显式函数
+sudo ./bin/ebpfshark trace \
+  -pid 1234 \
+  -func /usr/local/bin/app:main.handler \
+  -duration 10s
+
+# 目标即 PID 的 exe 时可以省略 binary
+sudo ./bin/ebpfshark trace -pid 1234 -func :main.handler
+
+# 共享库或已知偏移
+sudo ./bin/ebpfshark trace -pid 1234 -func /usr/lib/libfoo.so:foo
+sudo ./bin/ebpfshark trace -pid 1234 -func /usr/local/bin/app:@0x1234
+```
+
+Web 侧栏 **Trace** 标签和 MCP 的 `start_function_trace` / `query_function_trace` 提供同样的能力。需要显式符号、带符号 ELF 和 `CAP_BPF`/`CAP_PERFMON`；stripped 二进制会提示安装 debuginfo 或改用地址。
+
 ## 常用参数
 
 ```text
