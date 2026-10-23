@@ -770,7 +770,7 @@ curl -s -b /tmp/ebpfshark.cookie \
 - [x] TLS 1.2/1.3 keylog 解密、WPA2-PSK CCMP/GCMP、SSH 可选会话密钥
 - [x] RTP H.264/H.265/VP8/VP9/AV1/AAC/Opus、RTSP、MPEG-TS、HLS
 - [x] CoAP、MQTT-SN、Modbus TCP、AMQP、BACnet/IP、OPC UA、LoRaWAN
-- [x] HLS manifest、RTP AV1、TLS 1.2 CCM、gRPC/protobuf、NetFlow v9/IPFIX 模板展开
+- [x] TLS 1.2 CCM、gRPC/protobuf、NetFlow v9/IPFIX 模板展开
 - [x] 协议支持程度矩阵、RFC 参考、与 Wireshark/tcpdump 对比
 
 ### P0：协议覆盖
