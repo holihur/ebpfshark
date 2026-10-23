@@ -1,4 +1,4 @@
-import { memo, useEffect } from "react"
+import { memo, useEffect, useRef } from "react"
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -43,12 +43,18 @@ function PacketListImpl({
   const { t } = useI18n()
   usePacketVersion()
   const count = store.length
+  const headerRef = useRef<HTMLDivElement>(null)
   const { containerRef, onScroll, atBottom, scrollToBottom, startFor, endFor, totalHeight } =
     useVirtualList({ rowHeight: ROW_HEIGHT })
 
   useEffect(() => {
     if (atBottom && count > 0) scrollToBottom()
   }, [count, atBottom, scrollToBottom])
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    onScroll()
+    if (headerRef.current) headerRef.current.scrollLeft = e.currentTarget.scrollLeft
+  }
 
   const start = startFor()
   const end = endFor(count)
@@ -81,26 +87,31 @@ function PacketListImpl({
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
       <div
-        className={cn(
-          GRID,
-          "h-7 shrink-0 border-b bg-panel/70 text-2xs font-medium uppercase tracking-wide text-muted-foreground/80",
-        )}
+        ref={headerRef}
+        className="h-7 shrink-0 overflow-hidden border-b bg-panel/70"
       >
-        <span>{t("list.no")}</span>
-        <span>{t("list.time")}</span>
-        <span>{t("list.source")}</span>
-        <span>{t("list.destination")}</span>
-        <span>{t("list.protocol")}</span>
-        <span className="text-right">{t("list.length")}</span>
-        <span>{t("list.info")}</span>
-        <span>{t("list.iface")}</span>
+        <div
+          className={cn(
+            GRID,
+            "h-7 min-w-[880px] text-2xs font-medium uppercase tracking-wide text-muted-foreground/80",
+          )}
+        >
+          <span>{t("list.no")}</span>
+          <span>{t("list.time")}</span>
+          <span>{t("list.source")}</span>
+          <span>{t("list.destination")}</span>
+          <span>{t("list.protocol")}</span>
+          <span className="text-right">{t("list.length")}</span>
+          <span>{t("list.info")}</span>
+          <span>{t("list.iface")}</span>
+        </div>
       </div>
 
       <div className="relative min-h-0 flex-1">
         <div
           ref={containerRef}
           tabIndex={0}
-          onScroll={onScroll}
+          onScroll={handleScroll}
           onKeyDown={handleKey}
           className="h-full overflow-auto outline-none scrollbar-thin"
         >
