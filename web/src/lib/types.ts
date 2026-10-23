@@ -181,6 +181,7 @@ export interface TraceEvent {
   tid: number
   function: string
   comm: string
+  cgroupID?: number
 }
 
 export interface TraceStatus {
@@ -206,5 +207,8 @@ export interface TraceInfo {
   debugFile?: string
   debuginfod: boolean
   comm?: string
+  cgroupPath?: string
+  containerId?: string
+  podUid?: string
   suggestions: string[]
 }

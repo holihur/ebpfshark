@@ -74,7 +74,7 @@ sudo ./bin/ebpfshark trace -pid 1234 -func /usr/lib/libfoo.so:foo
 sudo ./bin/ebpfshark trace -pid 1234 -func /usr/local/bin/app:@0x1234
 ```
 
-Web 侧栏 **Trace** 标签和 MCP 的 `start_function_trace` / `query_function_trace` 提供同样的能力。需要显式符号、带符号 ELF 和 `CAP_BPF`/`CAP_PERFMON`；stripped 二进制会提示安装 debuginfo 或改用地址。
+Web 侧栏 **Trace** 标签和 MCP 的 `start_function_trace` / `query_function_trace` 提供同样的能力。`inspect` 可显示 build-id、符号数、debuginfo、容器/Pod cgroup；事件旁边的 `↔` 可查找同一 cgroup、同一时间窗口内的网络包。需要显式符号、带符号 ELF 和 `CAP_BPF`/`CAP_PERFMON`；stripped 二进制会提示安装 debuginfo 或改用地址。
 
 ## 常用参数
 
@@ -103,7 +103,7 @@ Web 侧栏 **Trace** 标签和 MCP 的 `start_function_trace` / `query_function_
 - 显示过滤器在用户态执行，暂未实现内核态预过滤；高流量场景建议配合采样/snaplen。
 - 协议覆盖和深度不及 Wireshark；长期存储/检索不及 Arkime。
 - cgroup 抓包要求 cgroup v2；按 PID 实际是解析该 PID 当前 cgroup。
-- 函数调用追踪是实验功能，只支持显式符号；Web/MCP 已接入基础事件列表，尚无参数/返回值/USDT。
+- 函数调用追踪是实验功能，只支持显式符号；已支持基础事件列表、build-id/容器检查和 cgroup 时间窗关联，尚无参数/返回值/USDT。
 - Docker 部署会降低隔离；不要暴露 API 到公网，也不要加载不可信插件。
 
 ## 文档

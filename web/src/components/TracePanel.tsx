@@ -22,6 +22,7 @@ export function TracePanel({ active }: { active: boolean }) {
   const [error, setError] = useState("")
   const [info, setInfo] = useState<TraceInfo | null>(null)
   const [inspecting, setInspecting] = useState(false)
+  const [context, setContext] = useState<Record<number, number>>({})
 
   useEffect(() => {
     if (!active) return
@@ -84,6 +85,16 @@ export function TracePanel({ active }: { active: boolean }) {
     }
   }
 
+  const loadContext = async (e: TraceEvent) => {
+    if (!e.cgroupID) return
+    try {
+      const res = await api.traceContext(e.cgroupID, e.time)
+      setContext((prev) => ({ ...prev, [e.id]: res.count }))
+    } catch {
+      /* ignore */
+    }
+  }
+
   const stop = async () => {
     setBusy(true)
     try {
@@ -136,6 +147,8 @@ export function TracePanel({ active }: { active: boolean }) {
             <div className="truncate font-mono text-foreground/80">{info.path}</div>
             <div>build-id: <span className="font-mono">{info.buildId || "?"}</span></div>
             <div>stripped: {info.stripped ? "yes" : "no"} · symbols: {info.symbols}</div>
+            {info.containerId && <div className="truncate">container: <span className="font-mono">{info.containerId.slice(0, 12)}…</span></div>}
+            {info.podUid && <div className="truncate">pod: <span className="font-mono">{info.podUid.slice(0, 12)}…</span></div>}
             {info.debugFile && <div className="truncate">debug: {info.debugFile}</div>}
             {(info.suggestions ?? []).map((s) => <div key={s}>· {s}</div>)}
           </div>
@@ -172,6 +185,16 @@ export function TracePanel({ active }: { active: boolean }) {
                 <span>pid={e.pid}</span>
                 <span>tid={e.tid}</span>
                 <span className="truncate">{e.comm}</span>
+                {e.cgroupID ? (
+                  <button
+                    type="button"
+                    className="ml-auto shrink-0 underline decoration-dotted"
+                    onClick={() => { void loadContext(e) }}
+                    title={t("trace.context")}
+                  >
+                    ↔ {context[e.id] ?? "?"}
+                  </button>
+                ) : null}
               </div>
             </div>
           ))}

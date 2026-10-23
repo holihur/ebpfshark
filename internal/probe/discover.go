@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -21,6 +22,9 @@ type Info struct {
 	DebugFile   string   `json:"debugFile,omitempty"`
 	Debuginfod  bool     `json:"debuginfod"`
 	Comm        string   `json:"comm,omitempty"`
+	CgroupPath  string   `json:"cgroupPath,omitempty"`
+	ContainerID string   `json:"containerId,omitempty"`
+	PodUID      string   `json:"podUid,omitempty"`
 	Suggestions []string `json:"suggestions"`
 }
 
@@ -41,6 +45,7 @@ func Inspect(pid int, binary string) (Info, error) {
 		if b, err := os.ReadFile(fmt.Sprintf("/proc/%d/comm", pid)); err == nil {
 			info.Comm = strings.TrimSpace(string(b))
 		}
+		info.CgroupPath, info.ContainerID, info.PodUID = inspectCgroup(pid)
 	}
 	f, err := elf.Open(info.Path)
 	if err != nil {
@@ -129,4 +134,30 @@ func findDebugFile(binary, buildID string) string {
 		}
 	}
 	return ""
+}
+
+var (
+	containerIDRE = regexp.MustCompile(`(?:docker-|cri-containerd-|libpod-|containerd-)?([0-9a-f]{64})(?:\.scope)?`)
+	podUIDRE      = regexp.MustCompile(`pod([0-9a-fA-F-]{32,36})`)
+)
+
+func inspectCgroup(pid int) (path, container, pod string) {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/cgroup", pid))
+	if err != nil {
+		return "", "", ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if !strings.HasPrefix(line, "0::") {
+			continue
+		}
+		path = strings.TrimPrefix(line, "0::")
+		if m := containerIDRE.FindStringSubmatch(path); len(m) > 1 {
+			container = m[1]
+		}
+		if m := podUIDRE.FindStringSubmatch(path); len(m) > 1 {
+			pod = m[1]
+		}
+		return path, container, pod
+	}
+	return "", "", ""
 }

@@ -18,6 +18,7 @@ type Event struct {
 	TID        uint32 `json:"tid"`
 	Function   string `json:"function"`
 	Comm       string `json:"comm"`
+	CgroupID   uint64 `json:"cgroupID,omitempty"`
 }
 
 // Status describes the current or last trace session.
@@ -96,7 +97,7 @@ func (m *Manager) readLoop(t *probe.Tracer) {
 		m.count++
 		e := Event{
 			ID: m.nextID, Time: ev.Time.UnixNano(), DurationNS: int64(ev.Duration),
-			PID: ev.PID, TID: ev.TID, Function: ev.Function, Comm: ev.Comm,
+			PID: ev.PID, TID: ev.TID, Function: ev.Function, Comm: ev.Comm, CgroupID: ev.CgroupID,
 		}
 		m.events = append(m.events, e)
 		if len(m.events) > maxEvents {

@@ -22,6 +22,7 @@ struct probe_event {
 	__u32 pid;
 	__u32 tid;
 	__u64 cookie;
+	__u64 cgroup_id;
 	__u8 kind; /* 1 = return */
 	__u8 comm[16];
 } __attribute__((packed));
@@ -95,6 +96,7 @@ int probe_return(struct pt_regs *ctx)
 		e->pid = tgid;
 		e->tid = pid;
 		e->cookie = key.cookie;
+		e->cgroup_id = bpf_get_current_cgroup_id();
 		e->kind = 1;
 		bpf_get_current_comm(&e->comm, sizeof(e->comm));
 		bpf_ringbuf_submit(e, 0);

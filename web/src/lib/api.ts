@@ -104,6 +104,8 @@ export const api = {
   streamUrl: (filter: string) => `/api/stream?filter=${enc(filter)}`,
   trace: (limit = 500, after = 0) =>
     request<TraceResponse>(`/api/trace?limit=${limit}&after=${after}`),
+  traceContext: (cgroup: number, at: number, window = 1_000_000_000) =>
+    request<{ count: number; packets: Packet[] }>(`/api/trace/context?cgroup=${cgroup}&at=${at}&window=${window}`),
   traceInspect: (pid: number, binary = "") =>
     request<TraceInfo>(`/api/trace/inspect?pid=${pid}&binary=${enc(binary)}`),
   traceStart: (pid: number, functions: string) =>

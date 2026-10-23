@@ -25,6 +25,7 @@
 | GET | `/api/update` | 自动更新状态 |
 | GET | `/api/trace?limit=&after=` | 函数调用追踪状态和事件 |
 | GET | `/api/trace/inspect?pid=&binary=` | 检查 build-id、符号、debuginfo 和建议 |
+| GET | `/api/trace/context?cgroup=&at=&window=` | 查找同 cgroup、同一时间窗口内的网络包 |
 | POST | `/api/trace/start` | `{pid, functions}` 启动 uprobe 追踪 |
 | POST | `/api/trace/stop` | 停止函数调用追踪 |
 | GET | `/api/export/pcap?filter=&format=&from=&to=` | 导出 pcap/pcapng；`format=pcapng`，时间支持 RFC3339 或 Unix 秒 |

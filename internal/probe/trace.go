@@ -41,6 +41,7 @@ type Event struct {
 	TID      uint32
 	Function string
 	Comm     string
+	CgroupID uint64
 }
 
 // Tracer owns uprobe programs and their ring buffer reader.
@@ -200,7 +201,7 @@ func (t *Tracer) readLoop() {
 		if err := t.reader.ReadInto(&rec); err != nil {
 			return
 		}
-		if len(rec.RawSample) < 49 {
+		if len(rec.RawSample) < 57 {
 			continue
 		}
 		b := rec.RawSample
@@ -209,10 +210,11 @@ func (t *Tracer) readLoop() {
 		pid := binary.LittleEndian.Uint32(b[16:20])
 		tid := binary.LittleEndian.Uint32(b[20:24])
 		cookie := binary.LittleEndian.Uint64(b[24:32])
-		comm := strings.TrimRight(string(b[33:49]), "\x00")
+		cgroupID := binary.LittleEndian.Uint64(b[32:40])
+		comm := strings.TrimRight(string(b[41:57]), "\x00")
 		ev := Event{
 			Time: time.Unix(0, ts+t.wallOff), Duration: time.Duration(dur),
-			PID: pid, TID: tid, Function: t.names[cookie], Comm: comm,
+			PID: pid, TID: tid, Function: t.names[cookie], Comm: comm, CgroupID: cgroupID,
 		}
 		select {
 		case t.events <- ev:

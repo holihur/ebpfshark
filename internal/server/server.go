@@ -130,6 +130,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/update", s.handleUpdate)
 	mux.HandleFunc("GET /api/trace", s.handleTrace)
 	mux.HandleFunc("GET /api/trace/inspect", s.handleTraceInspect)
+	mux.HandleFunc("GET /api/trace/context", s.handleTraceContext)
 	mux.HandleFunc("POST /api/trace/start", s.handleTraceStart)
 	mux.HandleFunc("POST /api/trace/stop", s.handleTraceStop)
 	mux.Handle("/api/", http.NotFoundHandler())
@@ -745,6 +746,45 @@ func (s *Server) handleTraceInspect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, info)
+}
+
+func (s *Server) handleTraceContext(w http.ResponseWriter, r *http.Request) {
+	cgroup, err := strconv.ParseUint(r.URL.Query().Get("cgroup"), 10, 64)
+	if err != nil || cgroup == 0 {
+		writeError(w, http.StatusBadRequest, "cgroup must be a non-zero cgroup id")
+		return
+	}
+	at, err := strconv.ParseInt(r.URL.Query().Get("at"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "at must be Unix nanoseconds")
+		return
+	}
+	window, _ := strconv.ParseInt(r.URL.Query().Get("window"), 10, 64)
+	if window <= 0 {
+		window = int64(time.Second)
+	}
+	if window > int64(30*time.Second) {
+		window = int64(30 * time.Second)
+	}
+	limit := intQuery(r, "limit", 50)
+	if limit <= 0 || limit > 500 {
+		limit = 50
+	}
+	var out []packetJSON
+	for _, p := range s.store.All(nil) {
+		if p.CgroupID != cgroup {
+			continue
+		}
+		dt := p.Time.UnixNano() - at
+		if dt < -window || dt > window {
+			continue
+		}
+		out = append(out, toPacketJSON(p))
+		if len(out) >= limit {
+			break
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"count": len(out), "packets": out})
 }
 
 func (s *Server) handleTraceStart(w http.ResponseWriter, r *http.Request) {
