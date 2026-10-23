@@ -74,6 +74,9 @@ jobs:
       - name: Fuzz capture filter compiler
         run: go test -run=^$ -fuzz=FuzzCompileCapture -fuzztime=8s ./internal/filter
 
+      - name: Kernel capture filter integration test
+        run: sudo -E env "PATH=$PATH" "EBPFSHARK_PRIVILEGED=1" go test -run TestKernelCaptureFilter -count=1 ./internal/capture
+
       - name: Benchmark smoke
         run: go test -run=^$ -bench=. -benchmem -benchtime=50ms ./internal/decode ./internal/filter ./internal/stream
 
