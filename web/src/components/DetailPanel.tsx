@@ -1,9 +1,9 @@
-import { useState } from "react"
+import { lazy, memo, Suspense, useState } from "react"
 import { AlignLeft, ChevronRight, Copy, Crosshair, Network } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { FollowStreamDialog } from "@/components/FollowStreamDialog"
+const FollowStreamDialog = lazy(() => import("@/components/FollowStreamDialog").then((m) => ({ default: m.FollowStreamDialog })))
 import { HexView, type ByteRange } from "@/components/HexView"
 import { protoStyle } from "@/lib/protocols"
 import { formatClock } from "@/lib/format"
@@ -97,7 +97,7 @@ function FieldNode({ field, depth, highlight, onHighlight }: FieldNodeProps) {
   )
 }
 
-export function DetailPanel({ detail, loading }: DetailPanelProps) {
+function DetailPanelImpl({ detail, loading }: DetailPanelProps) {
   const { t } = useI18n()
   const [highlight, setHighlight] = useState<ByteRange | null>(null)
   const [followOpen, setFollowOpen] = useState(false)
@@ -222,11 +222,15 @@ export function DetailPanel({ detail, loading }: DetailPanelProps) {
         )}
       </div>
 
-      <FollowStreamDialog
-        packetId={packet?.id ?? null}
-        open={followOpen}
-        onOpenChange={setFollowOpen}
-      />
+      <Suspense fallback={null}>
+        <FollowStreamDialog
+          packetId={packet?.id ?? null}
+          open={followOpen}
+          onOpenChange={setFollowOpen}
+        />
+      </Suspense>
     </div>
   )
 }
+
+export const DetailPanel = memo(DetailPanelImpl)

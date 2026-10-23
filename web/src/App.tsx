@@ -102,7 +102,7 @@ export default function App() {
     }
   }, [])
 
-  const handleStart = () =>
+  const handleStart = useCallback(() =>
     run(async () => {
       if (selectedIfaces.length === 0) {
         throw new Error(t("toast.selectInterface"))
@@ -120,22 +120,22 @@ export default function App() {
           rate: res.sampleRate,
         }),
       })
-    })
+    }), [run, selectedIfaces, snaplen, sampleRate, clearOnStart, capture.start, t])
 
-  const handleStop = () =>
+  const handleStop = useCallback(() =>
     run(async () => {
       await capture.stop()
       toast.success(t("toast.captureStopped"))
-    })
+    }), [run, capture.stop, t])
 
-  const handleClear = () =>
+  const handleClear = useCallback(() =>
     run(async () => {
       await capture.clear()
       setSelectedId(null)
       toast.success(t("toast.bufferCleared"))
-    })
+    }), [run, capture.clear, t])
 
-  const handleImport = (file: File) =>
+  const handleImport = useCallback((file: File) =>
     run(async () => {
       const res = await capture.importFile(file)
       setSelectedId(null)
@@ -149,25 +149,31 @@ export default function App() {
             }) + (res.captureStopped ? t("toast.importedStopped") : ""),
         },
       )
-    })
+    }), [run, capture.importFile, t])
 
   const handleApplyFilter = useCallback(
     async (next: string) => {
       const ok = await capture.applyFilter(next)
       if (ok) setSelectedId(null)
     },
-    [capture],
+    [capture.applyFilter],
   )
 
-  const toggleIface = (name: string) =>
+  const toggleIface = useCallback((name: string) =>
     setSelectedIfaces((prev) =>
       prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name],
-    )
+    ), [])
 
-  const selectAllIfaces = () =>
+  const selectAllIfaces = useCallback(() =>
     setSelectedIfaces(
       (capture.status?.interfaces ?? []).filter((i) => i.index >= 0).map((i) => i.name),
-    )
+    ), [capture.status])
+
+  const clearIfaces = useCallback(() => setSelectedIfaces([]), [])
+
+  const handleLogout = useCallback(() => {
+    void auth.logout()
+  }, [auth.logout])
 
   // Drag handle between the packet list and the detail pane.
   const startDrag = (e: React.PointerEvent) => {
@@ -204,9 +210,7 @@ export default function App() {
           filter={capture.filter}
           authEnabled={auth.enabled}
           username={auth.user}
-          onLogout={() => {
-            void auth.logout()
-          }}
+          onLogout={handleLogout}
           onToggleTheme={toggle}
           onStart={handleStart}
           onStop={handleStop}
@@ -218,7 +222,7 @@ export default function App() {
           filter={capture.filter}
           error={capture.filterError}
           status={capture.status}
-          matchCount={capture.packets.length}
+          packetStore={capture.packetStore}
           loading={capture.loadingPackets}
           onApply={handleApplyFilter}
         />
@@ -234,7 +238,7 @@ export default function App() {
             busy={busy}
             onToggleIface={toggleIface}
             onSelectAllIfaces={selectAllIfaces}
-            onClearIfaces={() => setSelectedIfaces([])}
+            onClearIfaces={clearIfaces}
             onSnaplenChange={setSnaplen}
             onSampleRateChange={setSampleRate}
             onClearOnStartChange={setClearOnStart}
@@ -249,7 +253,7 @@ export default function App() {
             <div ref={workRef} className="flex min-h-0 flex-1 flex-col">
               <div className="flex min-h-0 flex-1 flex-col">
                 <PacketList
-                  packets={capture.packets}
+                  store={capture.packetStore}
                   selectedId={selectedId}
                   loading={capture.loadingPackets}
                   filter={capture.filter}
@@ -283,7 +287,7 @@ export default function App() {
 
             <StatusBar
               status={capture.status}
-              matchCount={capture.packets.length}
+              packetStore={capture.packetStore}
               totalVisible={capture.status?.store.stored ?? 0}
               connected={capture.connected}
             />

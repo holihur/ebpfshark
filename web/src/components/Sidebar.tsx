@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { lazy, memo, Suspense, useEffect, useRef, useState } from "react"
 import {
   Activity,
   ArrowLeftRight,
@@ -13,7 +13,7 @@ import {
   Trash2,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import { TracePanel } from "@/components/TracePanel"
+const TracePanel = lazy(() => import("@/components/TracePanel").then((m) => ({ default: m.TracePanel })))
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -545,7 +545,7 @@ function FlowsPanel({
   )
 }
 
-export function Sidebar(props: SidebarProps) {
+function SidebarImpl(props: SidebarProps) {
   const { t } = useI18n()
   const [tab, setTab] = useState("capture")
   const running = props.status?.capture.running ?? false
@@ -594,7 +594,9 @@ export function Sidebar(props: SidebarProps) {
         </TabsContent>
         <TabsContent value="trace" className="mt-0 min-h-0 flex-1">
           <ScrollArea className="h-full">
-            <TracePanel active={tab === "trace"} />
+            <Suspense fallback={null}>
+              <TracePanel active={tab === "trace"} />
+            </Suspense>
           </ScrollArea>
         </TabsContent>
       </Tabs>
@@ -607,3 +609,5 @@ export function Sidebar(props: SidebarProps) {
     </aside>
   )
 }
+
+export const Sidebar = memo(SidebarImpl)

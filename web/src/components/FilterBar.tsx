@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react"
+import { lazy, Suspense, useEffect, useRef, useState } from "react"
 import { AlertCircle, Check, Search, SlidersHorizontal, X } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { FilterBuilder } from "@/components/FilterBuilder"
+const FilterBuilder = lazy(() => import("@/components/FilterBuilder").then((m) => ({ default: m.FilterBuilder })))
 import { QUICK_FILTERS } from "@/lib/protocols"
+import { usePacketVersion, type PacketStore } from "@/lib/packetStore"
 import { useI18n } from "@/i18n"
 import { cn } from "@/lib/utils"
 import type { StatusResponse } from "@/lib/types"
@@ -13,7 +14,7 @@ interface FilterBarProps {
   filter: string
   error: string | null
   status: StatusResponse | null
-  matchCount: number
+  packetStore: PacketStore
   loading: boolean
   onApply: (filter: string) => void
 }
@@ -22,11 +23,13 @@ export function FilterBar({
   filter,
   error,
   status,
-  matchCount,
+  packetStore,
   loading,
   onApply,
 }: FilterBarProps) {
   const { t } = useI18n()
+  usePacketVersion()
+  const matchCount = packetStore.length
   const [draft, setDraft] = useState(filter)
   const [builderOpen, setBuilderOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -175,12 +178,14 @@ export function FilterBar({
         )}
       </div>
 
-      <FilterBuilder
-        open={builderOpen}
-        onOpenChange={setBuilderOpen}
-        currentFilter={filter}
-        onApply={onApply}
-      />
+      <Suspense fallback={null}>
+        <FilterBuilder
+          open={builderOpen}
+          onOpenChange={setBuilderOpen}
+          currentFilter={filter}
+          onApply={onApply}
+        />
+      </Suspense>
     </div>
   )
 }

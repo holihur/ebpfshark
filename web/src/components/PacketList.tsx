@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { memo, useEffect } from "react"
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -9,18 +9,18 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useVirtualList } from "@/hooks/useVirtualList"
+import { usePacketVersion, type PacketStore } from "@/lib/packetStore"
 import { formatRelative } from "@/lib/format"
 import { protoStyle } from "@/lib/protocols"
 import { useI18n } from "@/i18n"
 import { cn } from "@/lib/utils"
-import type { Packet } from "@/lib/types"
 
 const ROW_HEIGHT = 28
 const GRID =
   "grid grid-cols-[54px_94px_minmax(128px,1fr)_minmax(128px,1fr)_78px_58px_minmax(220px,2.4fr)_62px] items-center gap-2 px-2"
 
 interface PacketListProps {
-  packets: Packet[]
+  store: PacketStore
   selectedId: number | null
   loading: boolean
   filter: string
@@ -30,8 +30,8 @@ interface PacketListProps {
   onStart: () => void
 }
 
-export function PacketList({
-  packets,
+function PacketListImpl({
+  store,
   selectedId,
   loading,
   filter,
@@ -41,34 +41,39 @@ export function PacketList({
   onStart,
 }: PacketListProps) {
   const { t } = useI18n()
+  usePacketVersion()
+  const count = store.length
   const { containerRef, onScroll, atBottom, scrollToBottom, startFor, endFor, totalHeight } =
     useVirtualList({ rowHeight: ROW_HEIGHT })
 
   useEffect(() => {
-    if (atBottom && packets.length > 0) scrollToBottom()
-  }, [packets.length, atBottom, scrollToBottom])
+    if (atBottom && count > 0) scrollToBottom()
+  }, [count, atBottom, scrollToBottom])
 
   const start = startFor()
-  const end = endFor(packets.length)
-  const visible = packets.slice(start, end)
-  const base = baseTime && baseTime > 0 ? baseTime : (packets[0]?.time ?? 0)
+  const end = endFor(count)
+  const visible = store.slice(start, end)
+  const base = baseTime && baseTime > 0 ? baseTime : (store.at(0)?.time ?? 0)
 
   const handleKey = (e: React.KeyboardEvent) => {
-    if (packets.length === 0) return
-    const idx = packets.findIndex((p) => p.id === selectedId)
+    if (count === 0) return
+    let idx = -1
+    for (let i = 0; i < count; i++) {
+      if (store.at(i)?.id === selectedId) { idx = i; break }
+    }
     if (e.key === "ArrowDown") {
       e.preventDefault()
-      onSelect(packets[Math.min(packets.length - 1, idx + 1)]?.id ?? packets[0].id)
+      onSelect(store.at(Math.min(count - 1, idx + 1))?.id ?? store.at(0)!.id)
     } else if (e.key === "ArrowUp") {
       e.preventDefault()
-      onSelect(packets[Math.max(0, (idx < 0 ? packets.length : idx) - 1)]?.id ?? packets[0].id)
+      onSelect(store.at(Math.max(0, (idx < 0 ? count : idx) - 1))?.id ?? store.at(0)!.id)
     } else if (e.key === "Home") {
       e.preventDefault()
-      onSelect(packets[0].id)
+      onSelect(store.at(0)!.id)
       if (containerRef.current) containerRef.current.scrollTop = 0
     } else if (e.key === "End") {
       e.preventDefault()
-      onSelect(packets[packets.length - 1].id)
+      onSelect(store.at(count - 1)!.id)
       scrollToBottom()
     }
   }
@@ -99,7 +104,7 @@ export function PacketList({
           onKeyDown={handleKey}
           className="h-full overflow-auto outline-none scrollbar-thin"
         >
-          <div className="relative min-w-[880px]" style={{ height: totalHeight(packets.length) }}>
+          <div className="relative min-w-[880px]" style={{ height: totalHeight(count) }}>
             {visible.map((packet, i) => {
               const index = start + i
               const style = protoStyle(packet.protocol)
@@ -173,7 +178,7 @@ export function PacketList({
           </div>
         </div>
 
-        {packets.length === 0 && (
+        {count === 0 && (
           <div className="absolute inset-0 flex items-center justify-center p-6">
             <div className="grid-bg pointer-events-none absolute inset-0 opacity-50" />
             <div className="relative flex max-w-sm flex-col items-center text-center animate-fade-in">
@@ -209,7 +214,7 @@ export function PacketList({
           </div>
         )}
 
-        {!atBottom && packets.length > 0 && (
+        {!atBottom && count > 0 && (
           <Button
             size="sm"
             variant="secondary"
@@ -224,3 +229,5 @@ export function PacketList({
     </div>
   )
 }
+
+export const PacketList = memo(PacketListImpl)

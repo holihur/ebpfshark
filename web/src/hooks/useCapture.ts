@@ -1,8 +1,7 @@
-import { startTransition, useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { api } from "@/lib/api"
+import { packetStore } from "@/lib/packetStore"
 import type { Packet, StatusResponse } from "@/lib/types"
-
-const MAX_UI_PACKETS = 20000
 
 export interface StartOptions {
   interfaces: string[]
@@ -13,13 +12,13 @@ export interface StartOptions {
 
 export function useCapture() {
   const [status, setStatus] = useState<StatusResponse | null>(null)
-  const [packets, setPackets] = useState<Packet[]>([])
   const [filter, setFilter] = useState("")
   const [filterError, setFilterError] = useState<string | null>(null)
   const [connected, setConnected] = useState(false)
   const [loadingPackets, setLoadingPackets] = useState(false)
   const filterRef = useRef(filter)
   const instanceRef = useRef<string | null>(null)
+  const readyRef = useRef(0)
   filterRef.current = filter
 
   const refreshStatus = useCallback(async () => {
@@ -31,16 +30,26 @@ export function useCapture() {
   }, [])
 
   useEffect(() => {
-    refreshStatus()
-    const t = setInterval(refreshStatus, 1000)
-    return () => clearInterval(t)
+    const refresh = () => {
+      if (!document.hidden) void refreshStatus()
+    }
+    refresh()
+    const t = setInterval(refresh, 1000)
+    const onVisible = () => {
+      if (!document.hidden) void refreshStatus()
+    }
+    document.addEventListener("visibilitychange", onVisible)
+    return () => {
+      clearInterval(t)
+      document.removeEventListener("visibilitychange", onVisible)
+    }
   }, [refreshStatus])
 
   const reloadPackets = useCallback(async (expr: string) => {
     setLoadingPackets(true)
     try {
       const res = await api.packets(expr, 5000)
-      setPackets(res.packets)
+      packetStore.replace(res.packets)
     } catch (err) {
       setFilterError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -54,7 +63,7 @@ export function useCapture() {
     api
       .packets(filter, 5000)
       .then((res) => {
-        if (!cancelled) setPackets(res.packets)
+        if (!cancelled) packetStore.replace(res.packets)
       })
       .catch((err) => {
         if (!cancelled) setFilterError(err instanceof Error ? err.message : String(err))
@@ -68,6 +77,7 @@ export function useCapture() {
   }, [filter])
 
   useEffect(() => {
+    readyRef.current = 0
     const es = new EventSource(api.streamUrl(filter))
     const onReady = (event: MessageEvent<string>) => {
       setConnected(true)
@@ -79,25 +89,21 @@ export function useCapture() {
       }
       if (instance && instanceRef.current && instance !== instanceRef.current) {
         // The backend restarted: ids restart from zero, so drop the old view.
-        setPackets([])
+        packetStore.clear()
       }
       if (instance) instanceRef.current = instance
-      // Re-sync in case packets were missed while the stream was down.
-      void reloadPackets(filterRef.current)
+      readyRef.current++
+      // Initial page load already fetched the snapshot. Only re-sync after a
+      // reconnect or backend restart.
+      if (readyRef.current > 1) void reloadPackets(filterRef.current)
     }
     const onPackets = (event: MessageEvent<string>) => {
       try {
         const payload = JSON.parse(event.data) as { packets: Packet[] }
         if (!Array.isArray(payload.packets) || payload.packets.length === 0) return
-        startTransition(() => {
-          setPackets((prev) => {
-            const lastID = prev.length > 0 ? prev[prev.length - 1].id : 0
-            const fresh = payload.packets.filter((p) => p.id > lastID)
-            if (fresh.length === 0) return prev
-            const next = prev.concat(fresh)
-            return next.length > MAX_UI_PACKETS ? next.slice(next.length - MAX_UI_PACKETS) : next
-          })
-        })
+        const lastID = packetStore.lastID
+        const fresh = payload.packets.filter((p) => p.id > lastID)
+        packetStore.append(fresh)
       } catch {
         /* ignore malformed frame */
       }
@@ -143,7 +149,7 @@ export function useCapture() {
         sampleRate: opts.sampleRate,
         clear: opts.clear ?? true,
       })
-      if (opts.clear ?? true) setPackets([])
+      if (opts.clear ?? true) packetStore.clear()
       setStatus((prev) => (prev ? { ...prev, capture: res } : prev))
       await refreshStatus()
       return res
@@ -160,7 +166,7 @@ export function useCapture() {
 
   const clear = useCallback(async () => {
     await api.clear()
-    setPackets([])
+    packetStore.clear()
     await refreshStatus()
   }, [refreshStatus])
 
@@ -176,7 +182,7 @@ export function useCapture() {
 
   return {
     status,
-    packets,
+    packetStore,
     filter,
     filterError,
     connected,

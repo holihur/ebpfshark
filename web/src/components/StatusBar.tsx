@@ -3,17 +3,20 @@ import { Sparkline } from "@/components/Sparkline"
 import { formatBytes, formatCount, formatPps } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { useI18n } from "@/i18n"
+import { usePacketVersion, type PacketStore } from "@/lib/packetStore"
 import type { StatusResponse } from "@/lib/types"
 
 interface StatusBarProps {
   status: StatusResponse | null
-  matchCount: number
+  packetStore: PacketStore
   connected: boolean
   totalVisible: number
 }
 
-export function StatusBar({ status, matchCount, connected, totalVisible }: StatusBarProps) {
+export function StatusBar({ status, packetStore, connected, totalVisible }: StatusBarProps) {
   const { t } = useI18n()
+  usePacketVersion()
+  const matchCount = packetStore.length
   const capture = status?.capture
   const store = status?.store
   const running = capture?.running ?? false

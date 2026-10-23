@@ -1,3 +1,4 @@
+import { memo } from "react"
 import {
   Download,
   FileUp,
@@ -49,7 +50,7 @@ interface HeaderProps {
   onImport: (file: File) => void
 }
 
-export function Header({
+function HeaderImpl({
   status,
   connected,
   theme,
@@ -249,3 +250,5 @@ export function Header({
     </header>
   )
 }
+
+export const Header = memo(HeaderImpl)

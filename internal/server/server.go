@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"compress/gzip"
 	"container/list"
 	"crypto/rand"
 	"encoding/base64"
@@ -1006,6 +1007,14 @@ func (s *Server) spaHandler() http.Handler {
 		}
 		if strings.HasPrefix(upath, "assets/") {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+			if r.Method != http.MethodHead && r.Header.Get("Range") == "" && acceptsGzip(r) {
+				w.Header().Set("Content-Encoding", "gzip")
+				w.Header().Add("Vary", "Accept-Encoding")
+				gz := gzip.NewWriter(w)
+				defer gz.Close()
+				fileServer.ServeHTTP(gzipResponseWriter{ResponseWriter: w, Writer: gz}, r)
+				return
+			}
 		}
 		fileServer.ServeHTTP(w, r)
 	})
@@ -1086,4 +1095,19 @@ func withMiddleware(next http.Handler, log *slog.Logger) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+type gzipResponseWriter struct {
+	http.ResponseWriter
+	Writer io.Writer
+}
+
+func (g gzipResponseWriter) Write(p []byte) (int, error) { return g.Writer.Write(p) }
+func (g gzipResponseWriter) WriteHeader(code int) {
+	g.ResponseWriter.Header().Del("Content-Length")
+	g.ResponseWriter.WriteHeader(code)
+}
+
+func acceptsGzip(r *http.Request) bool {
+	return strings.Contains(strings.ToLower(r.Header.Get("Accept-Encoding")), "gzip")
 }
