@@ -137,6 +137,11 @@ func (c *ctx) dissectHTTP2(b []byte, base int) bool {
 				f.add(c.newField(fmt.Sprintf("Payload (%d bytes)", len(body)), printablePreview(body, 300), base+off+9, len(body)))
 				if summary, ok := c.dissectGRPC(body, base+off+9, f); ok {
 					info = summary
+				} else {
+					path, ct := flow.meta(stream)
+					if summary, ok := c.dissectAI(body, base+off+9, f, path, ct, false); ok {
+						info = summary
+					}
 				}
 				break
 			}
@@ -179,8 +184,15 @@ func (c *ctx) dissectHTTP2(b []byte, base int) bool {
 				break
 			}
 			hn := c.newField(fmt.Sprintf("Decoded Headers (%d)", len(fields)), "", base+off+9+hdrOff, len(block))
+			var h2Path, h2CT string
 			for _, hf := range fields {
 				hn.add(c.newField(hf.Name+": "+hf.Value, "", 0, 0))
+				if hf.Name == ":path" {
+					h2Path = hf.Value
+				}
+				if hf.Name == "content-type" {
+					h2CT = hf.Value
+				}
 				if hf.Name == ":method" || hf.Name == ":path" || hf.Name == ":status" || hf.Name == ":authority" {
 					if info == "HTTP2" {
 						info += " " + hf.Name + "=" + hf.Value
@@ -188,6 +200,9 @@ func (c *ctx) dissectHTTP2(b []byte, base int) bool {
 				}
 			}
 			f.add(hn)
+			if h2Path != "" || h2CT != "" {
+				flow.setMeta(stream, h2Path, h2CT)
+			}
 		}
 		root.add(f)
 		if i == 0 {

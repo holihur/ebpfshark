@@ -152,6 +152,12 @@ func (c *ctx) dissectHTTP(b []byte, base int) bool {
 		c.dissectHLS(body, base+headerEnd, root)
 	} else if len(body) > 0 && looksLikeDASH(body) {
 		c.dissectDASH(body, base+headerEnd, root)
+	} else if len(body) > 0 {
+		path := ""
+		if isRequest && len(parts) > 1 {
+			path = parts[1]
+		}
+		c.dissectAI(body, base+headerEnd, root, path, headers["content-type"], isRequest)
 	}
 
 	// Prepend a line field for the start line (offset points at the line).
