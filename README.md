@@ -41,7 +41,7 @@ ebpfshark 使用 TCX（TC eXpress）把两个很小的 eBPF 程序挂到网卡�
 | --- | --- |
 | 内核 | **Linux ≥ 6.6**（TCX 需要），启用 BTF：`/sys/kernel/btf/vmlinux` |
 | 权限 | root，或 `CAP_BPF` + `CAP_NET_ADMIN` + `CAP_PERFMON` |
-| Go | ≥ 1.25 |
+| Go | ≥ 1.26 |
 | Node.js | ≥ 20，包管理器使用 **pnpm** |
 | 从源码构建 eBPF | `clang`、`llvm`（含 `llvm-strip`）、`bpftool`、`libbpf-dev` |
 
