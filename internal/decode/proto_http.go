@@ -158,12 +158,12 @@ func (c *ctx) dissectHTTP(b []byte, base int) bool {
 		c.dissectHLS(aiBody, base+headerEnd, root)
 	} else if len(aiBody) > 0 && looksLikeDASH(aiBody) {
 		c.dissectDASH(aiBody, base+headerEnd, root)
-	} else if len(aiBody) > 0 {
+	} else if len(body) > 0 {
 		path := ""
 		if isRequest && len(parts) > 1 {
 			path = parts[1]
 		}
-		c.dissectAI(aiBody, base+headerEnd, root, path, headers["content-type"], isRequest)
+		c.dissectAIHTTP(body, base+headerEnd, root, headers, path, isRequest)
 	}
 
 	// Prepend a line field for the start line (offset points at the line).
@@ -202,7 +202,7 @@ func dechunkHTTP(b []byte) ([]byte, bool) {
 		}
 		off += 2
 	}
-	return out, true
+	return nil, false
 }
 
 func canonicalHeader(k string) string {

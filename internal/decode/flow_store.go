@@ -15,6 +15,14 @@ type flowStore[T any] struct {
 	max   int64
 }
 
+func (s *flowStore[T]) Get(key string) (T, bool) {
+	if v, ok := s.m.Load(key); ok {
+		return v.(T), true
+	}
+	var zero T
+	return zero, false
+}
+
 func (s *flowStore[T]) GetOrCreate(key string, create func() T) T {
 	if v, ok := s.m.Load(key); ok {
 		return v.(T)

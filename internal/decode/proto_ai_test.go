@@ -1,6 +1,7 @@
 package decode
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -38,5 +39,19 @@ func TestAnthropicSSE(t *testing.T) {
 	c := appCtx(b)
 	if _, ok := c.dissectAI([]byte(strings.SplitN(string(b), "\r\n\r\n", 2)[1]), 0, newNode("http", 0, len(b)), "/v1/messages", "text/event-stream", false); !ok || !c.m.HasLayer("ai") {
 		t.Fatalf("layers=%v info=%q", c.m.Layers, c.appInfo)
+	}
+}
+
+func TestAISplitBody(t *testing.T) {
+	payload := []byte(`{"model":"gpt-4o","messages":[{"role":"user","content":"hello"}]}`)
+	head := []byte("POST /v1/chat/completions HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: " + strconv.Itoa(len(payload)) + "\r\n\r\n")
+	first := append(append([]byte(nil), head...), payload[:20]...)
+	c1 := appCtx(first)
+	if !c1.dissectHTTP(first, 0) {
+		t.Fatal("headers not parsed")
+	}
+	c2 := appCtx(payload[20:])
+	if !c2.dissectAIHTTPContinuation(payload[20:], 0) || !c2.m.HasLayer("ai") {
+		t.Fatalf("layers=%v info=%q", c2.m.Layers, c2.appInfo)
 	}
 }

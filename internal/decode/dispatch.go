@@ -13,6 +13,9 @@ func (c *ctx) dissectTCPPayload(b []byte, base int, sport, dport uint16) {
 	if len(b) == 0 {
 		return
 	}
+	if !looksLikeHTTP(b) && c.dissectAIHTTPContinuation(b, base) {
+		return
+	}
 	if runDissectors(c, b, base, sport, dport, appChain(TransportTCP)) {
 		return
 	}
