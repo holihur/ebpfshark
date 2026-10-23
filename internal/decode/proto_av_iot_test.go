@@ -99,3 +99,66 @@ func TestRTPAAC(t *testing.T) {
 		t.Fatal("AAC not recognized")
 	}
 }
+
+func TestAMQPMethod(t *testing.T) {
+	body := []byte{0, 10, 0, 10, 4, 't', 'e', 's', 't'}
+	b := make([]byte, 7+len(body)+1)
+	b[0] = 1
+	b[1], b[2] = 0, 1
+	binary.BigEndian.PutUint32(b[3:7], uint32(len(body)))
+	copy(b[7:], body)
+	b[len(b)-1] = 0xce
+	c := appCtx(b)
+	if !c.dissectAMQP(b, 0) || !strings.Contains(c.appInfo, "connection.start") {
+		t.Fatalf("info=%q", c.appInfo)
+	}
+}
+
+func TestBACnetReadProperty(t *testing.T) {
+	b := []byte{0x81, 0x0a, 0x00, 0x0a, 0x01, 0x00, 0x00, 0x05, 0x01, 12}
+	c := appCtx(b)
+	if !c.dissectBACnet(b, 0) || !strings.Contains(c.appInfo, "ReadProperty") {
+		t.Fatalf("info=%q", c.appInfo)
+	}
+}
+
+func TestOPCUAHello(t *testing.T) {
+	b := make([]byte, 28)
+	copy(b, "HEL")
+	b[3] = 'F'
+	binary.LittleEndian.PutUint32(b[4:8], 28)
+	binary.LittleEndian.PutUint32(b[8:12], 0)
+	binary.LittleEndian.PutUint32(b[12:16], 65536)
+	binary.LittleEndian.PutUint32(b[16:20], 65536)
+	binary.LittleEndian.PutUint32(b[20:24], 0)
+	binary.LittleEndian.PutUint32(b[24:28], 0)
+	c := appCtx(b)
+	if !c.dissectOPCUA(b, 0) || !strings.Contains(c.appInfo, "OPC UA HEL") {
+		t.Fatalf("info=%q", c.appInfo)
+	}
+}
+
+func TestLoRaWANPush(t *testing.T) {
+	b := []byte{2, 0, 1, 0, 1, 2, 3, 4, 5, 6, 7, 8}
+	b = append(b, []byte(`{"rxpk":[{"freq":868.1,"datr":"SF7BW125","rssi":-42}]}`)...)
+	c := appCtx(b)
+	if !c.dissectLoRaWAN(b, 0) || !strings.Contains(c.appInfo, "PUSH_DATA") {
+		t.Fatalf("info=%q", c.appInfo)
+	}
+}
+
+func TestHLSManifest(t *testing.T) {
+	b := []byte("HTTP/1.1 200 OK\r\nContent-Type: application/vnd.apple.mpegurl\r\n\r\n#EXTM3U\n#EXT-X-VERSION:3\n#EXTINF:6.0,\nseg1.ts\n")
+	c := appCtx(b)
+	if !c.dissectHTTP(b, 0) || !c.m.HasLayer("hls") {
+		t.Fatalf("layers=%v info=%q", c.m.Layers, c.appInfo)
+	}
+}
+
+func TestRTPAV1(t *testing.T) {
+	b := []byte{0x10, 0x0a}
+	c := appCtx(b)
+	if !c.dissectAV1(b, 0, newNode("rtp", 0, len(b))) || !c.m.HasLayer("av1") {
+		t.Fatalf("layers=%v", c.m.Layers)
+	}
+}

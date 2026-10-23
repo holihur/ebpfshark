@@ -210,6 +210,34 @@ func (c *ctx) dissectOpus(p []byte, base int, root *Field) bool {
 	return true
 }
 
+func (c *ctx) dissectAV1(p []byte, base int, root *Field) bool {
+	if len(p) < 2 || p[0]&0x0f != 0 || p[1]&0x80 != 0 {
+		return false
+	}
+	obu := (p[1] >> 3) & 0x0f
+	if obu > 15 {
+		return false
+	}
+	c.addLayer("av1")
+	c.proto = "rtp"
+	names := map[byte]string{1: "Sequence Header", 2: "Temporal Delimiter", 3: "Frame Header", 4: "Tile Group", 5: "Metadata", 6: "Frame", 7: "Redundant Frame Header", 15: "Padding"}
+	name := names[obu]
+	if name == "" {
+		name = fmt.Sprintf("OBU type %d", obu)
+	}
+	n := c.newField("AV1 RTP payload", "", base, len(p))
+	n.add(c.newField(fmt.Sprintf("Aggregation Header: 0x%02x", p[0]), "", base, 1),
+		c.newField("OBU: "+name, "", base+1, 1))
+	if p[0]&0x80 != 0 {
+		n.add(c.newField("Z: continuation present", "", base, 1))
+	}
+	if p[0]&0x20 != 0 {
+		n.add(c.newField("W: first OBU has length", "", base, 1))
+	}
+	root.add(n)
+	return true
+}
+
 func (c *ctx) dissectRTPMedia(pt byte, p []byte, base int, root *Field) {
 	if len(p) == 0 {
 		return

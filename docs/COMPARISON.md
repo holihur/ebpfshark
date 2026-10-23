@@ -12,7 +12,7 @@ for deep desktop analysis and low-level packet capture.
 | Form factor | Web UI + HTTP API + MCP | Desktop GUI + `tshark` CLI | Command-line |
 | Live capture | eBPF TCX on Linux | libpcap/dumpcap | libpcap |
 | Host OS | Linux >= 6.6 with BTF | Windows, macOS, Linux, BSD | Linux, macOS, BSD |
-| Protocol depth | 45+ protocols, selected deep dissectors | Thousands of dissectors | Mostly link/network/transport; limited application detail |
+| Protocol depth | 50+ protocols, selected deep dissectors | Thousands of dissectors | Mostly link/network/transport; limited application detail |
 | Display filters | Wireshark/tcpdump-like subset | Full Wireshark display-filter language | BPF capture filter only |
 | Kernel capture filter | Not yet (user-space matching; only self-port drop in eBPF) | BPF capture filter via dumpcap | Native BPF |
 | TCP stream view | Follow Stream in UI | Follow TCP/UDP/TLS streams | No built-in stream UI |

@@ -154,6 +154,16 @@ func (n layerNode) Match(m *packet.Meta) bool {
 		return m.HasLayer("aac")
 	case "opus":
 		return m.HasLayer("opus")
+	case "amqp":
+		return m.HasLayer("amqp")
+	case "bacnet":
+		return m.HasLayer("bacnet")
+	case "opcua":
+		return m.HasLayer("opcua")
+	case "lorawan":
+		return m.HasLayer("lorawan")
+	case "hls":
+		return m.HasLayer("hls")
 	case "websocket":
 		return m.HasLayer("websocket")
 	case "wifi":
@@ -702,7 +712,7 @@ func isProtoName(s string) bool {
 		"ntp", "snmp", "syslog", "stun", "mqtt", "redis", "postgresql", "postgres",
 		"bgp", "ssh", "ssdp", "sip", "quic", "http2", "vxlan", "mpls", "gre",
 		"igmp", "wireguard", "wg", "sctp", "mysql", "radius", "netflow",
-		"rtp", "rtcp", "websocket", "wifi", "radiotap", "eapol", "coap", "modbus", "mqttsn", "rtsp", "mpegts", "h264", "h265", "vp8", "vp9", "av1", "aac", "opus":
+		"rtp", "rtcp", "websocket", "wifi", "radiotap", "eapol", "coap", "modbus", "mqttsn", "rtsp", "mpegts", "h264", "h265", "vp8", "vp9", "av1", "aac", "opus", "amqp", "bacnet", "opcua", "lorawan", "hls":
 		return true
 	}
 	return false

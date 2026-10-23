@@ -89,6 +89,11 @@ const (
 	LayerAV1
 	LayerAAC
 	LayerOpus
+	LayerAMQP
+	LayerBACnet
+	LayerOPCUA
+	LayerLoRaWAN
+	LayerHLS
 	LayerData
 )
 
@@ -102,7 +107,7 @@ var layerBits = map[string]LayerMask{
 	"mqtt": LayerMQTT, "redis": LayerRedis, "postgresql": LayerPostgreSQL,
 	"postgres": LayerPostgreSQL, "bgp": LayerBGP, "ssh": LayerSSH, "ssdp": LayerSSDP,
 	"sip": LayerSIP, "wireguard": LayerWireGuard, "wg": LayerWireGuard, "websocket": LayerWebSocket, "wifi": LayerWiFi, "radiotap": LayerRadiotap, "eapol": LayerEAPOL,
-	"mysql": LayerMySQL, "radius": LayerRADIUS, "netflow": LayerNetFlow, "rtp": LayerRTP, "rtcp": LayerRTCP, "coap": LayerCoAP, "modbus": LayerModbus, "mqttsn": LayerMQTTSN, "rtsp": LayerRTSP, "mpegts": LayerMPEGTS, "h264": LayerH264, "h265": LayerH265, "vp8": LayerVP8, "vp9": LayerVP9, "av1": LayerAV1, "aac": LayerAAC, "opus": LayerOpus, "data": LayerData,
+	"mysql": LayerMySQL, "radius": LayerRADIUS, "netflow": LayerNetFlow, "rtp": LayerRTP, "rtcp": LayerRTCP, "coap": LayerCoAP, "modbus": LayerModbus, "mqttsn": LayerMQTTSN, "rtsp": LayerRTSP, "mpegts": LayerMPEGTS, "h264": LayerH264, "h265": LayerH265, "vp8": LayerVP8, "vp9": LayerVP9, "av1": LayerAV1, "aac": LayerAAC, "opus": LayerOpus, "amqp": LayerAMQP, "bacnet": LayerBACnet, "opcua": LayerOPCUA, "lorawan": LayerLoRaWAN, "hls": LayerHLS, "data": LayerData,
 	"ip6": LayerIPv6, "icmp6": LayerICMPv6,
 }
 
