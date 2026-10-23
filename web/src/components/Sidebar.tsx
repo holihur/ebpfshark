@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import {
+  Activity,
   ArrowLeftRight,
   CircleAlert,
   Download,
@@ -12,6 +13,7 @@ import {
   Trash2,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { TracePanel } from "@/components/TracePanel"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -552,7 +554,7 @@ export function Sidebar(props: SidebarProps) {
     <aside className="hidden w-[268px] shrink-0 flex-col border-r bg-panel/40 md:flex">
       <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
         <div className="shrink-0 border-b p-2">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="capture">
               <Gauge /> {t("sidebar.capture")}
             </TabsTrigger>
@@ -561,6 +563,9 @@ export function Sidebar(props: SidebarProps) {
             </TabsTrigger>
             <TabsTrigger value="flows">
               <ArrowLeftRight /> {t("sidebar.flows")}
+            </TabsTrigger>
+            <TabsTrigger value="trace">
+              <Activity /> {t("sidebar.trace")}
             </TabsTrigger>
           </TabsList>
         </div>
@@ -585,6 +590,11 @@ export function Sidebar(props: SidebarProps) {
               filter={props.filter}
               onApplyFilter={props.onApplyFilter}
             />
+          </ScrollArea>
+        </TabsContent>
+        <TabsContent value="trace" className="mt-0 min-h-0 flex-1">
+          <ScrollArea className="h-full">
+            <TracePanel active={tab === "trace"} />
           </ScrollArea>
         </TabsContent>
       </Tabs>

@@ -172,3 +172,27 @@ export interface FilterFields {
   fields: string[]
   protocols: string[]
 }
+
+export interface TraceEvent {
+  id: number
+  time: number
+  durationNs: number
+  pid: number
+  tid: number
+  function: string
+  comm: string
+}
+
+export interface TraceStatus {
+  running: boolean
+  pid: number
+  functions: string[]
+  count: number
+  startedAt?: string
+  error?: string
+}
+
+export interface TraceResponse {
+  events: TraceEvent[]
+  status: TraceStatus
+}

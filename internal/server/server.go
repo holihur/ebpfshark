@@ -27,8 +27,10 @@ import (
 	"ebpfshark/internal/filter"
 	"ebpfshark/internal/packet"
 	"ebpfshark/internal/pcapio"
+	"ebpfshark/internal/probe"
 	"ebpfshark/internal/store"
 	"ebpfshark/internal/stream"
+	"ebpfshark/internal/trace"
 )
 
 // Version is stamped at build time.
@@ -54,6 +56,8 @@ type Server struct {
 	detailLRU   *list.List
 	detailCache map[detailKey]*list.Element
 	detailBytes int
+
+	traceMgr *trace.Manager
 }
 
 type detailKey struct {
@@ -94,6 +98,7 @@ func New(st *store.Store, mgr *capture.Manager, log *slog.Logger, webFS fs.FS, s
 		auth:        authSvc,
 		detailLRU:   list.New(),
 		detailCache: make(map[detailKey]*list.Element),
+		traceMgr:    trace.NewManager(),
 	}
 }
 
@@ -123,6 +128,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/import", s.handleImport)
 	mux.HandleFunc("GET /api/version", s.handleVersion)
 	mux.HandleFunc("GET /api/update", s.handleUpdate)
+	mux.HandleFunc("GET /api/trace", s.handleTrace)
+	mux.HandleFunc("POST /api/trace/start", s.handleTraceStart)
+	mux.HandleFunc("POST /api/trace/stop", s.handleTraceStop)
 	mux.Handle("/api/", http.NotFoundHandler())
 
 	if s.mcpHandler != nil {
@@ -719,6 +727,52 @@ func (s *Server) handleConversations(w http.ResponseWriter, r *http.Request) {
 
 type filterRequest struct {
 	Filter string `json:"filter"`
+}
+
+func (s *Server) handleTrace(w http.ResponseWriter, r *http.Request) {
+	limit := intQuery(r, "limit", 500)
+	after, _ := strconv.ParseUint(r.URL.Query().Get("after"), 10, 64)
+	events, status := s.traceMgr.Events(limit, after)
+	writeJSON(w, http.StatusOK, map[string]any{"events": events, "status": status})
+}
+
+func (s *Server) handleTraceStart(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		PID       int    `json:"pid"`
+		Functions string `json:"functions"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := s.StartTrace(req.PID, req.Functions); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, s.traceMgr.Status())
+}
+
+func (s *Server) handleTraceStop(w http.ResponseWriter, r *http.Request) {
+	s.traceMgr.Stop()
+	writeJSON(w, http.StatusOK, s.traceMgr.Status())
+}
+
+// StartTrace is shared with MCP.
+func (s *Server) StartTrace(pid int, functions string) error {
+	if pid < 0 {
+		return fmt.Errorf("pid must be >= 0")
+	}
+	fns, err := probe.ParseFunctions(functions)
+	if err != nil {
+		return err
+	}
+	return s.traceMgr.Start(pid, fns)
+}
+
+func (s *Server) StopTrace()                { s.traceMgr.Stop() }
+func (s *Server) TraceStatus() trace.Status { return s.traceMgr.Status() }
+func (s *Server) TraceEvents(limit int, after uint64) ([]trace.Event, trace.Status) {
+	return s.traceMgr.Events(limit, after)
 }
 
 func (s *Server) handleFilterValidate(w http.ResponseWriter, r *http.Request) {

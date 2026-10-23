@@ -13,7 +13,7 @@ ebpfshark 通过 TCX 在 Linux 网卡 ingress/egress 抓包，浏览器中提供
 - **显示过滤器**：字段比较、CIDR、端口范围、布尔表达式、`contains`，以及可视化构造器。
 - **TCP 流分析**：乱序/重传/重叠处理、Follow Stream、双向会话统计。
 - **范围抓包**：按进程当前 cgroup、cgroup v2 路径、Pod/容器 cgroup 片段过滤。
-- **函数调用追踪（实验）**：对显式指定的 `binary:symbol` 挂 uprobe/uretprobe，输出调用耗时。
+- **函数调用追踪（实验）**：CLI、Web 页面和 MCP 均可对显式 `binary:symbol` 挂 uprobe/uretprobe，查看调用耗时。
 - **服务化访问**：登录认证、SSE 实时推送、HTTP API、MCP；支持单二进制、Docker 和动态插件。
 
 ## 快速开始
@@ -79,7 +79,7 @@ sudo ./bin/ebpfshark -addr :9999 -capture eth0
 - 显示过滤器在用户态执行，暂未实现内核态预过滤；高流量场景建议配合采样/snaplen。
 - 协议覆盖和深度不及 Wireshark；长期存储/检索不及 Arkime。
 - cgroup 抓包要求 cgroup v2；按 PID 实际是解析该 PID 当前 cgroup。
-- 函数调用追踪是实验功能，只支持显式符号，尚未接入 Web 时间线。
+- 函数调用追踪是实验功能，只支持显式符号；Web/MCP 已接入基础事件列表，尚无参数/返回值/USDT。
 - Docker 部署会降低隔离；不要暴露 API 到公网，也不要加载不可信插件。
 
 ## 文档

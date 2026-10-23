@@ -9,6 +9,7 @@ ebpfshark 内置 **Model Context Protocol (MCP) Server**，让 Claude Code、Cla
 - 读取单条报文的协议树
 - 对 TCP 会话做流重组（Follow Stream）
 - 等待实时流量、查看会话和统计
+- 启动/停止应用函数 uprobe 追踪，查询调用耗时
 
 本文档覆盖启用方式、客户端配置、全部工具参数、示例和安全注意事项。
 
@@ -453,6 +454,33 @@ frame contains "password"
 到达数量上限或超时后返回；`timedOut=true` 表示是超时返回。
 
 ---
+
+#### `start_function_trace`
+
+启动实验性 uprobe/uretprobe 函数追踪。需要 root/CAP_BPF/CAP_PERFMON，并且目标 ELF 有可用符号。
+
+```json
+{"name":"start_function_trace","arguments":{
+  "pid": 1234,
+  "functions": "/usr/local/bin/app:main.handler,/usr/local/bin/app:main.dbQuery"
+}}
+```
+
+#### `stop_function_trace`
+
+```json
+{"name":"stop_function_trace","arguments":{}}
+```
+
+#### `query_function_trace`
+
+```json
+{"name":"query_function_trace","arguments":{"limit":200,"after":0}}
+```
+
+返回 `status` 和已完成的函数调用事件：`time`、`durationNs`、`pid`、`tid`、`function`、`comm`。
+
+> 当前只支持显式符号，不做任意函数全量采集，也不解析参数/返回值。函数追踪和网络抓包是独立会话。
 
 ## 5. 典型工作流
 

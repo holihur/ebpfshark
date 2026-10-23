@@ -18,11 +18,20 @@ import (
 	"ebpfshark/internal/packet"
 	"ebpfshark/internal/store"
 	"ebpfshark/internal/stream"
+	"ebpfshark/internal/trace"
 )
+
+// TraceController is implemented by the HTTP server for function tracing.
+type TraceController interface {
+	StartTrace(pid int, functions string) error
+	StopTrace()
+	TraceStatus() trace.Status
+	TraceEvents(limit int, after uint64) ([]trace.Event, trace.Status)
+}
 
 // New creates an MCP server bound to the live store and capture manager.
 // apiPort is excluded from captures when the MCP client starts one.
-func New(st *store.Store, mgr *capture.Manager, version string, apiPort uint32) *mcp.Server {
+func New(st *store.Store, mgr *capture.Manager, version string, apiPort uint32, traceCtl ...TraceController) *mcp.Server {
 	srv := mcp.NewServer(&mcp.Implementation{
 		Name:        "ebpfshark",
 		Title:       "ebpfshark",
@@ -41,6 +50,9 @@ func New(st *store.Store, mgr *capture.Manager, version string, apiPort uint32) 
 	addCaptureTools(srv, st, mgr, apiPort)
 	addPacketTools(srv, st)
 	addAnalysisTools(srv, st)
+	if len(traceCtl) > 0 && traceCtl[0] != nil {
+		addTraceTools(srv, traceCtl[0])
+	}
 	return srv
 }
 
@@ -344,6 +356,43 @@ func directionOutput(d stream.Direction, maxBytes int, includeB64 bool) streamDi
 		out.Base64 = base64.StdEncoding.EncodeToString(data)
 	}
 	return out
+}
+
+func addTraceTools(srv *mcp.Server, c TraceController) {
+	type startInput struct {
+		PID       int    `json:"pid" jsonschema:"target process ID (0 = all processes loading the binary)"`
+		Functions string `json:"functions" jsonschema:"comma separated binary:symbol uprobe targets"`
+	}
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "start_function_trace",
+		Description: "Start an experimental uprobe/uretprobe trace for explicit application functions. Requires root/CAP_BPF/CAP_PERFMON and an unstripped or debug-symbol-bearing binary.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in startInput) (*mcp.CallToolResult, any, error) {
+		if err := c.StartTrace(in.PID, in.Functions); err != nil {
+			return nil, nil, err
+		}
+		return textResult(c.TraceStatus())
+	})
+
+	type empty struct{}
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "stop_function_trace",
+		Description: "Stop the current function-call trace.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ empty) (*mcp.CallToolResult, any, error) {
+		c.StopTrace()
+		return textResult(c.TraceStatus())
+	})
+
+	type queryInput struct {
+		Limit int    `json:"limit,omitempty" jsonschema:"maximum events (default 500, max 2000)"`
+		After uint64 `json:"after,omitempty" jsonschema:"return events with id greater than this value"`
+	}
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "query_function_trace",
+		Description: "Return function-call trace status and recent completed calls.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in queryInput) (*mcp.CallToolResult, any, error) {
+		events, status := c.TraceEvents(in.Limit, in.After)
+		return textResult(map[string]any{"status": status, "events": events})
+	})
 }
 
 func addAnalysisTools(srv *mcp.Server, st *store.Store) {

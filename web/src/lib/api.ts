@@ -10,6 +10,7 @@ import type {
   SessionInfo,
   StatusResponse,
   StoreStats,
+  TraceResponse,
 } from "./types"
 
 export const UNAUTHORIZED_EVENT = "ebpfshark:unauthorized"
@@ -100,4 +101,13 @@ export const api = {
   },
   exportUrl: (filter: string) => `/api/export/pcap?filter=${enc(filter)}`,
   streamUrl: (filter: string) => `/api/stream?filter=${enc(filter)}`,
+  trace: (limit = 500, after = 0) =>
+    request<TraceResponse>(`/api/trace?limit=${limit}&after=${after}`),
+  traceStart: (pid: number, functions: string) =>
+    request<TraceResponse["status"]>("/api/trace/start", {
+      method: "POST",
+      body: JSON.stringify({ pid, functions }),
+    }),
+  traceStop: () =>
+    request<TraceResponse["status"]>("/api/trace/stop", { method: "POST" }),
 }

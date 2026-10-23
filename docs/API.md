@@ -23,6 +23,9 @@
 | GET | `/api/filter/fields` | 可过滤字段（用于补全） |
 | GET | `/api/filter/schema` | 过滤器构造器字段目录（类型/运算符/枚举值） |
 | GET | `/api/update` | 自动更新状态 |
+| GET | `/api/trace?limit=&after=` | 函数调用追踪状态和事件 |
+| POST | `/api/trace/start` | `{pid, functions}` 启动 uprobe 追踪 |
+| POST | `/api/trace/stop` | 停止函数调用追踪 |
 | GET | `/api/export/pcap?filter=&format=&from=&to=` | 导出 pcap/pcapng；`format=pcapng`，时间支持 RFC3339 或 Unix 秒 |
 | POST | `/api/import` | multipart `file` 导入 pcap/pcapng |
 

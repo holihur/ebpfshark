@@ -175,6 +175,7 @@ func main() {
 	mgr := capture.NewManager(st, log)
 	srv := server.New(st, mgr, log, webFS, selfPort, authSvc)
 	srv.SetSecureCookie(*secureCookie)
+	defer srv.StopTrace()
 
 	mcpEnabled := !*noMCP
 	if mcpEnabled {
@@ -190,7 +191,7 @@ func main() {
 				"\n  MCP HTTP endpoint enabled at /mcp\n    Authorization: Bearer %s\n  Set EBPFSHARK_MCP_TOKEN to use a stable token.\n\n",
 				token)
 		}
-		mcpSrv := mcpserver.New(st, mgr, server.Version, uint32(selfPort))
+		mcpSrv := mcpserver.New(st, mgr, server.Version, uint32(selfPort), srv)
 		srv.SetMCPHandler(mcpserver.HTTPHandler(mcpSrv, token))
 	}
 
