@@ -3,6 +3,7 @@ package decode
 import (
 	"sort"
 	"sync"
+	"sync/atomic"
 )
 
 // Transport identifies the transport protocol a dissector handles.
@@ -40,16 +41,20 @@ func RegisterPlugin(p pluginSpec) {
 	pluginRegistry.mu.Lock()
 	pluginRegistry.specs = append(pluginRegistry.specs, p)
 	pluginRegistry.mu.Unlock()
+	pluginVersion.Add(1)
 }
+
+var pluginVersion atomic.Uint64
 
 var pluginChains struct {
-	once sync.Once
-	udp  []appDissector
-	tcp  []appDissector
-	dec  []appDissector
+	mu      sync.RWMutex
+	version uint64
+	udp     []appDissector
+	tcp     []appDissector
+	dec     []appDissector
 }
 
-func initPluginChains() {
+func buildPluginChains() ([]appDissector, []appDissector, []appDissector) {
 	pluginRegistry.mu.RLock()
 	specs := append([]pluginSpec(nil), pluginRegistry.specs...)
 	pluginRegistry.mu.RUnlock()
@@ -59,33 +64,52 @@ func initPluginChains() {
 		}
 		return specs[i].Name < specs[j].Name
 	})
+	var udp, tcp, dec []appDissector
 	for _, p := range specs {
 		d := appDissector{name: p.Name, match: p.Match, dissect: p.Dissect}
 		switch {
 		case p.Decrypted:
-			pluginChains.dec = append(pluginChains.dec, d)
+			dec = append(dec, d)
 		default:
 			if p.Transport&TransportUDP != 0 {
-				pluginChains.udp = append(pluginChains.udp, d)
+				udp = append(udp, d)
 			}
 			if p.Transport&TransportTCP != 0 {
-				pluginChains.tcp = append(pluginChains.tcp, d)
+				tcp = append(tcp, d)
 			}
 		}
 	}
+	return udp, tcp, dec
+}
+
+func chainFor(version uint64) ([]appDissector, []appDissector, []appDissector) {
+	pluginChains.mu.RLock()
+	if pluginChains.version == version {
+		udp, tcp, dec := pluginChains.udp, pluginChains.tcp, pluginChains.dec
+		pluginChains.mu.RUnlock()
+		return udp, tcp, dec
+	}
+	pluginChains.mu.RUnlock()
+	pluginChains.mu.Lock()
+	defer pluginChains.mu.Unlock()
+	if pluginChains.version != version {
+		pluginChains.udp, pluginChains.tcp, pluginChains.dec = buildPluginChains()
+		pluginChains.version = version
+	}
+	return pluginChains.udp, pluginChains.tcp, pluginChains.dec
 }
 
 func appChain(t Transport) []appDissector {
-	pluginChains.once.Do(initPluginChains)
+	udp, tcp, _ := chainFor(pluginVersion.Load())
 	if t == TransportTCP {
-		return pluginChains.tcp
+		return tcp
 	}
-	return pluginChains.udp
+	return udp
 }
 
 func decryptedChain() []appDissector {
-	pluginChains.once.Do(initPluginChains)
-	return pluginChains.dec
+	_, _, dec := chainFor(pluginVersion.Load())
+	return dec
 }
 
 func displayName(name string) string {

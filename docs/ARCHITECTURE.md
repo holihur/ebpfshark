@@ -43,7 +43,18 @@ Rules:
 - Register both transport directions in one spec where possible.
 - Decrypted TLS/QUIC/SSH payload dispatch uses `Decrypted: true`; such
   plugins run without ports.
-- The registry is init-time only. Do not register after decoding starts.
+- Compiled-in plugins register during init. The dynamic loader may append before capture starts; the versioned cache rebuilds the chains on the next decode.
+
+## Runtime plugins
+
+Compiled-in plugins and dynamic `.so` plugins share the same registry. A
+dynamic plugin exports `Plugin` or `New` using `ebpfshark/pkg/pluginapi`;
+`LoadDynamicPlugins` adapts it into a `pluginSpec` and bumps the registry
+version so the next decode rebuilds the chains.
+
+Dynamic loading is optional: it requires cgo and is not available on Windows.
+The release/static builds remain self-contained. See
+[docs/PLUGINS.md](PLUGINS.md) for the ABI, build command and security model.
 
 ## Core vs full
 
@@ -61,6 +72,7 @@ plugins. CI does both, plus race, fuzz and benchmark smoke.
 cmd/ebpfshark        flags, startup, doc
 internal/capture     eBPF/pcap capture
 internal/decode      link/IP/transport + application plugins
+pkg/pluginapi        stable ABI for runtime .so plugins
 internal/filter      filter language, schema
 internal/packet      Meta/Summary/LayerMask/Field-independent packet types
 internal/store       bounded packet/flow stores

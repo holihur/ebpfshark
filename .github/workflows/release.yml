@@ -32,10 +32,13 @@ jobs:
         run: make go-build && cp bin/ebpfshark bin/ebpfshark-core
       - name: Build full
         run: make go-build-full && cp bin/ebpfshark bin/ebpfshark-full
+      - name: Build full with dynamic plugin support
+        run: make go-build-dynamic && cp bin/ebpfshark bin/ebpfshark-full-dynamic
       - name: Checksums and SBOM
         run: |
-          sha256sum bin/ebpfshark-core bin/ebpfshark-full > checksums.txt
+          sha256sum bin/ebpfshark-core bin/ebpfshark-full bin/ebpfshark-full-dynamic > checksums.txt
           go version -m bin/ebpfshark-full > sbom.txt
+          go version -m bin/ebpfshark-full-dynamic >> sbom.txt
       - uses: sigstore/cosign-installer@v4
       - name: Sign checksums
         run: |
@@ -48,6 +51,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${GITHUB_REF_NAME}" \
-            bin/ebpfshark-core bin/ebpfshark-full \
+            bin/ebpfshark-core bin/ebpfshark-full bin/ebpfshark-full-dynamic \
             checksums.txt checksums.sig checksums.pem sbom.txt \
             --generate-notes

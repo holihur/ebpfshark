@@ -70,7 +70,7 @@ sudo ./install.sh
 
 完整说明见 **[docs/INSTALL.md](docs/INSTALL.md)**。
 
-协议插件、core/full 构建和新增协议步骤见 **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**。
+协议插件、core/full 构建和新增协议步骤见 **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**；动态 `.so` 插件见 **[docs/PLUGINS.md](docs/PLUGINS.md)**。
 
 ### 方式二：手动构建
 
@@ -133,6 +133,8 @@ sudo ./bin/ebpfshark -capture eth0,lo -snaplen 2048 -sample-rate 1
 -mcp-token ""            HTTP MCP 的 Bearer Token（留空则启动时生成）
 -no-mcp                  关闭 HTTP MCP 端点
 -tls-keylog ""           NSS SSLKEYLOGFILE，用于 TLS 1.2/1.3 与 QUIC 解密
+-plugins ""              逗号分隔的 Go .so 动态协议插件
+-plugin-dir ""           加载目录中的 *.so 动态协议插件
 -pprof-addr ""           可选本地 profiling 地址，例如 127.0.0.1:6060
 -ssh-keys ""             可选 SSH 会话密钥 JSON（仅 AES-CTR）
 -wifi-psk ""             可选 WPA2-PSK 口令，解密 CCMP/GCMP 无线数据帧
@@ -147,7 +149,7 @@ sudo ./bin/ebpfshark -capture eth0,lo -snaplen 2048 -sample-rate 1
 环境变量：`EBPFSHARK_ADDR`、`EBPFSHARK_MAX_PACKETS`、`EBPFSHARK_IFACE`、`EBPFSHARK_WEB_DIR`、
 `EBPFSHARK_LOG_LEVEL`、`EBPFSHARK_AUTH_USER`、`EBPFSHARK_AUTH_PASS`、
 `EBPFSHARK_STREAM_BUDGET`、`EBPFSHARK_MCP_TOKEN`、`EBPFSHARK_AUTO_UPDATE`、
-`EBPFSHARK_UPDATE_INTERVAL`、`EBPFSHARK_UPDATE_URL`、`EBPFSHARK_TLS_KEYLOG`、`EBPFSHARK_PPROF_ADDR`、`EBPFSHARK_WIFI_PSK`、`EBPFSHARK_SSH_KEYS`。
+`EBPFSHARK_UPDATE_INTERVAL`、`EBPFSHARK_UPDATE_URL`、`EBPFSHARK_TLS_KEYLOG`、`EBPFSHARK_PPROF_ADDR`、`EBPFSHARK_WIFI_PSK`、`EBPFSHARK_SSH_KEYS`、`EBPFSHARK_PLUGINS`、`EBPFSHARK_PLUGIN_DIR`。
 `SSLKEYLOGFILE` 也会作为 `-tls-keylog` 的默认值。
 
 ### 开发模式
@@ -619,6 +621,7 @@ curl -s -b /tmp/ebpfshark.cookie \
 - TCX 需要内核 ≥ 6.6 且启用 BTF；旧内核暂不支持。
 - 隧道网卡（wg/tun）上没有二层头，解析器会自动识别裸 IP。
 - 无线 monitor 接口按 `ARPHRD_IEEE80211` / `ARPHRD_IEEE80211_RADIOTAP` 选择链路类型；VLAN 子接口会作为普通接口列出，可直接选择抓包。
+- 动态插件依赖 Go plugin ABI：需 cgo、Linux/macOS/FreeBSD，且插件与主程序必须用同一 Go 工具链和依赖构建；仅加载可信 `.so`。
 - 无线支持 WPA2-PSK 的 CCMP/GCMP 解密：需要 `-wifi-psk`、SSID Beacon/Probe Response、
   完整 4-way 握手。缺少握手或 WPA3 时可使用 `-wifi-keys` 直接导入 PMK/PTK：
   `{"sessions":[{"ap":"...","sta":"...","ssid":"...","pmk":"hex","ptk":"hex"}]}`。

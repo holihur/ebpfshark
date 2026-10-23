@@ -80,6 +80,12 @@ jobs:
       - name: Build full
         run: make go-build-full
 
+      - name: Build example dynamic plugin
+        run: go build -buildmode=plugin -o /tmp/ebpfshark-demo.so ./examples/plugins/demo
+
+      - name: Test dynamic plugin loading
+        run: EBPFSHARK_TEST_PLUGIN=/tmp/ebpfshark-demo.so go test -run TestLoadDynamicPlugin ./internal/decode
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
         with:

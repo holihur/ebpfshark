@@ -12,6 +12,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -55,6 +56,8 @@ func main() {
 	mcpToken := flag.String("mcp-token", env("EBPFSHARK_MCP_TOKEN", ""), "bearer token for the HTTP MCP endpoint (empty = generate)")
 	pprofAddr := flag.String("pprof-addr", env("EBPFSHARK_PPROF_ADDR", ""), "optional local profiling address, e.g. 127.0.0.1:6060")
 	tlsKeylog := flag.String("tls-keylog", env("EBPFSHARK_TLS_KEYLOG", env("SSLKEYLOGFILE", "")), "NSS SSLKEYLOGFILE for TLS 1.2/1.3 decryption")
+	plugins := flag.String("plugins", env("EBPFSHARK_PLUGINS", ""), "comma separated Go .so dissector plugins")
+	pluginDir := flag.String("plugin-dir", env("EBPFSHARK_PLUGIN_DIR", ""), "directory containing .so dissector plugins")
 	sshKeys := flag.String("ssh-keys", env("EBPFSHARK_SSH_KEYS", ""), "JSON session keys for opt-in SSH AES-CTR decryption")
 	wifiPSK := flag.String("wifi-psk", env("EBPFSHARK_WIFI_PSK", ""), "WPA2-PSK passphrase for CCMP frame decryption")
 	wifiKeys := flag.String("wifi-keys", env("EBPFSHARK_WIFI_KEYS", ""), "JSON PMK/PTK session keys for WPA2/WPA3 (missing handshake)")
@@ -91,6 +94,13 @@ func main() {
 			log.Warn("load SSH keys failed", "path", *sshKeys, "err", err)
 		} else {
 			log.Info("loaded SSH session keys", "path", *sshKeys)
+		}
+	}
+	if pluginPaths := collectPluginPaths(*plugins, *pluginDir); len(pluginPaths) > 0 {
+		if err := decode.LoadDynamicPlugins(pluginPaths); err != nil {
+			log.Error("load dynamic plugins failed", "err", err)
+		} else {
+			log.Info("loaded dynamic plugins", "count", len(pluginPaths))
 		}
 	}
 	if *tlsKeylog != "" {
@@ -241,9 +251,18 @@ func runMCPStdio(args []string) {
 	streamBudget := fs.Int("stream-budget", envInt("EBPFSHARK_STREAM_BUDGET", 64), "TCP reassembly memory budget in MiB")
 	logLevel := fs.String("log-level", env("EBPFSHARK_LOG_LEVEL", "warn"), "debug, info, warn or error")
 	excludePort := fs.Uint("exclude-port", 0, "TCP/UDP port to exclude from captures (0 = none)")
+	plugins := fs.String("plugins", env("EBPFSHARK_PLUGINS", ""), "comma separated Go .so dissector plugins")
+	pluginDir := fs.String("plugin-dir", env("EBPFSHARK_PLUGIN_DIR", ""), "directory containing .so dissector plugins")
 	_ = fs.Parse(args)
 
 	log := newLogger(*logLevel)
+	if paths := collectPluginPaths(*plugins, *pluginDir); len(paths) > 0 {
+		if err := decode.LoadDynamicPlugins(paths); err != nil {
+			log.Error("load dynamic plugins failed", "err", err)
+		} else {
+			log.Info("loaded dynamic plugins", "count", len(paths))
+		}
+	}
 	st := store.New(*maxPackets)
 	st.SetStreamBudget(int64(*streamBudget) << 20)
 	mgr := capture.NewManager(st, log)
@@ -330,4 +349,20 @@ func envInt(key string, def int) int {
 		}
 	}
 	return def
+}
+
+func collectPluginPaths(list, dir string) []string {
+	var out []string
+	for _, p := range strings.Split(list, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	if dir != "" {
+		for _, pattern := range []string{"*.so", "*.dylib"} {
+			matches, _ := filepath.Glob(filepath.Join(dir, pattern))
+			out = append(out, matches...)
+		}
+	}
+	return out
 }

@@ -12,7 +12,7 @@ GENERATED := internal/capture/capture_bpfel.go internal/capture/capture_bpfel.o
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo 0.1.0-dev)
 LDFLAGS := -X ebpfshark/internal/server.Version=$(VERSION)
 
-.PHONY: all build generate web go-build go-build-full dev dev-web run test test-full bench vet deps clean help
+.PHONY: all build generate web go-build go-build-full go-build-dynamic dev dev-web run test test-full bench vet deps clean help
 
 all: build
 
@@ -23,6 +23,7 @@ help:
 	@echo "  make web        Build the React UI into $(WEB_DIST)"
 	@echo "  make go-build   Compile the core Go binary (common protocols only)"
 	@echo "  make go-build-full  Compile with all protocol dissectors (-tags full)"
+	@echo "  make go-build-dynamic  cgo build with all protocols + dynamic .so plugin support"
 	@echo "  make run        Run the backend on :9999 (UI must be built)"
 	@echo "  make dev        Run the backend on :9999 with debug logging"
 	@echo "  make dev-web    Run the Vite dev server on :5173 (proxies to :9999)"
@@ -55,6 +56,10 @@ go-build: $(GENERATED)
 go-build-full: $(GENERATED)
 	mkdir -p bin
 	CGO_ENABLED=0 $(GO) build -tags full -trimpath -ldflags '$(LDFLAGS)' -o $(BIN) ./cmd/ebpfshark
+
+go-build-dynamic: $(GENERATED)
+	mkdir -p bin
+	CGO_ENABLED=1 $(GO) build -tags full -trimpath -ldflags '$(LDFLAGS)' -o $(BIN) ./cmd/ebpfshark
 
 $(GENERATED): $(VMLINUX) internal/capture/bpf/capture.c internal/capture/generate.go
 	cd internal/capture && $(GO) generate ./...
