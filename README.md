@@ -40,7 +40,7 @@ ebpfshark 使用 TCX（TC eXpress）把两个很小的 eBPF 程序挂到网卡�
 | 组件 | 要求 |
 | --- | --- |
 | 内核 | **Linux ≥ 6.6**（TCX 需要），启用 BTF：`/sys/kernel/btf/vmlinux` |
-| 权限 | root，或 `CAP_BPF` + `CAP_NET_ADMIN` + `CAP_PERFMON` |
+| 权限 | root，或 `CAP_BPF` + `CAP_NET_ADMIN`（`CAP_PERFMON` 用于相关 perf 路径，可选） |
 | Go | ≥ 1.26 |
 | Node.js | ≥ 20，包管理器使用 **pnpm** |
 | 从源码构建 eBPF | `clang`、`llvm`（含 `llvm-strip`）、`bpftool`、`libbpf-dev` |
@@ -72,7 +72,30 @@ sudo ./install.sh
 
 协议插件、core/full 构建和新增协议步骤见 **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**；动态 `.so` 插件见 **[docs/PLUGINS.md](docs/PLUGINS.md)**。
 
-### 方式二：手动构建
+### 方式二：Docker
+
+```bash
+docker build -t ebpfshark:local .
+
+docker run --rm -it \
+  --network host \
+  --cap-add=BPF --cap-add=NET_ADMIN --cap-add=PERFMON --cap-add=SYS_RESOURCE \
+  --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
+  --ulimit memlock=-1:-1 \
+  -v /sys/kernel/btf/vmlinux:/sys/kernel/btf/vmlinux:ro \
+  -e EBPFSHARK_AUTH_PASS='change-this-password' \
+  ebpfshark:local -addr 127.0.0.1:9999 -capture eth0
+```
+
+Docker 需要 **host network + BPF/NET_ADMIN capability + seccomp/AppArmor 放宽 + memlock + BTF**，
+不是普通隔离容器。完整命令、Compose 配置、动态插件构建和风险说明见
+**[docs/DOCKER.md](docs/DOCKER.md)**。
+
+> 风险提示：host network 会暴露宿主机流量，`seccomp=unconfined` 会降低隔离；容器内默认 root。
+> 不要把 API 直接暴露到公网，也不要加载不可信的 `.so` 插件。Docker Desktop 只能抓 Linux VM，
+> 不能抓 macOS/Windows 宿主机物理网卡。
+
+### 方式三：手动构建
 
 ```bash
 # 1. 生成 eBPF 对象（vmlinux.h + bpf2go，需要 clang/bpftool/libbpf-dev）

@@ -1,0 +1,31 @@
+services:
+  ebpfshark:
+    build:
+      context: .
+      args:
+        VERSION: local
+    image: ebpfshark:local
+    container_name: ebpfshark
+    network_mode: host
+    cap_add:
+      - BPF
+      - NET_ADMIN
+      - PERFMON
+      - SYS_RESOURCE
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=unconfined
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - /sys/kernel/btf/vmlinux:/sys/kernel/btf/vmlinux:ro
+    environment:
+      EBPFSHARK_AUTH_PASS: change-this-password
+      EBPFSHARK_AUTO_UPDATE: "false"
+    command:
+      - -addr
+      - 127.0.0.1:9999
+      - -capture
+      - eth0

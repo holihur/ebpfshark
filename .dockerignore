@@ -1,0 +1,16 @@
+.git
+.gitignore
+.github
+bin
+web/node_modules
+web/dist
+web/.vite
+web/*.tsbuildinfo
+internal/server/webdist/*
+!internal/server/webdist/.keep
+internal/capture/bpf/vmlinux.h
+internal/capture/capture_bpfel.go
+internal/capture/capture_bpfel.o
+*.log
+.env.local
+.DS_Store

@@ -2,6 +2,8 @@
 
 本文档介绍 ebpfshark 的一键安装、systemd 服务、自更新机制和卸载。
 
+> 使用 Docker 部署请见 **[DOCKER.md](DOCKER.md)**；Docker 需要额外的 host network、BPF capability、seccomp/AppArmor 放宽和 BTF 挂载，风险和配置不同于 systemd。
+
 ## 1. 一键安装
 
 > 如果仓库中没有 `bin/ebpfshark`，安装脚本会从源码构建，需要 eBPF 构建依赖。
