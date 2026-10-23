@@ -90,4 +90,4 @@ web/                 React UI
 5. Add core/full filter schema names in `internal/filter/schema_layers_*.go`
    and a predicate in `internal/filter/filter.go` if it is a layer.
 6. Add a focused decode test and update `plugin_full_test.go` expectations.
-7. Update README protocol coverage and known limitations.
+7. Update the README support matrix: support level, limitations and primary RFC/standard.
