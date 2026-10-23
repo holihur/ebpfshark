@@ -19,7 +19,7 @@ for deep desktop analysis and low-level packet capture.
 | Decryption | TLS/QUIC keylog, WPA2-PSK CCMP/GCMP, optional SSH session keys | Broad TLS/QUIC/WPA and protocol-specific key support (version dependent) | None |
 | Statistics | Packet/flow/protocol stats, conversations | Extensive statistics and graphs | Basic packet counts via shell/BPF |
 | Remote use | Browser/API/MCP; capture agent runs on target host | Remote capture via extcap/sshdump, `tshark` | SSH + remote `tcpdump -w` |
-| File I/O | Import pcap/pcapng, export pcap | pcap/pcapng, many formats | Read/write pcap |
+| File I/O | Import pcap/pcapng, export pcap/pcapng + time range | pcap/pcapng, many formats | Read/write pcap |
 | Automation | REST API, SSE, MCP, single binary/Docker | `tshark`, Lua, extcap | Shell pipelines and `-w` files |
 | Extensibility | Compile-time plugins + optional Go `.so` plugins | C/Lua dissectors, plugins, extcap | libpcap/BPF expressions |
 | Deployment | Linux server/container | Desktop install | Package/single binary |

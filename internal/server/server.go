@@ -748,13 +748,70 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pkts := s.store.All(flt)
-	name := fmt.Sprintf("ebpfshark-%s.pcap", time.Now().Format("20060102-150405"))
-	w.Header().Set("Content-Type", "application/vnd.tcpdump.pcap")
+	from, to, err := exportTimeRange(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if !from.IsZero() || !to.IsZero() {
+		filtered := pkts[:0]
+		for _, p := range pkts {
+			if !from.IsZero() && p.Time.Before(from) {
+				continue
+			}
+			if !to.IsZero() && p.Time.After(to) {
+				continue
+			}
+			filtered = append(filtered, p)
+		}
+		pkts = filtered
+	}
+	format := strings.ToLower(r.URL.Query().Get("format"))
+	nameExt, contentType := ".pcap", "application/vnd.tcpdump.pcap"
+	if format == "pcapng" {
+		nameExt, contentType = ".pcapng", "application/x-pcapng"
+	}
+	name := fmt.Sprintf("ebpfshark-%s%s", time.Now().Format("20060102-150405"), nameExt)
+	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
 	w.Header().Set("X-Packet-Count", strconv.Itoa(len(pkts)))
-	if err := pcapio.Write(w, pkts); err != nil {
-		s.log.Warn("pcap export failed", "err", err)
+	var writeErr error
+	if format == "pcapng" {
+		writeErr = pcapio.WriteNG(w, pkts)
+	} else {
+		writeErr = pcapio.Write(w, pkts)
 	}
+	if writeErr != nil {
+		s.log.Warn("capture export failed", "format", format, "err", writeErr)
+	}
+}
+
+func exportTimeRange(r *http.Request) (time.Time, time.Time, error) {
+	parse := func(key string) (time.Time, error) {
+		v := strings.TrimSpace(r.URL.Query().Get(key))
+		if v == "" {
+			return time.Time{}, nil
+		}
+		if t, err := time.Parse(time.RFC3339Nano, v); err == nil {
+			return t, nil
+		}
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			return time.Unix(n, 0), nil
+		}
+		return time.Time{}, fmt.Errorf("invalid %s time %q (use RFC3339 or Unix seconds)", key, v)
+	}
+	from, err := parse("from")
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+	to, err := parse("to")
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+	if !from.IsZero() && !to.IsZero() && to.Before(from) {
+		return time.Time{}, time.Time{}, fmt.Errorf("to must not be before from")
+	}
+	return from, to, nil
 }
 
 func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {

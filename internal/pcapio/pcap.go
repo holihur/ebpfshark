@@ -15,21 +15,7 @@ import (
 // Write serialises packets as a classic pcap file. If the capture mixes link
 // types everything is converted to Ethernet where possible.
 func Write(w io.Writer, pkts []*packet.Packet) error {
-	global := packet.LinkEthernet
-	if len(pkts) > 0 {
-		counts := map[packet.LinkType]int{}
-		for _, p := range pkts {
-			counts[p.LinkType]++
-		}
-		best := 0
-		for lt, n := range counts {
-			if n > best || (n == best && lt == packet.LinkEthernet) {
-				best = n
-				global = lt
-			}
-		}
-	}
-
+	global := chooseGlobalLinkType(pkts)
 	var hdr [24]byte
 	binary.LittleEndian.PutUint32(hdr[0:4], 0xa1b2c3d4)
 	binary.LittleEndian.PutUint16(hdr[4:6], 2)
@@ -60,6 +46,22 @@ func Write(w io.Writer, pkts []*packet.Packet) error {
 		}
 	}
 	return nil
+}
+
+func chooseGlobalLinkType(pkts []*packet.Packet) packet.LinkType {
+	global := packet.LinkEthernet
+	counts := map[packet.LinkType]int{}
+	for _, p := range pkts {
+		counts[p.LinkType]++
+	}
+	best := 0
+	for lt, n := range counts {
+		if n > best || (n == best && lt == packet.LinkEthernet) {
+			best = n
+			global = lt
+		}
+	}
+	return global
 }
 
 func toGlobalLinkType(p *packet.Packet, global packet.LinkType) ([]byte, int) {
@@ -274,11 +276,12 @@ func readPcapng(data []byte) ([]*packet.Packet, error) {
 				units = tsUnits[iface]
 			}
 			ts := int64(tsHigh<<32 | tsLow)
-			ns := ts * int64(time.Second) / units
+			sec := ts / units
+			ns := (ts % units) * int64(time.Second) / units
 			buf := make([]byte, caplen)
 			copy(buf, body[20:20+caplen])
 			out = append(out, &packet.Packet{
-				Time:     time.Unix(0, ns),
+				Time:     time.Unix(sec, ns),
 				IfName:   "import",
 				WireLen:  origlen,
 				CapLen:   uint32(caplen),
@@ -325,11 +328,13 @@ func readPcapng(data []byte) ([]*packet.Packet, error) {
 			if iface < len(tsUnits) {
 				units = tsUnits[iface]
 			}
-			ns := int64(tsHigh<<32|tsLow) * int64(time.Second) / units
+			ts := int64(tsHigh<<32 | tsLow)
+			sec := ts / units
+			ns := (ts % units) * int64(time.Second) / units
 			buf := make([]byte, caplen)
 			copy(buf, body[20:20+caplen])
 			out = append(out, &packet.Packet{
-				Time:     time.Unix(0, ns),
+				Time:     time.Unix(sec, ns),
 				IfName:   "import",
 				WireLen:  origlen,
 				CapLen:   uint32(caplen),

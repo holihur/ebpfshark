@@ -194,3 +194,12 @@ func TestTLS12CCMSuites(t *testing.T) {
 		}
 	}
 }
+
+func TestRTMPHandshake(t *testing.T) {
+	b := make([]byte, 1537)
+	b[0] = 3
+	c := appCtx(b)
+	if !c.dissectRTMP(b, 0) || !strings.Contains(c.appInfo, "handshake") {
+		t.Fatalf("info=%q", c.appInfo)
+	}
+}

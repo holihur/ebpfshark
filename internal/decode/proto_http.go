@@ -150,6 +150,8 @@ func (c *ctx) dissectHTTP(b []byte, base int) bool {
 
 	if len(body) > 0 && looksLikeHLS(body) {
 		c.dissectHLS(body, base+headerEnd, root)
+	} else if len(body) > 0 && looksLikeDASH(body) {
+		c.dissectDASH(body, base+headerEnd, root)
 	}
 
 	// Prepend a line field for the start line (offset points at the line).

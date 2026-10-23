@@ -27,7 +27,7 @@ ebpfshark 使用 TCX（TC eXpress）把两个很小的 eBPF 程序挂到网卡�
 - **一键安装 / 自动更新**：`install.sh` 生成 systemd 服务与随机凭据；默认每 10 分钟检查
   二进制更新，可通过开关关闭。
 - **会话统计**：按双向五元组聚合 TCP/UDP 流量，展示字节数、包数、TCP 状态。
-- **文件分析**：导入 `.pcap` / `.pcapng`，导出当前缓冲区或过滤结果为 pcap。
+- **文件分析**：导入 `.pcap` / `.pcapng`，导出当前缓冲区或过滤结果为 pcap/pcapng，支持时间范围。
 - **开发友好**：单二进制内嵌前端；Vite 开发服务器热更新 + `/api` 代理。
 - **中英文界面**：自动检测浏览器语言，也可在右上角 `…` 菜单（登录页在右上角）切换
   `English` / `简体中文`。
@@ -249,7 +249,7 @@ go test -tags full ./...
 5. 点击报文查看协议树；点击协议树字段会在右侧 hex 中高亮对应字节。
 6. TCP 报文可点击详情栏右上角的 **追踪流 / Follow stream** 按钮查看重组后的双向负载。
 7. **Flows** 标签查看双向会话，点击任一会话可直接生成过滤条件。
-8. **Export** 导出 pcap；**Import** 载入 pcap/pcapng（会自动停止实时抓包）。
+8. **Export** 导出 pcap（API 也支持 pcapng 和时间范围）；**Import** 载入 pcap/pcapng（会自动停止实时抓包）。
 9. 右上角 `…` 菜单中的 **Language / 语言** 切换 `English` / `简体中文`（登录页为右上角
    语言按钮）；首次访问会按浏览器语言自动选择，选择结果保存在 `localStorage`
    （`ebpfshark-locale`）。
@@ -300,6 +300,7 @@ go test -tags full ./...
 | 应用层 | DNS | core | **常用** | A/AAAA/CNAME/NS/PTR/MX/TXT/SOA/SRV/CAA/NAPTR/TLSA/SVCB/HTTPS；EDNS0/DNSSEC 标志；mDNS/LLMNR；未覆盖全部 RR 类型 | RFC 1035 等；EDNS0 RFC 6891；DNSSEC RFC 4034；SVCB/HTTPS RFC 9460 |
 | 应用层 | HTTP/1.x | core | **常用** | 请求行/状态行、Header、Body 预览；不做 chunked/gzip 解压或跨段 HTTP 消息重组 | RFC 9112 |
 | 应用层 | HLS manifest | core | **基础** | `#EXTM3U`、VERSION/TARGETDURATION/MEDIA-SEQUENCE/EXTINF/STREAM-INF、Segment 列表；不解析媒体分片 | RFC 8216 |
+| 应用层 | DASH manifest | core | **基础** | MPD 属性、Period/AdaptationSet/Representation 常用字段、BaseURL；不解析媒体分片 | ISO/IEC 23009-1 |
 | 应用层 | gRPC / protobuf | full | **基础** | gRPC length-prefixed message、压缩标记、protobuf wire 字段（varint/fixed/bytes/nested）；不依赖 `.proto` schema | gRPC HTTP/2 spec / protobuf encoding |
 | 应用层 | HTTP/2 | full | **常用** | 帧、HPACK 静态/动态表/Huffman、HEADERS+CONTINUATION、DATA 预览；从连接中间抓包时动态表可能缺失 | RFC 9113；HPACK RFC 7541 |
 | 应用层 | DHCP | core | **常用** | 完整 DHCPv4 消息类型、常用 option、Option Overload、Relay Agent、Classless Routes；未实现全部 255 个 option | RFC 2131 / 2132 |
@@ -312,6 +313,7 @@ go test -tags full ./...
 | 应用层 | NetFlow / IPFIX | full | **常用** | v5 流记录、v9/IPFIX Template/Data Set 展开、常用字段值、模板缓存 | NetFlow v5（Cisco）；v9 RFC 3954；IPFIX RFC 7011 |
 | 应用层 | RTP / RTCP | full | **常用** | RTP 头、CSRC/扩展、RTCP SR/RR/SDES/BYE/APP；H.264/H.265/VP8/VP9/AV1/AAC/Opus 载荷按启发式解析；完整 SDP 编解码映射未实现 | RFC 3550；H.264 RFC 6184；H.265 RFC 7798；VP8 RFC 7741；AAC RFC 3640；Opus RFC 7587 |
 | 应用层 | RTSP | full | **常用** | OPTIONS/DESCRIBE/SETUP/PLAY/PAUSE/TEARDOWN、Header、CSeq/Session、SDP body；不做 RTSP 消息分片重组 | RFC 2326 / RFC 7826 |
+| 应用层 | RTMP | full | **基础** | Handshake、Chunk Header、常用消息类型、AMF0 首个字符串；不做完整 AMF 对象模型 | Adobe RTMP Specification 1.0 |
 | 封装 | MPEG-TS | full | **基础** | 188 字节 TS、PID/PUSI/CC、PAT/PMT、PES/PTS/DTS、PCR；不解析完整 ES 和加密 TS | ISO/IEC 13818-1 |
 | 应用层 | CoAP | full | **常用** | CON/NON/ACK/RST、GET/POST/PUT/DELETE、Token、Option/Uri-Path/Observe/Block、Payload；DTLS 未解密 | RFC 7252 |
 | 应用层 | MQTT-SN | full | **基础** | ADVERTISE/CONNECT/PUBLISH/SUBSCRIBE/PING/DISCONNECT 等消息类型、Flags/Topic ID/Message ID；QoS 状态机未实现 | OASIS MQTT-SN 1.2 |
@@ -337,8 +339,6 @@ go test -tags full ./...
 
 | 类别 | 协议 / 能力 | 参考标准 |
 | --- | --- | --- |
-| 音视频 | RTMP | Adobe RTMP Specification 1.0 |
-| 音视频 | DASH manifest | ISO/IEC 23009-1 |
 | 物联网 | CoAP over TCP / DTLS | RFC 8323 / DTLS RFC 6347 |
 | 物联网 | MQTT-SN 完整 QoS | OASIS MQTT-SN 1.2 |
 | 物联网 | Modbus RTU | Modbus over Serial Line Specification |
@@ -353,7 +353,7 @@ go test -tags full ./...
 
 **过滤器**：新增协议同样支持协议谓词，例如 `mqtt`、`mqttsn`、`redis`、`vxlan`、`bgp`、
 `ssh`、`quic`、`http2`、`postgresql`、`mysql`、`radius`、`netflow`、`rtp`、`rtcp`、`coap`、`modbus`、
-`rtsp`、`mpegts`、`hls`、`h264`、`h265`、`vp8`、`vp9`、`av1`、`aac`、`opus`、`amqp`、`bacnet`、`opcua`、`lorawan`、`grpc`、`protobuf`、`websocket`、`sctp`、`wifi`、`radiotap`、`igmp`、`wireguard`。
+`rtsp`、`mpegts`、`hls`、`h264`、`h265`、`vp8`、`vp9`、`av1`、`aac`、`opus`、`dash`、`amqp`、`bacnet`、`opcua`、`lorawan`、`grpc`、`protobuf`、`websocket`、`sctp`、`wifi`、`radiotap`、`igmp`、`wireguard`。
 
 **未支持项**以本页“明确未支持”矩阵为准；过滤器只会识别已注册的协议层。
 
@@ -663,7 +663,7 @@ web/                        React + Vite + Tailwind + shadcn/ui
 | GET | `/api/filter/fields` | 可过滤字段（用于补全） |
 | GET | `/api/filter/schema` | 过滤器构造器字段目录（类型/运算符/枚举值） |
 | GET | `/api/update` | 自动更新状态 |
-| GET | `/api/export/pcap?filter=` | 导出 pcap |
+| GET | `/api/export/pcap?filter=&format=&from=&to=` | 导出 pcap/pcapng；`format=pcapng`，时间支持 RFC3339 或 Unix 秒 |
 | POST | `/api/import` | multipart `file` 导入 pcap/pcapng |
 
 示例：
@@ -679,6 +679,11 @@ curl -s -b /tmp/ebpfshark.cookie \
 curl -sN -b /tmp/ebpfshark.cookie 'localhost:9999/api/stream?filter=http' | head
 curl -s -b /tmp/ebpfshark.cookie \
   'localhost:9999/api/export/pcap?filter=dns' -o dns.pcap
+
+# pcapng + 最近 10 分钟
+curl -s -b /tmp/ebpfshark.cookie \
+  "localhost:9999/api/export/pcap?format=pcapng&from=$(date -d '10 minutes ago' +%s)" \
+  -o recent.pcapng
 ```
 
 ## 性能与资源
@@ -770,12 +775,13 @@ curl -s -b /tmp/ebpfshark.cookie \
 - [x] TLS 1.2/1.3 keylog 解密、WPA2-PSK CCMP/GCMP、SSH 可选会话密钥
 - [x] RTP H.264/H.265/VP8/VP9/AV1/AAC/Opus、RTSP、MPEG-TS、HLS
 - [x] CoAP、MQTT-SN、Modbus TCP、AMQP、BACnet/IP、OPC UA、LoRaWAN
-- [x] TLS 1.2 CCM、gRPC/protobuf、NetFlow v9/IPFIX 模板展开
+- [x] TLS 1.2 CCM、gRPC/protobuf、NetFlow v9/IPFIX 模板展开、DASH manifest、RTMP
+- [x] pcapng 导出、按时间范围导出
 - [x] 协议支持程度矩阵、RFC 参考、与 Wireshark/tcpdump 对比
 
 ### P0：协议覆盖
 
-- [ ] 音视频补齐：RTMP、DASH manifest、完整 SDP 编解码映射
+- [ ] 音视频补齐：完整 SDP 编解码映射
 - [ ] 物联网补齐：CoAP over TCP/DTLS、MQTT-SN 完整 QoS、Modbus RTU
 - [ ] LDAP/Kerberos
 - [ ] SCTP 分片重组
@@ -785,7 +791,7 @@ curl -s -b /tmp/ebpfshark.cookie \
 ### P1：抓包与性能
 
 - [ ] 内核态预过滤（把常用显示过滤器编译成 cBPF/eBPF）
-- [ ] pcapng 导出、按时间范围导出、抓包文件分片
+- [ ] 抓包文件分片
 - [ ] 高包速率下的 ring buffer/解码/SSE 压测与背压策略
 - [ ] Prometheus metrics / OpenTelemetry 导出
 

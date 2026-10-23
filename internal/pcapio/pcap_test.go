@@ -154,3 +154,19 @@ func TestUnknownFormat(t *testing.T) {
 		t.Fatal("expected an error")
 	}
 }
+
+func TestPcapngWriteRoundTrip(t *testing.T) {
+	now := time.Unix(1700000000, 123456000)
+	pkts := []*packet.Packet{{Time: now, LinkType: packet.LinkEthernet, WireLen: 34, CapLen: uint32(len(ethFrame())), Data: ethFrame()}}
+	var buf bytes.Buffer
+	if err := WriteNG(&buf, pkts); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Read(buf.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].LinkType != packet.LinkEthernet || got[0].Time.UnixMicro() != now.UnixMicro() {
+		t.Fatalf("got n=%d pkt=%+v time=%v want=%v", len(got), got[0], got[0].Time.UnixMicro(), now.UnixMicro())
+	}
+}
