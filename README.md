@@ -18,6 +18,18 @@ ebpfshark 通过 TCX 在 Linux 网卡 ingress/egress 抓包，浏览器中提供
 - **函数调用追踪（实验）**：CLI、Web 页面和 MCP 均可对显式 `binary:symbol` 挂 uprobe/uretprobe，查看调用耗时。
 - **服务化访问**：登录认证、SSE 实时推送、HTTP API、MCP；支持单二进制、Docker 和动态插件。
 
+## 界面预览
+
+| 实时抓包与协议分析 | 显示过滤器与可视化构造器 |
+| --- | --- |
+| ![实时抓包、协议树和十六进制视图](docs/screenshot.png) | ![过滤器构造器](docs/filter-builder.png) |
+| 报文列表、方向、协议树、hex/ASCII 与字段联动。 | 手写表达式（语法高亮、历史记录、协议搜索）或可视化组合条件。 |
+
+| Follow Stream | 更多操作：导入/导出 |
+| --- | --- |
+| ![TCP Follow Stream](docs/follow-stream.png) | ![更多菜单](docs/header-menu.png) |
+| 双向 TCP 会话、乱序/重传处理和流内搜索。 | pcap/pcapng 导入、全量或当前过滤结果导出。 |
+
 ## 快速开始
 
 ### Docker
