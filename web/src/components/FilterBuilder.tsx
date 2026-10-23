@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { FilterHighlight } from "@/components/FilterHighlight"
 import { api } from "@/lib/api"
 import { useI18n, type MessageKey } from "@/i18n"
 import { cn } from "@/lib/utils"
@@ -512,7 +513,11 @@ export function FilterBuilder({
               !expression && "text-muted-foreground/60",
             )}
           >
-            {expression || t("filter.previewEmpty")}
+            {expression ? (
+              <FilterHighlight text={expression} className="whitespace-pre-wrap break-all" />
+            ) : (
+              t("filter.previewEmpty")
+            )}
           </pre>
           <div className="min-h-[16px] text-2xs">
             {incomplete ? (
