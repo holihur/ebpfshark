@@ -1,6 +1,6 @@
 # ebpfshark
 
-> 基于 **eBPF** 的 Linux 抓包与协议分析工具 —— 类似 Wireshark，后端 Go，前端 React + TailwindCSS + shadcn/ui。
+> 基于 **eBPF** 的 Linux 抓包与协议分析工具。
 
 ebpfshark 使用 TCX（TC eXpress）把两个很小的 eBPF 程序挂到网卡的 ingress / egress 钩子上，抓到的报文通过 `BPF_MAP_TYPE_RINGBUF` 送到用户态；Go 后端完成协议解析、显示过滤、会话统计与 pcap 导入导出；浏览器端提供实时报文列表、Wireshark 风格协议树和十六进制视图。
 
