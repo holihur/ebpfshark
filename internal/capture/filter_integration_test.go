@@ -70,6 +70,10 @@ func TestKernelCaptureFilter(t *testing.T) {
 		_, _ = c.Write([]byte("ebpfshark-filter-test"))
 		_ = c.Close()
 	}
+	// Warm up neighbour resolution first: the matching UDP datagram must not be
+	// lost while the veth peer is still resolving ARP.
+	send(9998)
+	time.Sleep(300 * time.Millisecond)
 	send(9999)
 	send(9998)
 
