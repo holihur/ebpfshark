@@ -162,3 +162,35 @@ func TestRTPAV1(t *testing.T) {
 		t.Fatalf("layers=%v", c.m.Layers)
 	}
 }
+
+func TestGRPCMessage(t *testing.T) {
+	b := []byte{0, 0, 0, 0, 4, 0x08, 0x96, 0x01, 0x00}
+	c := appCtx(b)
+	parent := newNode("http2", 0, len(b))
+	if summary, ok := c.dissectGRPC(b, 0, parent); !ok || !strings.Contains(summary, "gRPC") || !c.m.HasLayer("grpc") {
+		t.Fatalf("summary=%q layers=%v", summary, c.m.Layers)
+	}
+}
+
+func TestNetFlowV9Template(t *testing.T) {
+	b := make([]byte, 20)
+	b[0], b[1] = 0, 9
+	b[2], b[3] = 0, 2
+	copy(b[16:20], []byte{0, 0, 0, 42})
+	tpl := []byte{0, 0, 0, 16, 1, 0, 0, 2, 0, 8, 0, 4, 0, 12, 0, 4}
+	data := []byte{1, 0, 0, 12, 10, 0, 0, 1, 10, 0, 0, 2}
+	b = append(b, tpl...)
+	b = append(b, data...)
+	c := appCtx(b)
+	if !c.dissectNetFlow(b, 0) || !strings.Contains(c.appInfo, "records") {
+		t.Fatalf("info=%q", c.appInfo)
+	}
+}
+
+func TestTLS12CCMSuites(t *testing.T) {
+	for _, suite := range []uint16{0xc09c, 0xc09d, 0xc0a0, 0xc0ac} {
+		if _, tag, ok := tls12CCMSuite(suite); !ok || (tag != 8 && tag != 16) {
+			t.Fatalf("suite %04x not mapped", suite)
+		}
+	}
+}

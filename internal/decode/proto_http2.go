@@ -135,6 +135,9 @@ func (c *ctx) dissectHTTP2(b []byte, base int) bool {
 			}
 			if typ == 0 {
 				f.add(c.newField(fmt.Sprintf("Payload (%d bytes)", len(body)), printablePreview(body, 300), base+off+9, len(body)))
+				if summary, ok := c.dissectGRPC(body, base+off+9, f); ok {
+					info = summary
+				}
 				break
 			}
 			seq, blockOff := c.m.TCPSeq, base+off+9+hdrOff

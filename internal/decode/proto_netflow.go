@@ -41,14 +41,7 @@ func (c *ctx) dissectNetFlow(b []byte, base int) bool {
 	case 9:
 		root.add(newField(fmt.Sprintf("Count: %d", be16(b[2:4])), "", base+2, 2), newField(fmt.Sprintf("SysUptime: %d", be32(b[4:8])), "", base+4, 4), newField(fmt.Sprintf("Unix Seconds: %d", be32(b[8:12])), "", base+8, 4), newField(fmt.Sprintf("Sequence: %d", be32(b[12:16])), "", base+12, 4))
 		p := 20
-		for p+4 <= len(b) {
-			id, l := be16(b[p:p+2]), int(be16(b[p+2:p+4]))
-			if l < 4 || p+l > len(b) {
-				break
-			}
-			root.add(newField(fmt.Sprintf("FlowSet %d (%d bytes)", id, l), "", base+p, l))
-			p += l
-		}
+		parseNetFlowSets(c, b, base, p, 9, be32(b[16:20]), root, &info)
 	case 10:
 		if len(b) < 16 {
 			return false
@@ -56,14 +49,7 @@ func (c *ctx) dissectNetFlow(b []byte, base int) bool {
 		total := int(be16(b[2:4]))
 		root.add(newField(fmt.Sprintf("Length: %d", total), "", base+2, 2), newField(fmt.Sprintf("Export Time: %d", be32(b[4:8])), "", base+4, 4), newField(fmt.Sprintf("Sequence: %d", be32(b[8:12])), "", base+8, 4), newField(fmt.Sprintf("Observation Domain: %d", be32(b[12:16])), "", base+12, 4))
 		p := 16
-		for p+4 <= len(b) {
-			id, l := be16(b[p:p+2]), int(be16(b[p+2:p+4]))
-			if l < 4 || p+l > len(b) {
-				break
-			}
-			root.add(newField(fmt.Sprintf("Set %d (%d bytes)", id, l), "", base+p, l))
-			p += l
-		}
+		parseNetFlowSets(c, b, base, p, 10, be32(b[12:16]), root, &info)
 	}
 	c.addRoot(root)
 	c.appInfo = shorten(info, 120)

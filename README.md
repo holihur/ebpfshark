@@ -295,11 +295,12 @@ go test -tags full ./...
 | 传输层 | TCP | core | **完整** | 端口、序列号、标志位、窗口、常用选项、校验和；流重组受捕获完整性限制 | RFC 9293 |
 | 传输层 | UDP | core | **完整** | 端口、长度、校验和 | RFC 768 |
 | 传输层 | SCTP | core | **基础** | 端口、Verification Tag、DATA/INIT/SACK/HEARTBEAT 等 chunk；不做分片重组 | RFC 9260 |
-| 传输层 | TLS | core | **常用 / 需密钥** | 记录层、ClientHello/ServerHello、SNI/ALPN、X.509、Alert；keylog 解密 TLS 1.3 AES-GCM、TLS 1.2 AES-GCM/CBC/ChaCha20；TLS 1.2 CCM 未解密 | RFC 5246 / 8446；NSS key log |
+| 传输层 | TLS | core | **常用 / 需密钥** | 记录层、ClientHello/ServerHello、SNI/ALPN、X.509、Alert；keylog 解密 TLS 1.3 AES-GCM、TLS 1.2 AES-GCM/CBC/ChaCha20/CCM | RFC 5246 / 8446；NSS key log |
 | 传输层 | QUIC | full | **常用 / 需密钥** | Long/Short Header、Initial 解密、帧、CRYPTO/TLS SNI、HTTP/3 帧、QPACK 静态/动态表；Handshake/1-RTT 需 keylog | RFC 9000 / 9001 / 9369；HTTP/3 RFC 9114；QPACK RFC 9204 |
 | 应用层 | DNS | core | **常用** | A/AAAA/CNAME/NS/PTR/MX/TXT/SOA/SRV/CAA/NAPTR/TLSA/SVCB/HTTPS；EDNS0/DNSSEC 标志；mDNS/LLMNR；未覆盖全部 RR 类型 | RFC 1035 等；EDNS0 RFC 6891；DNSSEC RFC 4034；SVCB/HTTPS RFC 9460 |
 | 应用层 | HTTP/1.x | core | **常用** | 请求行/状态行、Header、Body 预览；不做 chunked/gzip 解压或跨段 HTTP 消息重组 | RFC 9112 |
 | 应用层 | HLS manifest | core | **基础** | `#EXTM3U`、VERSION/TARGETDURATION/MEDIA-SEQUENCE/EXTINF/STREAM-INF、Segment 列表；不解析媒体分片 | RFC 8216 |
+| 应用层 | gRPC / protobuf | full | **基础** | gRPC length-prefixed message、压缩标记、protobuf wire 字段（varint/fixed/bytes/nested）；不依赖 `.proto` schema | gRPC HTTP/2 spec / protobuf encoding |
 | 应用层 | HTTP/2 | full | **常用** | 帧、HPACK 静态/动态表/Huffman、HEADERS+CONTINUATION、DATA 预览；从连接中间抓包时动态表可能缺失 | RFC 9113；HPACK RFC 7541 |
 | 应用层 | DHCP | core | **常用** | 完整 DHCPv4 消息类型、常用 option、Option Overload、Relay Agent、Classless Routes；未实现全部 255 个 option | RFC 2131 / 2132 |
 | 应用层 | NTP | full | **完整** | 版本、模式、Stratum、时间戳、扩展字段/MAC | RFC 5905 |
@@ -308,7 +309,7 @@ go test -tags full ./...
 | 应用层 | STUN | full | **常用** | Binding/Allocate 等方法、ERROR-CODE、XOR-PEER/RELAYED、ICE、Integrity；未覆盖全部属性 | RFC 8489 |
 | 应用层 | MySQL | full | **基础** | Handshake、OK/ERR、COM_QUERY/INIT_DB/STMT_PREPARE/EXECUTE；未覆盖全部命令/认证插件 | MySQL Client/Server Protocol（无 RFC） |
 | 应用层 | RADIUS | full | **基础** | Access/Accounting 报文、常用属性、EAP/Message-Authenticator | RFC 2865 / 2866 |
-| 应用层 | NetFlow / IPFIX | full | **基础** | v5 流记录、v9/IPFIX FlowSet/Set 概览；模板展开不完整 | NetFlow v5（Cisco）；v9 RFC 3954；IPFIX RFC 7011 |
+| 应用层 | NetFlow / IPFIX | full | **常用** | v5 流记录、v9/IPFIX Template/Data Set 展开、常用字段值、模板缓存 | NetFlow v5（Cisco）；v9 RFC 3954；IPFIX RFC 7011 |
 | 应用层 | RTP / RTCP | full | **常用** | RTP 头、CSRC/扩展、RTCP SR/RR/SDES/BYE/APP；H.264/H.265/VP8/VP9/AV1/AAC/Opus 载荷按启发式解析；完整 SDP 编解码映射未实现 | RFC 3550；H.264 RFC 6184；H.265 RFC 7798；VP8 RFC 7741；AAC RFC 3640；Opus RFC 7587 |
 | 应用层 | RTSP | full | **常用** | OPTIONS/DESCRIBE/SETUP/PLAY/PAUSE/TEARDOWN、Header、CSeq/Session、SDP body；不做 RTSP 消息分片重组 | RFC 2326 / RFC 7826 |
 | 封装 | MPEG-TS | full | **基础** | 188 字节 TS、PID/PUSI/CC、PAT/PMT、PES/PTS/DTS、PCR；不解析完整 ES 和加密 TS | ISO/IEC 13818-1 |
@@ -343,10 +344,7 @@ go test -tags full ./...
 | 物联网 | Modbus RTU | Modbus over Serial Line Specification |
 | 安全 | WPA3/SAE、WPA-TKIP | IEEE 802.11i / WPA3 Specification |
 | 安全 | 802.11 分片重组 | IEEE 802.11 |
-| 安全 / 其他 | TLS 1.2 CCM | RFC 6655 |
-| 安全 / 其他 | gRPC / protobuf | gRPC HTTP/2 spec / protobuf encoding |
 | 安全 / 其他 | LDAP / Kerberos | RFC 4511 / RFC 4120 |
-| 流分析 | 完整 NetFlow v9 / IPFIX 模板展开 | RFC 3954 / RFC 7011 |
 | 传输 | SCTP 分片重组 | RFC 9260 |
 | 网络 | IPv4/IPv6 分片重组 | RFC 791 / RFC 8200 |
 
@@ -355,7 +353,7 @@ go test -tags full ./...
 
 **过滤器**：新增协议同样支持协议谓词，例如 `mqtt`、`mqttsn`、`redis`、`vxlan`、`bgp`、
 `ssh`、`quic`、`http2`、`postgresql`、`mysql`、`radius`、`netflow`、`rtp`、`rtcp`、`coap`、`modbus`、
-`rtsp`、`mpegts`、`hls`、`h264`、`h265`、`vp8`、`vp9`、`av1`、`aac`、`opus`、`amqp`、`bacnet`、`opcua`、`lorawan`、`websocket`、`sctp`、`wifi`、`radiotap`、`igmp`、`wireguard`。
+`rtsp`、`mpegts`、`hls`、`h264`、`h265`、`vp8`、`vp9`、`av1`、`aac`、`opus`、`amqp`、`bacnet`、`opcua`、`lorawan`、`grpc`、`protobuf`、`websocket`、`sctp`、`wifi`、`radiotap`、`igmp`、`wireguard`。
 
 **未支持项**以本页“明确未支持”矩阵为准；过滤器只会识别已注册的协议层。
 
@@ -772,15 +770,15 @@ curl -s -b /tmp/ebpfshark.cookie \
 - [x] TLS 1.2/1.3 keylog 解密、WPA2-PSK CCMP/GCMP、SSH 可选会话密钥
 - [x] RTP H.264/H.265/VP8/VP9/AV1/AAC/Opus、RTSP、MPEG-TS、HLS
 - [x] CoAP、MQTT-SN、Modbus TCP、AMQP、BACnet/IP、OPC UA、LoRaWAN
-- [x] HLS manifest、RTP AV1
+- [x] HLS manifest、RTP AV1、TLS 1.2 CCM、gRPC/protobuf、NetFlow v9/IPFIX 模板展开
 - [x] 协议支持程度矩阵、RFC 参考、与 Wireshark/tcpdump 对比
 
 ### P0：协议覆盖
 
 - [ ] 音视频补齐：RTMP、DASH manifest、完整 SDP 编解码映射
 - [ ] 物联网补齐：CoAP over TCP/DTLS、MQTT-SN 完整 QoS、Modbus RTU
-- [ ] TLS 1.2 CCM、gRPC/protobuf、LDAP/Kerberos
-- [ ] 完整 NetFlow v9/IPFIX 模板展开、SCTP 分片重组
+- [ ] LDAP/Kerberos
+- [ ] SCTP 分片重组
 - [ ] IPv4/IPv6 分片重组、802.11 分片重组
 - [ ] WPA3/SAE、WPA-TKIP 无线解密
 

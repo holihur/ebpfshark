@@ -301,6 +301,44 @@ func tls12GCMKeys(master, clientRandom, serverRandom []byte, suite uint16) (ck, 
 	return kb[:keyLen], kb[keyLen : 2*keyLen], kb[2*keyLen : 2*keyLen+ivLen], kb[2*keyLen+ivLen : 2*keyLen+2*ivLen], true
 }
 
+func tls12CCMSuite(suite uint16) (keyLen, tagLen int, ok bool) {
+	switch suite {
+	case 0xc09c, 0xc09e, 0xc0ac:
+		return 16, 16, true
+	case 0xc09d, 0xc09f, 0xc0ad:
+		return 32, 16, true
+	case 0xc0a0, 0xc0a2, 0xc0ae:
+		return 16, 8, true
+	case 0xc0a1, 0xc0a3, 0xc0af:
+		return 32, 8, true
+	}
+	return 0, 0, false
+}
+
+func tls12CCMKeys(master, clientRandom, serverRandom []byte, suite uint16) (ck, sk, civ, siv []byte, tagLen int, ok bool) {
+	keyLen, tagLen, ok := tls12CCMSuite(suite)
+	if !ok {
+		return nil, nil, nil, nil, 0, false
+	}
+	seed := append(append([]byte(nil), serverRandom...), clientRandom...)
+	kb := tls12PRF(master, "key expansion", seed, 2*keyLen+8, sha256.New)
+	return kb[:keyLen], kb[keyLen : 2*keyLen], kb[2*keyLen : 2*keyLen+4], kb[2*keyLen+4 : 2*keyLen+8], tagLen, true
+}
+
+func tls12CCMOpen(key, fixedIV []byte, tagLen int, seq uint64, header, body []byte) ([]byte, bool) {
+	if len(body) < 8+tagLen {
+		return nil, false
+	}
+	explicit := body[:8]
+	ct := body[8 : len(body)-tagLen]
+	tag := body[len(body)-tagLen:]
+	nonce := append(append([]byte(nil), fixedIV...), explicit...)
+	aad := make([]byte, 8+len(header))
+	binary.BigEndian.PutUint64(aad, seq)
+	copy(aad[8:], header)
+	return ccmOpen(key, nonce, aad, ct, tag, tagLen)
+}
+
 func tls12Open(key, fixedIV []byte, suite uint16, seq uint64, header, body []byte) ([]byte, bool) {
 	aad := make([]byte, 8+len(header))
 	binary.BigEndian.PutUint64(aad, seq)
@@ -417,6 +455,21 @@ func (f *tlsFlow) decryptRecord(c *ctx, header, body []byte) ([]byte, byte, stri
 			for n := uint64(0); n < 128; n++ {
 				seq := start + n
 				if pt, ok := tls12Open(key, iv, f.suite, seq, header, body); ok {
+					*seqp = seq + 1
+					f.cache[cacheKey] = tlsCached{append([]byte(nil), pt...), 23, "CLIENT_RANDOM"}
+					return pt, 23, "CLIENT_RANDOM", true
+				}
+			}
+		}
+		if ck, sk, civ, siv, tagLen, ok := tls12CCMKeys(master, f.clientRandom, f.serverRandom, f.suite); ok {
+			key, iv, seqp := ck, civ, &f.seq12C
+			if dir == 1 {
+				key, iv, seqp = sk, siv, &f.seq12S
+			}
+			start := *seqp
+			for n := uint64(0); n < 128; n++ {
+				seq := start + n
+				if pt, ok := tls12CCMOpen(key, iv, tagLen, seq, header, body); ok {
 					*seqp = seq + 1
 					f.cache[cacheKey] = tlsCached{append([]byte(nil), pt...), 23, "CLIENT_RANDOM"}
 					return pt, 23, "CLIENT_RANDOM", true

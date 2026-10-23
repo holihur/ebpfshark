@@ -150,33 +150,47 @@ func wifiTK(ap, sta string) []byte {
 }
 
 func aesCCMOpen(key, nonce, aad, ct, tag []byte) ([]byte, bool) {
-	if len(key) != 16 || len(nonce) != 13 || len(tag) != 8 || len(ct) < 0 {
+	return ccmOpen(key, nonce, aad, ct, tag, len(tag))
+}
+
+// ccmOpen implements AES-CCM (RFC 3610) for the nonce/tag combinations used by
+// WPA2 CCMP and TLS 1.2 CCM. L is derived from the nonce length.
+func ccmOpen(key, nonce, aad, ct, tag []byte, tagLen int) ([]byte, bool) {
+	if len(key) != 16 && len(key) != 32 {
 		return nil, false
 	}
+	if len(nonce) < 7 || len(nonce) > 13 || tagLen < 4 || tagLen > 16 || tagLen%2 != 0 {
+		return nil, false
+	}
+	if len(tag) != tagLen {
+		return nil, false
+	}
+	L := 15 - len(nonce)
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, false
 	}
-	// B0: flags | nonce | msg length (L=2)
 	b0 := make([]byte, 16)
-	b0[0] = 0x59 // Adata + (M=8 -> 6<<3) + (L-1=1)
-	copy(b0[1:14], nonce)
-	binary.BigEndian.PutUint16(b0[14:16], uint16(len(ct)))
+	if len(aad) > 0 {
+		b0[0] |= 0x40
+	}
+	b0[0] |= byte((tagLen-2)/2) << 3
+	b0[0] |= byte(L - 1)
+	copy(b0[1:], nonce)
+	putCCMLength(b0[16-L:], uint64(len(ct)))
 	mac := make([]byte, 16)
 	block.Encrypt(mac, b0)
-	// AAD length and data.
 	if len(aad) > 0 {
 		var alen [2]byte
 		binary.BigEndian.PutUint16(alen[:], uint16(len(aad)))
 		mac = ccmMAC(block, mac, append(alen[:], aad...))
 	}
-	// Decrypt CTR.
 	pt := make([]byte, len(ct))
 	ctr := make([]byte, 16)
-	ctr[0] = 1 // L'=1
-	copy(ctr[1:14], nonce)
+	ctr[0] = byte(L - 1)
+	copy(ctr[1:], nonce)
 	for off := 0; off < len(ct); off += 16 {
-		binary.BigEndian.PutUint16(ctr[14:16], uint16(off/16+1))
+		putCCMLength(ctr[16-L:], uint64(off/16+1))
 		ks := make([]byte, 16)
 		block.Encrypt(ks, ctr)
 		for i := 0; i < 16 && off+i < len(ct); i++ {
@@ -184,18 +198,24 @@ func aesCCMOpen(key, nonce, aad, ct, tag []byte) ([]byte, bool) {
 		}
 	}
 	mac = ccmMAC(block, mac, pt)
-	// Tag = T xor S0.
 	s0 := make([]byte, 16)
-	ctr[14], ctr[15] = 0, 0
+	putCCMLength(ctr[16-L:], 0)
 	block.Encrypt(s0, ctr)
-	want := make([]byte, 8)
-	for i := 0; i < 8; i++ {
+	want := make([]byte, tagLen)
+	for i := 0; i < tagLen; i++ {
 		want[i] = mac[i] ^ s0[i]
 	}
 	if subtle.ConstantTimeCompare(want, tag) != 1 {
 		return nil, false
 	}
 	return pt, true
+}
+
+func putCCMLength(dst []byte, v uint64) {
+	for i := len(dst) - 1; i >= 0; i-- {
+		dst[i] = byte(v)
+		v >>= 8
+	}
 }
 
 func ccmMAC(block interface{ Encrypt(dst, src []byte) }, mac, data []byte) []byte {
