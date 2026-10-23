@@ -1,6 +1,7 @@
 import { memo } from "react"
 import {
   Download,
+  Columns3,
   FileUp,
   Languages,
   LogOut,
@@ -48,6 +49,7 @@ interface HeaderProps {
   onStop: () => void
   onClear: () => void
   onImport: (file: File) => void
+  onEditColumns: () => void
 }
 
 function HeaderImpl({
@@ -64,6 +66,7 @@ function HeaderImpl({
   onStop,
   onClear,
   onImport,
+  onEditColumns,
 }: HeaderProps) {
   const { t, locale, setLocale } = useI18n()
   const running = status?.capture.running ?? false
@@ -182,6 +185,11 @@ function HeaderImpl({
               <Download />
               {filter ? t("app.exportFiltered", { filter }) : t("app.exportFilteredNoFilter")}
             </a>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={onEditColumns}>
+            <Columns3 />
+            {t("columns.title")}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           {authEnabled && (

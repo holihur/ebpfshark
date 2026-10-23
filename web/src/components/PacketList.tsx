@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef } from "react"
+import { Fragment, memo, useEffect, useRef } from "react"
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -12,12 +12,18 @@ import { useVirtualList } from "@/hooks/useVirtualList"
 import { usePacketVersion, type PacketStore } from "@/lib/packetStore"
 import { formatRelative } from "@/lib/format"
 import { protoStyle } from "@/lib/protocols"
-import { useI18n } from "@/i18n"
+import { useI18n, type MessageKey } from "@/i18n"
 import { cn } from "@/lib/utils"
+import {
+  COLUMN_BY_ID,
+  columnTemplate,
+  columnsMinWidth,
+  type ColumnID,
+} from "@/lib/packetColumns"
+import type { Packet } from "@/lib/types"
 
 const ROW_HEIGHT = 28
-const GRID =
-  "grid grid-cols-[54px_94px_minmax(128px,1fr)_minmax(128px,1fr)_78px_58px_minmax(220px,2.4fr)_62px] items-center gap-2 px-2"
+const GRID_BASE = "grid items-center gap-2 px-2"
 
 interface PacketListProps {
   store: PacketStore
@@ -26,6 +32,7 @@ interface PacketListProps {
   filter: string
   running: boolean
   baseTime?: number
+  columns: ColumnID[]
   onSelect: (id: number) => void
   onStart: () => void
 }
@@ -37,6 +44,7 @@ function PacketListImpl({
   filter,
   running,
   baseTime,
+  columns,
   onSelect,
   onStart,
 }: PacketListProps) {
@@ -60,6 +68,89 @@ function PacketListImpl({
   const end = endFor(count)
   const visible = store.slice(start, end)
   const base = baseTime && baseTime > 0 ? baseTime : (store.at(0)?.time ?? 0)
+  const template = columnTemplate(columns)
+  const minWidth = columnsMinWidth(columns)
+
+  const renderCell = (id: ColumnID, packet: Packet) => {
+    switch (id) {
+      case "no":
+        return (
+          <span className="font-mono tabular-nums text-muted-foreground/70">{packet.id}</span>
+        )
+      case "time":
+        return (
+          <span className="font-mono tabular-nums text-muted-foreground">
+            {formatRelative(packet.time, base)}
+          </span>
+        )
+      case "source":
+        return (
+          <span className="flex min-w-0 items-center gap-1">
+            <span
+              title={packet.direction === "ingress" ? t("list.ingress") : t("list.egress")}
+            >
+              {packet.direction === "ingress" ? (
+                <ArrowDownLeft className="h-3 w-3 shrink-0 text-emerald-400/80" />
+              ) : (
+                <ArrowUpRight className="h-3 w-3 shrink-0 text-amber-400/80" />
+              )}
+            </span>
+            <span className="truncate font-mono text-foreground/90" title={packet.src}>
+              {packet.src}
+            </span>
+          </span>
+        )
+      case "destination":
+        return (
+          <span className="truncate font-mono text-foreground/90" title={packet.dst}>
+            {packet.dst}
+          </span>
+        )
+      case "protocol": {
+        const proto = protoStyle(packet.protocol)
+        return (
+          <span className="flex items-center gap-1.5">
+            <span className={cn("h-1.5 w-1.5 rounded-full", proto.dot)} />
+            <span className={cn("font-mono font-medium", proto.text)}>{packet.protocol}</span>
+          </span>
+        )
+      }
+      case "length":
+        return (
+          <span className="flex items-center justify-end gap-0.5 font-mono tabular-nums text-muted-foreground">
+            {packet.len}
+            {packet.truncated && (
+              <span title={t("list.truncated")}>
+                <Scissors className="h-2.5 w-2.5 text-amber-400/80" />
+              </span>
+            )}
+          </span>
+        )
+      case "info":
+        return (
+          <span className="truncate font-mono text-foreground/80" title={packet.info}>
+            {packet.info}
+          </span>
+        )
+      case "iface":
+        return (
+          <span className="truncate font-mono text-2xs text-muted-foreground/60">
+            {packet.iface}
+          </span>
+        )
+      case "cgroup":
+        return packet.cgroupID ? (
+          <span
+            className="truncate font-mono text-2xs tabular-nums text-muted-foreground/60"
+            title={`cgroup #${packet.cgroupID}`}
+          >
+            {packet.cgroupID}
+          </span>
+        ) : (
+          <span className="font-mono text-2xs text-muted-foreground/30">—</span>
+        )
+    }
+  }
 
   const handleKey = (e: React.KeyboardEvent) => {
     if (count === 0) return
@@ -92,18 +183,23 @@ function PacketListImpl({
       >
         <div
           className={cn(
-            GRID,
-            "h-7 min-w-[880px] text-2xs font-medium uppercase tracking-wide text-muted-foreground/80",
+            GRID_BASE,
+            "h-7 text-2xs font-medium uppercase tracking-wide text-muted-foreground/80",
           )}
+          style={{ gridTemplateColumns: template, minWidth }}
         >
-          <span>{t("list.no")}</span>
-          <span>{t("list.time")}</span>
-          <span>{t("list.source")}</span>
-          <span>{t("list.destination")}</span>
-          <span>{t("list.protocol")}</span>
-          <span className="text-right">{t("list.length")}</span>
-          <span>{t("list.info")}</span>
-          <span>{t("list.iface")}</span>
+          {columns.map((id) => {
+            const col = COLUMN_BY_ID.get(id)
+            if (!col) return null
+            return (
+              <span
+                key={id}
+                className={cn(col.align === "right" && "text-right")}
+              >
+                {t(col.labelKey as MessageKey)}
+              </span>
+            )
+          })}
         </div>
       </div>
 
@@ -115,10 +211,9 @@ function PacketListImpl({
           onKeyDown={handleKey}
           className="h-full overflow-auto outline-none scrollbar-thin"
         >
-          <div className="relative min-w-[880px]" style={{ height: totalHeight(count) }}>
+          <div className="relative" style={{ height: totalHeight(count), minWidth }}>
             {visible.map((packet, i) => {
               const index = start + i
-              const style = protoStyle(packet.protocol)
               const selected = packet.id === selectedId
               return (
                 <div
@@ -126,9 +221,13 @@ function PacketListImpl({
                   role="row"
                   aria-selected={selected}
                   onClick={() => onSelect(packet.id)}
-                  style={{ top: index * ROW_HEIGHT, height: ROW_HEIGHT }}
+                  style={{
+                    top: index * ROW_HEIGHT,
+                    height: ROW_HEIGHT,
+                    gridTemplateColumns: template,
+                  }}
                   className={cn(
-                    GRID,
+                    GRID_BASE,
                     "absolute left-0 right-0 cursor-default border-l-2 border-l-transparent text-[11px] transition-colors",
                     index % 2 === 1 && "bg-muted/[0.14]",
                     selected
@@ -136,53 +235,9 @@ function PacketListImpl({
                       : "hover:bg-accent/50",
                   )}
                 >
-                  <span className="font-mono tabular-nums text-muted-foreground/70">
-                    {packet.id}
-                  </span>
-                  <span className="font-mono tabular-nums text-muted-foreground">
-                    {formatRelative(packet.time, base)}
-                  </span>
-                  <span className="flex min-w-0 items-center gap-1">
-                    <span
-                      title={
-                        packet.direction === "ingress"
-                          ? t("list.ingress")
-                          : t("list.egress")
-                      }
-                    >
-                      {packet.direction === "ingress" ? (
-                        <ArrowDownLeft className="h-3 w-3 shrink-0 text-emerald-400/80" />
-                      ) : (
-                        <ArrowUpRight className="h-3 w-3 shrink-0 text-amber-400/80" />
-                      )}
-                    </span>
-                    <span className="truncate font-mono text-foreground/90" title={packet.src}>
-                      {packet.src}
-                    </span>
-                  </span>
-                  <span className="truncate font-mono text-foreground/90" title={packet.dst}>
-                    {packet.dst}
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className={cn("h-1.5 w-1.5 rounded-full", style.dot)} />
-                    <span className={cn("font-mono font-medium", style.text)}>
-                      {packet.protocol}
-                    </span>
-                  </span>
-                  <span className="flex items-center justify-end gap-0.5 font-mono tabular-nums text-muted-foreground">
-                    {packet.len}
-                    {packet.truncated && (
-                      <span title={t("list.truncated")}>
-                        <Scissors className="h-2.5 w-2.5 text-amber-400/80" />
-                      </span>
-                    )}
-                  </span>
-                  <span className="truncate font-mono text-foreground/80" title={packet.info}>
-                    {packet.info}
-                  </span>
-                  <span className="truncate font-mono text-2xs text-muted-foreground/60">
-                    {packet.iface}
-                  </span>
+                  {columns.map((id) => (
+                    <Fragment key={id}>{renderCell(id, packet)}</Fragment>
+                  ))}
                 </div>
               )
             })}

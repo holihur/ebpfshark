@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Toaster, toast } from "sonner"
+import { ColumnSettingsDialog } from "@/components/ColumnSettingsDialog"
 import { DetailPanel } from "@/components/DetailPanel"
 import { FilterBar } from "@/components/FilterBar"
 import { Header } from "@/components/Header"
@@ -12,6 +13,7 @@ import { useCapture } from "@/hooks/useCapture"
 import { useTheme } from "@/hooks/useTheme"
 import { useI18n } from "@/i18n"
 import { api } from "@/lib/api"
+import { usePacketColumns } from "@/lib/packetColumns"
 import type { PacketDetail, ProcessInfo } from "@/lib/types"
 
 function errorMessage(err: unknown): string {
@@ -36,6 +38,8 @@ export default function App() {
   const [cgroupFilter, setCgroupFilter] = useState<ProcessInfo | null>(null)
   const [busy, setBusy] = useState(false)
   const [splitPct, setSplitPct] = useState(44)
+  const [columns, setColumns] = usePacketColumns()
+  const [columnsOpen, setColumnsOpen] = useState(false)
 
   const workRef = useRef<HTMLDivElement>(null)
   const initialized = useRef(false)
@@ -233,6 +237,7 @@ export default function App() {
           onStop={handleStop}
           onClear={handleClear}
           onImport={handleImport}
+          onEditColumns={() => setColumnsOpen(true)}
         />
 
         <FilterBar
@@ -282,6 +287,7 @@ export default function App() {
                       ? Date.parse(capture.status.store.firstPacket) * 1e6
                       : undefined
                   }
+                  columns={columns}
                   onSelect={setSelectedId}
                   onStart={handleStart}
                 />
@@ -313,6 +319,13 @@ export default function App() {
           </main>
         </div>
       </div>
+
+      <ColumnSettingsDialog
+        open={columnsOpen}
+        onOpenChange={setColumnsOpen}
+        columns={columns}
+        onChange={setColumns}
+      />
 
       <Toaster
         theme={theme}
