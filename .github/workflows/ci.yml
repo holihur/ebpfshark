@@ -71,6 +71,9 @@ jobs:
       - name: Fuzz full decode
         run: go test -tags full -run=^$ -fuzz=FuzzDecode -fuzztime=8s ./internal/decode
 
+      - name: Fuzz capture filter compiler
+        run: go test -run=^$ -fuzz=FuzzCompileCapture -fuzztime=8s ./internal/filter
+
       - name: Benchmark smoke
         run: go test -run=^$ -bench=. -benchmem -benchtime=50ms ./internal/decode ./internal/filter ./internal/stream
 
