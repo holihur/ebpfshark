@@ -59,7 +59,9 @@ func (c *ctx) dissectRTP(b []byte, base int) bool {
 		}
 	}
 	if off < len(b) {
-		root.add(newField(fmt.Sprintf("Payload (%d bytes)", len(b)-off), hexPreview(b[off:], 32), base+off, len(b)-off))
+		payload := b[off:]
+		root.add(newField(fmt.Sprintf("Payload (%d bytes, %s)", len(payload), rtpPayloadName(b[1]&0x7f)), hexPreview(payload, 32), base+off, len(payload)))
+		c.dissectRTPMedia(b[1]&0x7f, payload, base+off, root)
 	}
 	c.addRoot(root)
 	c.appInfo = fmt.Sprintf("RTP PT=%d seq=%d", b[1]&0x7f, be16(b[2:4]))

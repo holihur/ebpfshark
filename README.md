@@ -283,7 +283,12 @@ go test -tags full ./...
 | 应用层 | MySQL | full | **基础** | Handshake、OK/ERR、COM_QUERY/INIT_DB/STMT_PREPARE/EXECUTE；未覆盖全部命令/认证插件 | MySQL Client/Server Protocol（无 RFC） |
 | 应用层 | RADIUS | full | **基础** | Access/Accounting 报文、常用属性、EAP/Message-Authenticator | RFC 2865 / 2866 |
 | 应用层 | NetFlow / IPFIX | full | **基础** | v5 流记录、v9/IPFIX FlowSet/Set 概览；模板展开不完整 | NetFlow v5（Cisco）；v9 RFC 3954；IPFIX RFC 7011 |
-| 应用层 | RTP / RTCP | full | **基础** | RTP 头、CSRC/扩展、RTCP SR/RR/SDES/BYE/APP；**不解析 H.264/H.265/VP8/VP9/AV1/AAC/Opus 等媒体载荷** | RFC 3550 |
+| 应用层 | RTP / RTCP | full | **常用** | RTP 头、CSRC/扩展、RTCP SR/RR/SDES/BYE/APP；H.264/H.265/VP8/VP9/AAC/Opus 载荷按启发式解析；AV1、完整 SDP 编解码映射未实现 | RFC 3550；H.264 RFC 6184；H.265 RFC 7798；VP8 RFC 7741；AAC RFC 3640；Opus RFC 7587 |
+| 应用层 | RTSP | full | **常用** | OPTIONS/DESCRIBE/SETUP/PLAY/PAUSE/TEARDOWN、Header、CSeq/Session、SDP body；不做 RTSP 消息分片重组 | RFC 2326 / RFC 7826 |
+| 封装 | MPEG-TS | full | **基础** | 188 字节 TS、PID/PUSI/CC、PAT/PMT、PES/PTS/DTS、PCR；不解析完整 ES 和加密 TS | ISO/IEC 13818-1 |
+| 应用层 | CoAP | full | **常用** | CON/NON/ACK/RST、GET/POST/PUT/DELETE、Token、Option/Uri-Path/Observe/Block、Payload；DTLS 未解密 | RFC 7252 |
+| 应用层 | MQTT-SN | full | **基础** | ADVERTISE/CONNECT/PUBLISH/SUBSCRIBE/PING/DISCONNECT 等消息类型、Flags/Topic ID/Message ID；QoS 状态机未实现 | OASIS MQTT-SN 1.2 |
+| 应用层 | Modbus TCP | full | **基础** | MBAP、功能码 1/2/3/4/5/6/15/16/23/43、常用请求/响应字段、异常码；不做串行 RTU 和时间序列 | Modbus Application Protocol V1.1b3 / Modbus TCP Implementation Guide |
 | 应用层 | WebSocket | full | **基础** | Text/Binary/Ping/Pong/Close 帧、掩码、长度；不做分片消息重组 | RFC 6455 |
 | 应用层 | MQTT | full | **常用** | 14 种报文、CONNECT/Will/用户名密码、QoS、SUBSCRIBE 选项、v5 Properties；v5 属性仍为启发式识别 | MQTT 3.1.1 / 5.0（OASIS） |
 | 应用层 | Redis | full | **常用** | RESP2/RESP3 数组、Map、Set、Push、Double、Bool、BigNum、Verbatim、Blob Error；内联命令；chunked string/attribute 仅有限展开 | RESP2 / RESP3（Redis 规范） |
@@ -301,16 +306,8 @@ go test -tags full ./...
 
 | 类别 | 协议 / 能力 | 参考标准 |
 | --- | --- | --- |
-| 音视频 | RTSP | RFC 2326 / RFC 7826 |
-| 音视频 | MPEG-TS | ISO/IEC 13818-1 |
 | 音视频 | RTMP | Adobe RTMP Specification 1.0 |
 | 音视频 | HLS / DASH manifest | RFC 8216 / ISO/IEC 23009-1 |
-| 音视频 | RTP H.264 / H.265 | RFC 6184 / RFC 7798 |
-| 音视频 | RTP VP8 / VP9 / AV1 | RFC 7741 / RTP VP9 payload spec / AV1 RTP payload spec |
-| 音视频 | RTP AAC / Opus | RFC 3640 / RFC 7587 |
-| 物联网 | CoAP / CoAP over TCP | RFC 7252 / RFC 8323 |
-| 物联网 | MQTT-SN | OASIS MQTT-SN 1.2 |
-| 物联网 | Modbus TCP | Modbus Application Protocol V1.1b3 / Modbus TCP Implementation Guide |
 | 物联网 | AMQP 0-9-1 | AMQP 0-9-1 Specification |
 | 物联网 | BACnet/IP | ASHRAE 135 |
 | 物联网 | OPC UA Binary | IEC 62541 |
@@ -324,8 +321,9 @@ go test -tags full ./...
 > 这些条目是当前发布版的真实边界；不要按“已支持”理解。新增协议时应同时更新本矩阵、过滤器 schema 和测试。
 
 
-**过滤器**：新增协议同样支持协议谓词，例如 `mqtt`、`redis`、`vxlan`、`bgp`、
-`ssh`、`quic`、`http2`、`postgresql`、`mysql`、`radius`、`netflow`、`rtp`、`rtcp`、`websocket`、`sctp`、`wifi`、`radiotap`、`igmp`、`wireguard`。
+**过滤器**：新增协议同样支持协议谓词，例如 `mqtt`、`mqttsn`、`redis`、`vxlan`、`bgp`、
+`ssh`、`quic`、`http2`、`postgresql`、`mysql`、`radius`、`netflow`、`rtp`、`rtcp`、`coap`、`modbus`、
+`rtsp`、`mpegts`、`h264`、`h265`、`vp8`、`vp9`、`aac`、`opus`、`websocket`、`sctp`、`wifi`、`radiotap`、`igmp`、`wireguard`。
 
 **未支持项**以本页“明确未支持”矩阵为准；过滤器只会识别已注册的协议层。
 

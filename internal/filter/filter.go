@@ -130,6 +130,30 @@ func (n layerNode) Match(m *packet.Meta) bool {
 		return m.HasLayer("rtp")
 	case "rtcp":
 		return m.HasLayer("rtcp")
+	case "coap":
+		return m.HasLayer("coap")
+	case "modbus":
+		return m.HasLayer("modbus")
+	case "mqttsn":
+		return m.HasLayer("mqttsn")
+	case "rtsp":
+		return m.HasLayer("rtsp")
+	case "mpegts":
+		return m.HasLayer("mpegts")
+	case "h264":
+		return m.HasLayer("h264")
+	case "h265":
+		return m.HasLayer("h265")
+	case "vp8":
+		return m.HasLayer("vp8")
+	case "vp9":
+		return m.HasLayer("vp9")
+	case "av1":
+		return m.HasLayer("av1")
+	case "aac":
+		return m.HasLayer("aac")
+	case "opus":
+		return m.HasLayer("opus")
 	case "websocket":
 		return m.HasLayer("websocket")
 	case "wifi":
@@ -678,7 +702,7 @@ func isProtoName(s string) bool {
 		"ntp", "snmp", "syslog", "stun", "mqtt", "redis", "postgresql", "postgres",
 		"bgp", "ssh", "ssdp", "sip", "quic", "http2", "vxlan", "mpls", "gre",
 		"igmp", "wireguard", "wg", "sctp", "mysql", "radius", "netflow",
-		"rtp", "rtcp", "websocket", "wifi", "radiotap", "eapol":
+		"rtp", "rtcp", "websocket", "wifi", "radiotap", "eapol", "coap", "modbus", "mqttsn", "rtsp", "mpegts", "h264", "h265", "vp8", "vp9", "av1", "aac", "opus":
 		return true
 	}
 	return false
