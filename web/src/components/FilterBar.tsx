@@ -29,6 +29,8 @@ const FilterBuilder = lazy(() => import("@/components/FilterBuilder").then((m) =
 import { useI18n } from "@/i18n"
 import { cn } from "@/lib/utils"
 import { useFilterHistory } from "@/lib/filterHistory"
+import { api } from "@/lib/api"
+import type { FilterField } from "@/lib/types"
 
 interface FilterBarProps {
   filter: string
@@ -61,14 +63,23 @@ export function FilterBar({
   const [draft, setDraft] = useState(filter)
   const [builderOpen, setBuilderOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [fields, setFields] = useState<FilterField[]>([])
   const { history, remember, clear: clearHistory } = useFilterHistory()
   const suggestions = history
     .filter((item) => !draft.trim() || item.toLowerCase().includes(draft.trim().toLowerCase()))
     .slice(0, 8)
+  const partial = draft.match(/([A-Za-z_][\w.-]*)$/)?.[1]?.toLowerCase() ?? ""
+  const fieldSuggestions = fields
+    .filter((field) => !partial || field.name.toLowerCase().startsWith(partial))
+    .slice(0, 10)
   const inputRef = useRef<HTMLInputElement>(null)
   const highlightRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => setDraft(filter), [filter])
+
+  useEffect(() => {
+    api.filterSchema().then((res) => setFields(res.fields)).catch(() => {})
+  }, [])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -121,11 +132,11 @@ export function FilterBar({
               "relative h-8 bg-transparent pl-8 pr-[104px] font-mono text-[11px] text-transparent caret-foreground selection:bg-primary/30",
               error && "border-destructive/70 focus-visible:ring-destructive/40",
             )}
-            onFocus={() => setHistoryOpen(history.length > 0)}
+            onFocus={() => setHistoryOpen(true)}
             onBlur={() => window.setTimeout(() => setHistoryOpen(false), 150)}
             onChange={(e) => {
               setDraft(e.target.value)
-              setHistoryOpen(history.length > 0)
+              setHistoryOpen(true)
             }}
             onScroll={(e) => {
               if (highlightRef.current) highlightRef.current.scrollLeft = e.currentTarget.scrollLeft
@@ -171,7 +182,7 @@ export function FilterBar({
               {loading ? "…" : t("filter.apply")}
             </Button>
           </div>
-          {historyOpen && suggestions.length > 0 && (
+          {historyOpen && (suggestions.length > 0 || fieldSuggestions.length > 0) && (
             <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-50 overflow-hidden rounded-md border bg-popover shadow-xl">
               <div className="flex items-center justify-between border-b px-2 py-1 text-2xs text-muted-foreground">
                 <span>{t("filter.history")}</span>
@@ -202,6 +213,28 @@ export function FilterBar({
                   <FilterHighlight text={item} />
                 </button>
               ))}
+              {fieldSuggestions.length > 0 && (
+                <>
+                  <div className="border-t px-2 py-1 text-2xs text-muted-foreground">{t("filter.fields")}</div>
+                  {fieldSuggestions.map((field) => (
+                    <button
+                      key={field.name}
+                      type="button"
+                      className="flex w-full items-center gap-2 px-2 py-1 text-left font-mono text-[11px] hover:bg-accent"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        const next = draft.replace(/[A-Za-z_][\w.-]*$/, `${field.name} `)
+                        setDraft(next)
+                        setHistoryOpen(false)
+                        inputRef.current?.focus()
+                      }}
+                    >
+                      <span className="min-w-0 flex-1 truncate">{field.name}</span>
+                      <span className="shrink-0 text-2xs text-muted-foreground/60">{field.type}</span>
+                    </button>
+                  ))}
+                </>
+              )}
             </div>
           )}
         </div>
