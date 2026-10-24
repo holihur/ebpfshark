@@ -25,11 +25,19 @@ import (
 	"ebpfshark/internal/decode"
 	"ebpfshark/internal/filter"
 	"ebpfshark/internal/mcpserver"
+	"ebpfshark/internal/mitm"
 	"ebpfshark/internal/probe"
 	"ebpfshark/internal/server"
 	"ebpfshark/internal/store"
 	"ebpfshark/internal/update"
 )
+
+func defaultMITMCADir() string {
+	if dir, err := os.UserConfigDir(); err == nil && dir != "" {
+		return filepath.Join(dir, "ebpfshark", "mitm")
+	}
+	return "/var/lib/ebpfshark/mitm"
+}
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "mcp" {
@@ -70,6 +78,8 @@ func main() {
 	sshKeys := flag.String("ssh-keys", env("EBPFSHARK_SSH_KEYS", ""), "JSON session keys for opt-in SSH AES-CTR decryption")
 	wifiPSK := flag.String("wifi-psk", env("EBPFSHARK_WIFI_PSK", ""), "WPA2-PSK passphrase for CCMP frame decryption")
 	wifiKeys := flag.String("wifi-keys", env("EBPFSHARK_WIFI_KEYS", ""), "JSON PMK/PTK session keys for WPA2/WPA3 (missing handshake)")
+	mitmAddr := flag.String("mitm", env("EBPFSHARK_MITM", "127.0.0.1:18080"), "local HTTPS MITM proxy address (empty disables)")
+	mitmCADir := flag.String("mitm-ca-dir", env("EBPFSHARK_MITM_CA_DIR", defaultMITMCADir()), "directory for the MITM CA certificate and key")
 	noMCP := flag.Bool("no-mcp", false, "disable the HTTP MCP endpoint")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
@@ -185,7 +195,26 @@ func main() {
 	st := store.New(*maxPackets)
 	st.SetStreamBudget(int64(*streamBudget) << 20)
 	mgr := capture.NewManager(st, log)
+	var mitmProxy *mitm.Proxy
+	if *mitmAddr != "" {
+		proxy, err := mitm.New(mitm.Config{Addr: *mitmAddr, CADir: *mitmCADir, Store: st, Logger: log})
+		if err != nil {
+			log.Error("initialize MITM proxy failed", "err", err)
+		} else if err := proxy.Start(); err != nil {
+			log.Warn("start MITM proxy failed; trying a random loopback port", "addr", *mitmAddr, "err", err)
+			if err := proxy.Reconfigure("127.0.0.1:0"); err != nil {
+				log.Error("start MITM proxy failed", "err", err)
+			} else {
+				mitmProxy = proxy
+				defer proxy.Close()
+			}
+		} else {
+			mitmProxy = proxy
+			defer proxy.Close()
+		}
+	}
 	srv := server.New(st, mgr, log, webFS, selfPort, authSvc)
+	srv.SetMITM(mitmProxy)
 	srv.SetSecureCookie(*secureCookie)
 	defer srv.StopTrace()
 

@@ -1,6 +1,7 @@
 import type {
   FilterField,
   DecryptStatus,
+  MITMStatus,
   FilterFields,
   FilterValidation,
   Flow,
@@ -101,6 +102,12 @@ export const api = {
       body: JSON.stringify({ cgroup }),
     }),
   decryptStatus: () => request<DecryptStatus>("/api/decrypt"),
+  mitmStatus: () => request<MITMStatus>("/api/mitm"),
+  setMITM: (enabled: boolean, addr: string) =>
+    request<MITMStatus>("/api/mitm", {
+      method: "POST",
+      body: JSON.stringify({ enabled, addr }),
+    }),
   setTLSKeylog: (keylog: string) =>
     request<{ tlsKeylogEntries: number }>("/api/decrypt/tls-keylog", {
       method: "POST",

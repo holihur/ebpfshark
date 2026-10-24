@@ -3,6 +3,7 @@ import { Toaster, toast } from "sonner"
 import { ColumnSettingsDialog } from "@/components/ColumnSettingsDialog"
 import { DecryptionDialog } from "@/components/DecryptionDialog"
 import { DetailPanel } from "@/components/DetailPanel"
+import { MITMDialog } from "@/components/MITMDialog"
 import { FilterBar } from "@/components/FilterBar"
 import { Header } from "@/components/Header"
 import { PacketList } from "@/components/PacketList"
@@ -42,6 +43,7 @@ export default function App() {
   const [columns, setColumns] = usePacketColumns()
   const [columnsOpen, setColumnsOpen] = useState(false)
   const [decryptOpen, setDecryptOpen] = useState(false)
+  const [mitmOpen, setMitmOpen] = useState(false)
 
   const workRef = useRef<HTMLDivElement>(null)
   const initialized = useRef(false)
@@ -241,6 +243,7 @@ export default function App() {
           onImport={handleImport}
           onEditColumns={() => setColumnsOpen(true)}
           onDecryption={() => setDecryptOpen(true)}
+          onMITM={() => setMitmOpen(true)}
         />
 
         <FilterBar
@@ -331,6 +334,8 @@ export default function App() {
       />
 
       <DecryptionDialog open={decryptOpen} onOpenChange={setDecryptOpen} />
+
+      <MITMDialog open={mitmOpen} onOpenChange={setMitmOpen} />
 
       <Toaster
         theme={theme}

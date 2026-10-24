@@ -10,6 +10,8 @@ require (
 
 require github.com/andybalholm/brotli v1.2.6
 
+require golang.org/x/text v0.43.0 // indirect
+
 require (
 	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/modelcontextprotocol/go-sdk v1.8.0
@@ -19,6 +21,6 @@ require (
 	golang.org/x/crypto v0.58.0
 	golang.org/x/net v0.61.0
 	golang.org/x/oauth2 v0.35.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 )

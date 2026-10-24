@@ -26,6 +26,7 @@ import (
 	"ebpfshark/internal/capture"
 	"ebpfshark/internal/decode"
 	"ebpfshark/internal/filter"
+	"ebpfshark/internal/mitm"
 	"ebpfshark/internal/packet"
 	"ebpfshark/internal/pcapio"
 	"ebpfshark/internal/probe"
@@ -52,6 +53,7 @@ type Server struct {
 	secureCookie bool
 	mcpHandler   http.Handler
 	updateStatus func() any
+	mitm         *mitm.Proxy
 
 	detailMu    sync.Mutex
 	detailLRU   *list.List
@@ -136,6 +138,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/import", s.handleImport)
 	mux.HandleFunc("GET /api/version", s.handleVersion)
 	mux.HandleFunc("GET /api/update", s.handleUpdate)
+	mux.HandleFunc("GET /api/mitm", s.handleMITMStatus)
+	mux.HandleFunc("POST /api/mitm", s.handleMITMConfig)
+	mux.HandleFunc("GET /api/mitm/ca", s.handleMITMCA)
 	mux.HandleFunc("GET /api/trace", s.handleTrace)
 	mux.HandleFunc("GET /api/trace/inspect", s.handleTraceInspect)
 	mux.HandleFunc("GET /api/trace/symbols", s.handleTraceSymbols)
@@ -275,6 +280,54 @@ func clientIP(r *http.Request) string {
 		return r.RemoteAddr
 	}
 	return host
+}
+
+// SetMITM attaches the optional local HTTPS MITM proxy status/API.
+func (s *Server) SetMITM(p *mitm.Proxy) { s.mitm = p }
+
+func (s *Server) handleMITMStatus(w http.ResponseWriter, r *http.Request) {
+	if s.mitm == nil {
+		writeJSON(w, http.StatusOK, mitm.Status{Enabled: false})
+		return
+	}
+	writeJSON(w, http.StatusOK, s.mitm.Status())
+}
+
+func (s *Server) handleMITMConfig(w http.ResponseWriter, r *http.Request) {
+	if s.mitm == nil {
+		writeError(w, http.StatusNotFound, "MITM proxy is disabled")
+		return
+	}
+	var req struct {
+		Enabled bool   `json:"enabled"`
+		Addr    string `json:"addr"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if req.Enabled {
+		if req.Addr == "" {
+			req.Addr = "127.0.0.1:18080"
+		}
+		if err := s.mitm.Reconfigure(req.Addr); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	} else {
+		s.mitm.Close()
+	}
+	writeJSON(w, http.StatusOK, s.mitm.Status())
+}
+
+func (s *Server) handleMITMCA(w http.ResponseWriter, r *http.Request) {
+	if s.mitm == nil {
+		writeError(w, http.StatusNotFound, "MITM proxy is disabled")
+		return
+	}
+	w.Header().Set("Content-Type", "application/x-x509-ca-cert")
+	w.Header().Set("Content-Disposition", `attachment; filename="ebpfshark-mitm-ca.crt"`)
+	_, _ = w.Write(s.mitm.CACertPEM())
 }
 
 func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {

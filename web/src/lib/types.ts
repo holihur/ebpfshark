@@ -77,6 +77,12 @@ export interface CaptureStatus {
   lastError?: string
 }
 
+export interface MITMStatus {
+  enabled: boolean
+  addr?: string
+  caPath?: string
+}
+
 export interface DecryptStatus {
   tlsKeylogEntries: number
   wifiPSKConfigured: boolean

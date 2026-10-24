@@ -17,6 +17,9 @@
 | POST | `/api/capture/cgroup` | `{cgroup}` 运行中动态更新 cgroup 过滤（空字符串清除） |
 | GET | `/api/processes?q=&limit=` | 进程列表及 cgroup ID/路径，用于按进程过滤 |
 | GET | `/api/decrypt` | TLS keylog / Wi-Fi PSK 配置状态（不返回密钥） |
+| GET | `/api/mitm` | 本地 HTTPS MITM 代理状态 |
+| POST | `/api/mitm` | `{enabled, addr}` 启停/重启 MITM 代理 |
+| GET | `/api/mitm/ca` | 下载本地 MITM CA 证书 |
 | POST | `/api/decrypt/tls-keylog` | `{keylog}` 加载 SSLKEYLOGFILE 内容；空字符串清除 |
 | POST | `/api/decrypt/tls-keylog-auto` | `{enabled}` 开启/关闭自动发现进程 keylog |
 | POST | `/api/decrypt/wifi-psk` | `{psk}` 加载/清除 WPA2-PSK |

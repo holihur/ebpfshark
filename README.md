@@ -13,7 +13,7 @@ ebpfshark 通过 TCX 在 Linux 网卡 ingress/egress 抓包，浏览器中提供
 - **显示过滤器**：字段比较、CIDR、端口范围、布尔表达式、`contains`，以及可视化构造器。
 - **混合过滤**：安全可下推的 L2–L4 条件编译进 eBPF，应用层字段和复杂表达式继续在用户态精确匹配。
 - **TCP 流分析**：乱序/重传/重叠处理、Follow Stream、双向会话统计。
-- **AI / HTTPS 解析**：Anthropic Messages、OpenAI Chat Completions、OpenAI Responses，支持 JSON/SSE；加载 TLS keylog 后可查看 HTTPS 最终明文。
+- **AI / HTTPS 解析**：Anthropic Messages、OpenAI Chat Completions、OpenAI Responses，支持 JSON/SSE；支持 TLS keylog，以及可选的本地 HTTPS MITM 代理（页面设置、CA 下载）。
 - **范围抓包**：左侧进程列表直接按 cgroup 过滤；也支持 cgroup v2 路径、Pod/容器片段。
 - **函数调用追踪（实验）**：CLI、Web 页面和 MCP 均可对显式 `binary:symbol` 挂 uprobe/uretprobe；Web 支持进程 PID 提示和函数符号列表。
 - **服务化访问**：登录认证、SSE 实时推送、HTTP API、MCP；支持单二进制、Docker 和动态插件。
@@ -74,6 +74,16 @@ sudo ./bin/ebpfshark -addr :9999 -capture eth0
 
 首次打开 `http://localhost:9999`，使用启动时打印的 `admin` 凭据登录。
 
+### HTTPS 明文（MITM）
+
+默认在 `127.0.0.1:18080` 启动本地 HTTPS 解密代理（端口占用时自动换一个回环端口）。进入 **More → HTTPS decryption proxy**：
+
+1. 下载 CA 证书并在客户端信任，或设置 `SSL_CERT_FILE` / `NODE_EXTRA_CA_CERTS`
+2. 设置 `HTTPS_PROXY=http://<页面显示的地址>`
+3. 代理解密后的请求/响应会作为 `mitm` 虚拟报文进入报文列表，可直接用 `http`、`https`、`ai` 等过滤器查看
+
+不使用代理时，HTTPS 仍只能看到 TLS 元数据。证书 pinning、强制代理外的直连和部分非 HTTP 协议无法通过 MITM 解密。
+
 ## 函数调用追踪
 
 CLI：
@@ -111,6 +121,8 @@ Web 侧栏 **Trace** 标签和 MCP 的 `start_function_trace` / `query_function_
 -capture-filter ""       可选显示过滤器；其 L2–L4 子集会在 eBPF 中预过滤
 -tls-keylog ""           NSS SSLKEYLOGFILE，用于 TLS 解密
 -tls-keylog-auto true    自动发现进程的 SSLKEYLOGFILE / --tls-keylog
+-mitm 127.0.0.1:18080   本地 HTTPS MITM 代理；留空关闭
+-mitm-ca-dir DIR        MITM CA 证书/私钥目录
 -wifi-psk ""             WPA2-PSK，解密 CCMP/GCMP 无线数据帧
 -plugins ""              动态 Go .so 协议插件
 ```
