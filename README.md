@@ -1,10 +1,10 @@
-# eBPF Analyzer
+# sisyphus
 
 > 基于 **eBPF** 的 Linux 网络、进程与函数分析器。
 
 ebpfshark 通过 TCX 在 Linux 网卡 ingress/egress 抓包，浏览器中提供实时报文列表、Wireshark 风格协议树和十六进制视图；同时提供 HTTP/SSE API、MCP 和 pcap 导入导出。
 
-![ebpfshark screenshot](docs/screenshot.png)
+![sisyphus screenshot](docs/screenshot.png)
 
 ## 核心功能
 

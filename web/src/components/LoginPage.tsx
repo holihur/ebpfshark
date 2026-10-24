@@ -86,7 +86,7 @@ export function LoginPage() {
               <Waves className="h-5 w-5 text-primary" />
               <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-background bg-primary" />
             </div>
-            <h1 className="text-base font-semibold tracking-tight">eBPF Analyzer</h1>
+            <h1 className="text-base font-semibold tracking-tight">sisyphus</h1>
             <p className="mt-1 text-xs text-muted-foreground">{t("auth.subtitle")}</p>
           </div>
 

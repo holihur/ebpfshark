@@ -623,7 +623,7 @@ function SidebarImpl(props: SidebarProps) {
       {props.mobile && (
         <div className="shrink-0 border-b px-2 py-2">
           <div className="flex items-center gap-1">
-            <span className="mr-auto px-1 text-xs font-semibold">eBPF Analyzer</span>
+            <span className="mr-auto px-1 text-xs font-semibold">sisyphus</span>
             <Button variant={module === "network" ? "secondary" : "ghost"} size="sm" className="h-7 px-2 text-2xs" onClick={() => props.onModuleChange?.("network")}>
               {t("sidebar.network")}
             </Button>

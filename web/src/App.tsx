@@ -258,25 +258,6 @@ export default function App() {
           onTrace={() => setTraceOpen(true)}
         />
 
-        {showNetworkFilter && (
-          <FilterBar
-            filter={capture.filter}
-            error={capture.filterError}
-            status={capture.status}
-            packetStore={capture.packetStore}
-            loading={capture.loadingPackets}
-            connected={capture.connected}
-            running={running}
-            busy={busy}
-            onApply={handleApplyFilter}
-            onStart={handleStart}
-            onStop={handleStop}
-            onEditColumns={() => setColumnsOpen(true)}
-            onDecryption={() => setDecryptOpen(true)}
-            onMITM={() => setMitmOpen(true)}
-          />
-        )}
-
         <div className="flex min-h-0 flex-1">
           <ModuleRail
             active={activeModule}
@@ -321,6 +302,22 @@ export default function App() {
 
           {activeModule === "network" ? (
             <main className="flex min-w-0 flex-1 flex-col">
+            <FilterBar
+            filter={capture.filter}
+            error={capture.filterError}
+            status={capture.status}
+            packetStore={capture.packetStore}
+            loading={capture.loadingPackets}
+            connected={capture.connected}
+            running={running}
+            busy={busy}
+            onApply={handleApplyFilter}
+            onStart={handleStart}
+            onStop={handleStop}
+            onEditColumns={() => setColumnsOpen(true)}
+            onDecryption={() => setDecryptOpen(true)}
+            onMITM={() => setMitmOpen(true)}
+            />
               <div ref={workRef} className="flex min-h-0 flex-1 flex-col">
                 <div className="flex min-h-0 flex-1 flex-col">
                   <PacketList

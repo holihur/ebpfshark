@@ -68,7 +68,7 @@ function HeaderImpl({
           <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-panel bg-primary" />
         </div>
         <div className="leading-none">
-          <div className="text-[13px] font-semibold tracking-tight">eBPF Analyzer</div>
+          <div className="text-[13px] font-semibold tracking-tight">sisyphus</div>
           <div className="mt-1 hidden text-2xs text-muted-foreground sm:block">
             {t("app.subtitle")}
           </div>

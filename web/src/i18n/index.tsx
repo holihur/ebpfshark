@@ -292,7 +292,7 @@ const en = {
 
   "auth.checking": "Checking session…",
   "auth.title": "Sign in",
-  "auth.subtitle": "Authentication is required to access eBPF Analyzer.",
+  "auth.subtitle": "Authentication is required to access sisyphus.",
   "auth.username": "Username",
   "auth.password": "Password",
   "auth.signIn": "Sign in",
@@ -614,7 +614,7 @@ const zh: Record<MessageKey, string> = {
 
   "auth.checking": "正在检查登录状态…",
   "auth.title": "登录",
-  "auth.subtitle": "访问 eBPF Analyzer 需要先登录。",
+  "auth.subtitle": "访问 sisyphus 需要先登录。",
   "auth.username": "用户名",
   "auth.password": "密码",
   "auth.signIn": "登录",
@@ -682,7 +682,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEY, locale)
     document.documentElement.lang = locale === "zh" ? "zh-CN" : "en"
     document.title =
-      locale === "zh" ? "eBPF Analyzer — Linux 分析器" : "eBPF Analyzer — Linux analyzer"
+      locale === "zh" ? "sisyphus — eBPF 分析器" : "sisyphus — eBPF analyzer"
   }, [locale])
 
   const t = useCallback(
