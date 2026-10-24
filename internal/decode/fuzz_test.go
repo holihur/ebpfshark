@@ -18,12 +18,26 @@ func FuzzDecode(f *testing.F) {
 	})
 }
 
+var protocolPorts = []uint16{
+	22, 53, 80, 123, 161, 162, 179, 443, 514, 554, 1883, 1900, 1935,
+	2055, 2056, 3306, 3478, 3479, 4739, 4789, 5432, 5672, 6379, 6343,
+	8472, 8883, 9995, 1812, 1813, 1645, 1646, 5060, 51820, 47808, 4840,
+}
+
 func FuzzProtocolPayloads(f *testing.F) {
-	f.Add([]byte("GET / HTTP/1.1\r\nHost: x\r\n\r\n"), uint8(0), uint8(0))
-	f.Add([]byte("hello"), uint8(1), uint8(1))
+	seeds := [][]byte{
+		[]byte("GET / HTTP/1.1\r\nHost: x\r\n\r\n"),
+		[]byte("$3\r\nSET\r\n"), []byte("\x16\x03\x01\x00\x00"),
+		[]byte("MQTT"), []byte("SSH-2.0-test\r\n"),
+	}
+	for i, port := range protocolPorts {
+		for _, payload := range seeds {
+			f.Add(payload, uint8(i%2), uint8(i%256))
+		}
+		_ = port
+	}
 	f.Fuzz(func(t *testing.T, payload []byte, transport, app uint8) {
-		ports := []uint16{53, 80, 443, 1883, 5432, 6379, 179, 22, 5060, 123}
-		port := ports[int(app)%len(ports)]
+		port := protocolPorts[int(app)%len(protocolPorts)]
 		var frame []byte
 		if transport&1 == 0 {
 			frame = buildEthernet(buildIPv4(6, buildTCP(40000, port, 0x18, payload)), 0x0800)
