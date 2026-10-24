@@ -26,6 +26,7 @@ import (
 	"ebpfshark/internal/filter"
 	"ebpfshark/internal/instrument"
 	"ebpfshark/internal/instrument/target"
+	"ebpfshark/internal/ipc"
 	"ebpfshark/internal/mcpserver"
 	"ebpfshark/internal/mitm"
 	"ebpfshark/internal/probe"
@@ -80,6 +81,7 @@ func main() {
 	sshKeys := flag.String("ssh-keys", env("EBPFSHARK_SSH_KEYS", ""), "JSON session keys for opt-in SSH AES-CTR decryption")
 	wifiPSK := flag.String("wifi-psk", env("EBPFSHARK_WIFI_PSK", ""), "WPA2-PSK passphrase for CCMP frame decryption")
 	wifiKeys := flag.String("wifi-keys", env("EBPFSHARK_WIFI_KEYS", ""), "JSON PMK/PTK session keys for WPA2/WPA3 (missing handshake)")
+	ipcLog := flag.String("ipc-log", env("EBPFSHARK_IPC_LOG", ""), "optional JSONL append log for local IPC payload events")
 	mitmAddr := flag.String("mitm", env("EBPFSHARK_MITM", "127.0.0.1:18080"), "local HTTPS MITM proxy address (empty disables)")
 	mitmCAInit := flag.String("mitm-ca-init", "", "generate/reuse the MITM CA in this directory and print the certificate path")
 	mitmCADir := flag.String("mitm-ca-dir", env("EBPFSHARK_MITM_CA_DIR", defaultMITMCADir()), "directory for the MITM CA certificate and key")
@@ -233,9 +235,11 @@ func main() {
 		}
 	}
 	srv := server.New(st, mgr, log, webFS, selfPort, authSvc, probe.Backend{})
+	srv.SetIPCLogPath(*ipcLog)
 	srv.SetMITM(mitmProxy)
 	srv.SetSecureCookie(*secureCookie)
 	defer srv.StopTrace()
+	defer srv.StopIPC()
 
 	mcpEnabled := !*noMCP
 	if mcpEnabled {
@@ -416,6 +420,7 @@ func runMCPStdio(args []string) {
 	excludePort := fs.Uint("exclude-port", 0, "TCP/UDP port to exclude from captures (0 = none)")
 	plugins := fs.String("plugins", env("EBPFSHARK_PLUGINS", ""), "comma separated Go .so dissector plugins")
 	pluginDir := fs.String("plugin-dir", env("EBPFSHARK_PLUGIN_DIR", ""), "directory containing .so dissector plugins")
+	ipcLog := fs.String("ipc-log", env("EBPFSHARK_IPC_LOG", ""), "optional JSONL append log for local IPC payload events")
 	_ = fs.Parse(args)
 
 	log := newLogger(*logLevel)
@@ -429,7 +434,10 @@ func runMCPStdio(args []string) {
 	st := store.New(*maxPackets)
 	st.SetStreamBudget(int64(*streamBudget) << 20)
 	mgr := capture.NewManager(st, log)
-	srv := mcpserver.New(st, mgr, server.Version, uint32(*excludePort))
+	ipcMgr := ipc.NewManager(log)
+	ipcMgr.SetLogPath(*ipcLog)
+	defer ipcMgr.Stop()
+	srv := mcpserver.New(st, mgr, server.Version, uint32(*excludePort), ipcMgr)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

@@ -12,6 +12,8 @@
 /internal/capture/capture_large_bpfel.o
 /internal/probe/probe_bpfel.go
 /internal/probe/probe_bpfel.o
+internal/ipc/uds_bpfel.go
+internal/ipc/uds_bpfel.o
 *.log
 .DS_Store
 

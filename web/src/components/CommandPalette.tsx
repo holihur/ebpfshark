@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { Activity, Columns3, Command, Globe2, KeyRound, Layers, Search, Square, Trash2 } from "lucide-react"
+import { Activity, Cable, Columns3, Command, Globe2, KeyRound, Layers, Search, Square, Trash2 } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -96,4 +96,4 @@ export function CommandPalette({ open, onOpenChange, commands }: CommandPaletteP
 }
 
 // Re-exported so App can build the command list with consistent icons.
-export const PaletteIcons = { Activity, Columns3, Globe2, KeyRound, Layers, Square, Trash2 }
+export const PaletteIcons = { Activity, Cable, Columns3, Globe2, KeyRound, Layers, Square, Trash2 }

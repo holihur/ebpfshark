@@ -10,6 +10,7 @@ ebpfshark 内置 **Model Context Protocol (MCP) Server**，让 Claude Code、Cla
 - 对 TCP 会话做流重组（Follow Stream）
 - 等待实时流量、查看会话和统计
 - 启动/停止应用函数 uprobe 追踪，查询调用耗时
+- 枚举 Unix 域套接字，按 PID/cgroup 追踪 AF_UNIX 双向负载
 
 本文档覆盖启用方式、客户端配置、全部工具参数、示例和安全注意事项。
 
@@ -490,6 +491,48 @@ frame contains "password"
 返回 `status` 和已完成的函数调用事件：`time`、`durationNs`、`pid`、`tid`、`function`、`comm`。
 
 > 当前只支持显式符号，不做任意函数全量采集，也不解析参数/返回值。函数追踪和网络抓包是独立会话。
+
+### 4.7 本地 IPC / Unix 域套接字
+
+#### `list_local_ipc_sockets`
+
+枚举 `/proc/net/unix`，并尽力解析属主 PID、命令、可执行文件和 cgroup。可过滤类型、
+路径/进程关键字和 PID。
+
+```json
+{"name":"list_local_ipc_sockets","arguments":{"type":"stream","q":"docker","limit":200}}
+```
+
+#### `start_local_ipc_trace`
+
+启动 AF_UNIX 双向负载追踪。需要 root/CAP_BPF/CAP_PERFMON、内核 BTF 和
+fentry/fexit。`pid=0` 表示所有进程；`maxPayload` 最大 4096。
+
+```json
+{"name":"start_local_ipc_trace","arguments":{"pid":1234,"maxPayload":4096}}
+```
+
+#### `stop_local_ipc_trace`
+
+```json
+{"name":"stop_local_ipc_trace","arguments":{}}
+```
+
+#### `clear_local_ipc_trace`
+
+清空已保留的事件/流，但不停止追踪。
+
+#### `query_local_ipc_trace`
+
+返回 `status`、最近 `streams` 和 `events`。默认不返回负载；`includePayload=true` 时每个
+事件包含 base64 和可打印文本预览。
+
+```json
+{"name":"query_local_ipc_trace","arguments":{"limit":200,"after":0,"includePayload":true}}
+```
+
+> IPC 事件/流有独立上限（20,000 事件、4,096 流）。每个 iovec 段最多复制 4 KiB，
+> 最多记录 8 段，超出部分标记截断；环满时事件可能丢弃。
 
 ## 5. 典型工作流
 

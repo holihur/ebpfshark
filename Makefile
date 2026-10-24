@@ -10,6 +10,7 @@ WEB_DIST := internal/server/webdist
 VMLINUX := internal/capture/bpf/vmlinux.h
 GENERATED := internal/capture/capture_bpfel.go internal/capture/capture_bpfel.o
 PROBE_GENERATED := internal/probe/probe_bpfel.go internal/probe/probe_bpfel.o
+IPC_GENERATED := internal/ipc/uds_bpfel.go internal/ipc/uds_bpfel.o
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo 0.1.0-dev)
 LDFLAGS := -X ebpfshark/internal/server.Version=$(VERSION)
 
@@ -39,6 +40,7 @@ build: generate web go-build
 generate: $(VMLINUX)
 	cd internal/capture && $(GO) generate ./...
 	cd internal/probe && $(GO) generate ./...
+	cd internal/ipc && $(GO) generate ./...
 
 $(VMLINUX):
 	$(BPFTOOL) btf dump file /sys/kernel/btf/vmlinux format c > $@
@@ -51,15 +53,15 @@ web:
 	cp -r $(WEB_DIR)/dist/. $(WEB_DIST)/
 	touch $(WEB_DIST)/.keep
 
-go-build: $(GENERATED) $(PROBE_GENERATED)
+go-build: $(GENERATED) $(PROBE_GENERATED) $(IPC_GENERATED)
 	mkdir -p bin
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags '$(LDFLAGS)' -o $(BIN) ./cmd/ebpfshark
 
-go-build-full: $(GENERATED) $(PROBE_GENERATED)
+go-build-full: $(GENERATED) $(PROBE_GENERATED) $(IPC_GENERATED)
 	mkdir -p bin
 	CGO_ENABLED=0 $(GO) build -tags full -trimpath -ldflags '$(LDFLAGS)' -o $(BIN) ./cmd/ebpfshark
 
-go-build-dynamic: $(GENERATED) $(PROBE_GENERATED)
+go-build-dynamic: $(GENERATED) $(PROBE_GENERATED) $(IPC_GENERATED)
 	mkdir -p bin
 	CGO_ENABLED=1 $(GO) build -tags full -trimpath -ldflags '$(LDFLAGS)' -o $(BIN) ./cmd/ebpfshark
 
@@ -69,27 +71,30 @@ $(GENERATED): $(VMLINUX) internal/capture/bpf/capture.c internal/capture/generat
 $(PROBE_GENERATED): $(VMLINUX) internal/probe/bpf/probe.c internal/probe/generate.go
 	cd internal/probe && $(GO) generate ./...
 
+$(IPC_GENERATED): $(VMLINUX) internal/ipc/bpf/uds.c internal/ipc/generate.go
+	cd internal/ipc && $(GO) generate ./...
+
 run: go-build
 	./$(BIN) -addr :9999
 
-dev: $(GENERATED) $(PROBE_GENERATED)
+dev: $(GENERATED) $(PROBE_GENERATED) $(IPC_GENERATED)
 	$(GO) run ./cmd/ebpfshark -addr :9999 -log-level debug
 
 dev-web:
 	cd $(WEB_DIR) && $(PNPM) run dev
 
-test: $(GENERATED) $(PROBE_GENERATED)
+test: $(GENERATED) $(PROBE_GENERATED) $(IPC_GENERATED)
 	$(GO) test ./...
 	$(GO) test -tags full ./...
 	cd $(WEB_DIR) && $(PNPM) run lint
 
-test-full: $(GENERATED) $(PROBE_GENERATED)
+test-full: $(GENERATED) $(PROBE_GENERATED) $(IPC_GENERATED)
 	$(GO) test -tags full ./...
 
 bench: $(GENERATED) $(PROBE_GENERATED)
 	$(GO) test -run=^$$ -bench=. -benchmem -benchtime=100ms ./internal/decode ./internal/filter ./internal/stream
 
-vet: $(GENERATED) $(PROBE_GENERATED)
+vet: $(GENERATED) $(PROBE_GENERATED) $(IPC_GENERATED)
 	$(GO) vet ./...
 
 deps:
@@ -98,4 +103,4 @@ deps:
 
 clean:
 	rm -rf bin $(WEB_DIST)/assets $(WEB_DIST)/index.html $(WEB_DIST)/favicon.svg $(WEB_DIR)/dist
-	rm -f $(GENERATED) $(PROBE_GENERATED) $(VMLINUX)
+	rm -f $(GENERATED) $(PROBE_GENERATED) $(IPC_GENERATED) $(VMLINUX)

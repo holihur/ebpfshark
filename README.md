@@ -16,6 +16,7 @@ ebpfshark 通过 TCX 在 Linux 网卡 ingress/egress 抓包，浏览器中提供
 - **AI / HTTPS 解析**：Anthropic Messages、OpenAI Chat Completions、OpenAI Responses，支持 JSON/SSE；支持 TLS keylog，以及可选的本地 HTTPS MITM 代理（页面设置、CA 下载）。
 - **范围抓包**：左侧进程列表直接按 cgroup 过滤；也支持 cgroup v2 路径、Pod/容器片段。
 - **函数调用追踪（实验）**：CLI、Web 页面和 MCP 均可对显式 `binary:symbol` 挂 uprobe/uretprobe；Web 支持进程 PID 提示和函数符号列表。
+- **本地 IPC / Unix 域套接字**：枚举 `/proc/net/unix` 的套接字、属主与 cgroup，并可用 eBPF 追踪 AF_UNIX 双向负载（按 PID/cgroup 过滤）。
 - **服务化访问**：登录认证、SSE 实时推送、HTTP API、MCP；支持单二进制、Docker 和动态插件。
 
 ## 界面预览
@@ -114,6 +115,33 @@ sudo ./bin/ebpfshark trace -pid 1234 -func /usr/local/bin/app:@0x1234
 
 Web 侧栏 **Trace** 标签和 MCP 的 `start_function_trace` / `query_function_trace` 提供同样的能力。`inspect` 可显示 build-id、符号数、debuginfo、容器/Pod cgroup；事件旁边的 `↔` 可查找同一 cgroup、同一时间窗口内的网络包。需要显式符号、带符号 ELF 和 `CAP_BPF`/`CAP_PERFMON`；stripped 二进制会提示安装 debuginfo 或改用地址。
 
+## 本地 IPC / Unix 域套接字
+
+侧栏 **Local IPC** 或 API `GET /api/ipc/sockets` 会列出 `/proc/net/unix` 中的 Unix
+域套接字，并尽力从 `/proc/<pid>/fd` 解析属主 PID、命令、可执行文件和 cgroup。套接字
+清单不需要 BPF 权限。
+
+启动负载追踪后，eBPF 通过 fentry/fexit 在 AF_UNIX 的发送与接收路径复制负载，覆盖
+stream、dgram、seqpacket；每个 iovec 段最多复制 4 KiB，最多记录 8 段，超出部分标记
+截断。事件按 socket inode 聚合为双向流，可按 PID 或 cgroup 过滤，适合排查
+Docker/containerd、systemd、D-Bus、X11/Wayland、本地 RPC、数据库 socket 等流量。
+
+```bash
+curl -s -b /tmp/ebpfshark.cookie 'localhost:9999/api/ipc/sockets?type=stream&q=postgres' | jq
+curl -s -b /tmp/ebpfshark.cookie -X POST localhost:9999/api/ipc/start \
+  -H 'Content-Type: application/json' -d '{"pid":1234,"maxPayload":4096}'
+curl -s -b /tmp/ebpfshark.cookie 'localhost:9999/api/ipc/events?limit=100' | jq
+curl -s -b /tmp/ebpfshark.cookie 'localhost:9999/api/ipc/streams' | jq
+curl -sN -b /tmp/ebpfshark.cookie 'localhost:9999/api/ipc/stream?after=0'
+curl -s -b /tmp/ebpfshark.cookie 'localhost:9999/api/ipc/export?format=jsonl' -o ipc.jsonl
+curl -s -b /tmp/ebpfshark.cookie -X POST localhost:9999/api/ipc/stop
+```
+
+负载追踪需要 root / `CAP_BPF` + `CAP_PERFMON`、内核 BTF 和 fentry/fexit 支持（本项目的
+内核下限 6.6 已满足）。事件/流分别有上限（默认 20,000 条事件、4,096 条流），不会无限
+增长；Web UI 使用 SSE 实时接收，也可导出 JSONL。需要落盘时设置
+`-ipc-log /var/log/ebpfshark-ipc.jsonl`（或 `EBPFSHARK_IPC_LOG`），每个事件按行追加。
+
 ## 常用参数
 
 ```text
@@ -122,6 +150,7 @@ Web 侧栏 **Trace** 标签和 MCP 的 `start_function_trace` / `query_function_
 -addr :9999              监听地址
 -auth-pass ""            登录密码；留空则随机生成
 -max-packets 100000      内存中保留的报文数
+-ipc-log ""             本地 IPC 事件的 JSONL 追加日志（可选持久化）
 -snaplen 2048            每包捕获字节数（2K/4K/16K/64K/256K）
 -sample-rate 1           每 N 个包抓 1 个
 -capture-filter ""       可选显示过滤器；其 L2–L4 子集会在 eBPF 中预过滤
@@ -146,6 +175,7 @@ Web 侧栏 **Trace** 标签和 MCP 的 `start_function_trace` / `query_function_
 - 协议覆盖和深度不及 Wireshark；长期存储/检索不及 Arkime。
 - cgroup 抓包要求 cgroup v2；按 PID 实际是解析该 PID 当前 cgroup。
 - 函数调用追踪是实验功能，只支持显式符号；已支持基础事件列表、build-id/容器检查和 cgroup 时间窗关联，尚无参数/返回值/USDT。
+- 本地 IPC 负载追踪每个 iovec 段最多复制 4 KiB（最多 8 段），超出部分标记截断；环形缓冲满时会丢事件。
 - Docker 部署会降低隔离；不要暴露 API 到公网，也不要加载不可信插件。
 
 ## 文档

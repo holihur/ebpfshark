@@ -13,6 +13,10 @@ import type {
   StatusResponse,
   ProcessInfo,
   StoreStats,
+  IPCEvent,
+  IPCSocket,
+  IPCStatus,
+  IPCStream,
   TraceInfo,
   TraceResponse,
   TraceSymbol,
@@ -162,4 +166,25 @@ export const api = {
     }),
   traceStop: () =>
     request<TraceResponse["status"]>("/api/trace/stop", { method: "POST" }),
+  ipcStatus: () => request<IPCStatus>("/api/ipc"),
+  ipcSockets: (query = "", type = "", pid = 0, limit = 2000) =>
+    request<{ sockets: IPCSocket[]; count: number; status: IPCStatus }>(
+      `/api/ipc/sockets?q=${encodeURIComponent(query)}&type=${encodeURIComponent(type)}&pid=${pid}&limit=${limit}`,
+    ),
+  ipcStart: (body: { pid?: number; cgroup?: string; maxPayload?: number; ringSize?: number }) =>
+    request<IPCStatus>("/api/ipc/start", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  ipcStop: () => request<IPCStatus>("/api/ipc/stop", { method: "POST" }),
+  ipcClear: () =>
+    request<{ ok: boolean; status: IPCStatus }>("/api/ipc/clear", { method: "POST" }),
+  ipcEvents: (limit = 1000, after = 0) =>
+    request<{ events: IPCEvent[]; count: number; status: IPCStatus }>(
+      `/api/ipc/events?limit=${limit}&after=${after}`,
+    ),
+  ipcStreams: (limit = 500) =>
+    request<{ streams: IPCStream[]; count: number; status: IPCStatus }>(
+      `/api/ipc/streams?limit=${limit}`,
+    ),
 }

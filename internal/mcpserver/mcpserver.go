@@ -16,6 +16,7 @@ import (
 	"ebpfshark/internal/decode"
 	"ebpfshark/internal/filter"
 	"ebpfshark/internal/instrument/target"
+	"ebpfshark/internal/ipc"
 	"ebpfshark/internal/packet"
 	"ebpfshark/internal/store"
 	"ebpfshark/internal/stream"
@@ -30,9 +31,21 @@ type TraceController interface {
 	TraceEvents(limit int, after uint64) ([]trace.Event, trace.Status)
 }
 
+// IPCController is implemented by the HTTP server for local Unix-socket
+// inventory and payload tracing.
+type IPCController interface {
+	IPCStatus() ipc.Status
+	IPCSockets() ([]ipc.Socket, error)
+	IPCEvents(limit int, after uint64) []ipc.Event
+	IPCStreams(limit int) []ipc.Stream
+	StartIPC(opts ipc.TraceOptions) error
+	ClearIPC()
+	StopIPC()
+}
+
 // New creates an MCP server bound to the live store and capture manager.
 // apiPort is excluded from captures when the MCP client starts one.
-func New(st *store.Store, mgr *capture.Manager, version string, apiPort uint32, traceCtl ...TraceController) *mcp.Server {
+func New(st *store.Store, mgr *capture.Manager, version string, apiPort uint32, controllers ...any) *mcp.Server {
 	srv := mcp.NewServer(&mcp.Implementation{
 		Name:        "ebpfshark",
 		Title:       "ebpfshark",
@@ -51,8 +64,13 @@ func New(st *store.Store, mgr *capture.Manager, version string, apiPort uint32, 
 	addCaptureTools(srv, st, mgr, apiPort)
 	addPacketTools(srv, st)
 	addAnalysisTools(srv, st)
-	if len(traceCtl) > 0 && traceCtl[0] != nil {
-		addTraceTools(srv, traceCtl[0])
+	for _, controller := range controllers {
+		if c, ok := controller.(TraceController); ok {
+			addTraceTools(srv, c)
+		}
+		if c, ok := controller.(IPCController); ok {
+			addIPCTools(srv, c)
+		}
 	}
 	return srv
 }
@@ -421,6 +439,147 @@ func addTraceTools(srv *mcp.Server, c TraceController) {
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in queryInput) (*mcp.CallToolResult, any, error) {
 		events, status := c.TraceEvents(in.Limit, in.After)
 		return textResult(map[string]any{"status": status, "events": events})
+	})
+}
+
+func addIPCTools(srv *mcp.Server, c IPCController) {
+	type socketsInput struct {
+		Type  string `json:"type,omitempty" jsonschema:"optional socket type: stream, dgram or seqpacket"`
+		Query string `json:"q,omitempty" jsonschema:"optional path/command/exe substring"`
+		PID   int    `json:"pid,omitempty" jsonschema:"optional owning process ID"`
+		Limit int    `json:"limit,omitempty" jsonschema:"maximum sockets to return (default 500, max 5000)"`
+	}
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "list_local_ipc_sockets",
+		Description: "List Unix-domain sockets from /proc/net/unix with best-effort owning PID, command, executable and cgroup.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in socketsInput) (*mcp.CallToolResult, any, error) {
+		sockets, err := c.IPCSockets()
+		if err != nil {
+			return nil, nil, err
+		}
+		limit := in.Limit
+		if limit <= 0 {
+			limit = 500
+		}
+		if limit > 5000 {
+			limit = 5000
+		}
+		query := strings.ToLower(strings.TrimSpace(in.Query))
+		out := make([]ipc.Socket, 0, len(sockets))
+		for _, sock := range sockets {
+			if in.Type != "" && in.Type != "all" && sock.Type != in.Type {
+				continue
+			}
+			if in.PID > 0 && sock.PID != in.PID {
+				continue
+			}
+			if query != "" && !strings.Contains(strings.ToLower(sock.Path), query) &&
+				!strings.Contains(strings.ToLower(sock.Comm), query) &&
+				!strings.Contains(strings.ToLower(sock.Exe), query) {
+				continue
+			}
+			out = append(out, sock)
+			if len(out) >= limit {
+				break
+			}
+		}
+		return textResult(map[string]any{"sockets": out, "count": len(out), "status": c.IPCStatus()})
+	})
+
+	type startInput struct {
+		PID        int    `json:"pid,omitempty" jsonschema:"limit tracing to this process (0 = all processes)"`
+		Cgroup     string `json:"cgroup,omitempty" jsonschema:"optional cgroup v2 ID, path, pid:N, pod:NAME or container:ID"`
+		CgroupID   uint64 `json:"cgroupID,omitempty" jsonschema:"optional cgroup v2 ID (alternative to cgroup)"`
+		MaxPayload uint32 `json:"maxPayload,omitempty" jsonschema:"payload bytes per event (default 4096, max 4096)"`
+		RingSize   uint32 `json:"ringSize,omitempty" jsonschema:"BPF ring-buffer bytes (default 8 MiB)"`
+	}
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "start_local_ipc_trace",
+		Description: "Start eBPF AF_UNIX send/receive payload tracing for stream, dgram and seqpacket sockets. Requires root/CAP_BPF/CAP_PERFMON, kernel BTF and fentry/fexit.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in startInput) (*mcp.CallToolResult, any, error) {
+		cgroupID := in.CgroupID
+		if strings.TrimSpace(in.Cgroup) != "" {
+			id, err := capture.ResolveCgroup(in.Cgroup)
+			if err != nil {
+				return nil, nil, err
+			}
+			cgroupID = id
+		}
+		if err := c.StartIPC(ipc.TraceOptions{PID: in.PID, CgroupID: cgroupID, MaxPayload: in.MaxPayload, RingSize: in.RingSize}); err != nil {
+			return nil, nil, err
+		}
+		return textResult(c.IPCStatus())
+	})
+
+	type empty struct{}
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "stop_local_ipc_trace",
+		Description: "Stop the current local IPC payload trace.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ empty) (*mcp.CallToolResult, any, error) {
+		c.StopIPC()
+		return textResult(c.IPCStatus())
+	})
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "clear_local_ipc_trace",
+		Description: "Clear retained local IPC events and streams without stopping the trace.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ empty) (*mcp.CallToolResult, any, error) {
+		c.ClearIPC()
+		return textResult(c.IPCStatus())
+	})
+
+	type queryInput struct {
+		Limit          int    `json:"limit,omitempty" jsonschema:"maximum events (default 200, max 2000)"`
+		After          uint64 `json:"after,omitempty" jsonschema:"return events with id greater than this value"`
+		IncludePayload bool   `json:"includePayload,omitempty" jsonschema:"include base64 and printable payloads"`
+	}
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "query_local_ipc_trace",
+		Description: "Return local IPC trace status, recent Unix-socket streams and payload events. Payloads are base64 by default and can be omitted.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in queryInput) (*mcp.CallToolResult, any, error) {
+		limit := in.Limit
+		if limit <= 0 {
+			limit = 200
+		}
+		if limit > 2000 {
+			limit = 2000
+		}
+		events := c.IPCEvents(limit, in.After)
+		type eventOutput struct {
+			ID        uint64 `json:"id"`
+			Time      int64  `json:"time"`
+			Inode     uint64 `json:"inode"`
+			PID       uint32 `json:"pid"`
+			TID       uint32 `json:"tid"`
+			CgroupID  uint64 `json:"cgroupID,omitempty"`
+			Comm      string `json:"comm,omitempty"`
+			Direction string `json:"direction"`
+			Type      string `json:"type,omitempty"`
+			Path      string `json:"path,omitempty"`
+			Part      uint8  `json:"part"`
+			Parts     uint8  `json:"parts,omitempty"`
+			Truncated bool   `json:"truncated,omitempty"`
+			Length    int    `json:"length"`
+			Base64    string `json:"base64,omitempty"`
+			Text      string `json:"text,omitempty"`
+		}
+		out := make([]eventOutput, 0, len(events))
+		for _, ev := range events {
+			e := eventOutput{
+				ID: ev.ID, Time: ev.Time.UnixNano(), Inode: ev.Inode, PID: ev.PID, TID: ev.TID,
+				CgroupID: ev.CgroupID, Comm: ev.Comm, Direction: ev.Direction.String(), Type: ev.Type,
+				Path: ev.Path, Part: ev.Part, Parts: ev.Parts, Truncated: ev.Truncated, Length: len(ev.Payload),
+			}
+			if in.IncludePayload {
+				e.Base64 = base64.StdEncoding.EncodeToString(ev.Payload)
+				e.Text = printable(ev.Payload)
+			}
+			out = append(out, e)
+		}
+		return textResult(map[string]any{
+			"status": c.IPCStatus(), "streams": c.IPCStreams(200),
+			"events": out, "count": len(out),
+		})
 	})
 }
 

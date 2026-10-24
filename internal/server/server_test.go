@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bufio"
 	"io"
 	"log/slog"
 	"net/http"
@@ -149,4 +150,74 @@ func mustURL(t *testing.T, raw string) *url.URL {
 		t.Fatal(err)
 	}
 	return u
+}
+
+func TestLocalIPCEndpoints(t *testing.T) {
+	ts := newTestServer(t, false, "")
+	client := newClient(t)
+
+	for _, path := range []string{"/api/ipc", "/api/ipc/sockets", "/api/ipc/events?limit=10", "/api/ipc/streams?limit=10"} {
+		res := do(t, client, http.MethodGet, ts.URL+path, "")
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("GET %s = %d", path, res.StatusCode)
+		}
+		body, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		if !strings.Contains(string(body), `"status"`) && path != "/api/ipc" {
+			t.Fatalf("GET %s missing status: %s", path, body)
+		}
+	}
+
+	res := do(t, client, http.MethodPost, ts.URL+"/api/ipc/clear", "")
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("POST /api/ipc/clear = %d", res.StatusCode)
+	}
+	res.Body.Close()
+	res = do(t, client, http.MethodPost, ts.URL+"/api/ipc/stop", "")
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("POST /api/ipc/stop = %d", res.StatusCode)
+	}
+	res.Body.Close()
+}
+
+func TestLocalIPCStreamAndExport(t *testing.T) {
+	ts := newTestServer(t, false, "")
+	client := newClient(t)
+
+	res := do(t, client, http.MethodGet, ts.URL+"/api/ipc/stream?after=0", "")
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("GET /api/ipc/stream = %d", res.StatusCode)
+	}
+	if ct := res.Header.Get("Content-Type"); !strings.Contains(ct, "text/event-stream") {
+		t.Fatalf("SSE content type = %q", ct)
+	}
+	reader := bufio.NewReader(res.Body)
+	foundReady := false
+	for i := 0; i < 10; i++ {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			break
+		}
+		if strings.HasPrefix(line, "event: ready") {
+			foundReady = true
+			break
+		}
+	}
+	res.Body.Close()
+	if !foundReady {
+		t.Fatal("SSE did not emit a ready event")
+	}
+
+	res = do(t, client, http.MethodGet, ts.URL+"/api/ipc/export?format=jsonl", "")
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("GET /api/ipc/export = %d", res.StatusCode)
+	}
+	if ct := res.Header.Get("Content-Type"); !strings.Contains(ct, "ndjson") {
+		t.Fatalf("export content type = %q", ct)
+	}
+	body, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if len(body) != 0 {
+		t.Fatalf("empty store export = %q", body)
+	}
 }

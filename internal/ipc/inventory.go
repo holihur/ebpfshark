@@ -151,3 +151,16 @@ func udsState(v string) string {
 		return ""
 	}
 }
+
+func socketTypeName(code uint8) string {
+	switch code {
+	case 1:
+		return "stream"
+	case 2:
+		return "dgram"
+	case 5:
+		return "seqpacket"
+	default:
+		return ""
+	}
+}

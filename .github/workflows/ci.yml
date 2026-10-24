@@ -77,6 +77,9 @@ jobs:
       - name: Kernel capture filter integration test
         run: sudo -E env "PATH=$PATH" "EBPFSHARK_PRIVILEGED=1" go test -run TestKernelCaptureFilter -count=1 ./internal/capture
 
+      - name: UDS payload tracer integration test
+        run: sudo -E env "PATH=$PATH" "EBPFSHARK_PRIVILEGED=1" go test -run TestTracer -count=1 ./internal/ipc
+
       - name: Benchmark smoke
         run: go test -run=^$ -bench=. -benchmem -benchtime=50ms ./internal/decode ./internal/filter ./internal/stream
 

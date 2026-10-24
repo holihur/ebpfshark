@@ -1,5 +1,5 @@
 import { memo } from "react"
-import { Boxes, Network } from "lucide-react"
+import { Boxes, Cable, Network } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Tooltip,
@@ -9,7 +9,7 @@ import {
 import { cn } from "@/lib/utils"
 import { useI18n, type MessageKey } from "@/i18n"
 
-export type WorkspaceModule = "network" | "processes"
+export type WorkspaceModule = "network" | "processes" | "ipc"
 
 interface ModuleRailProps {
   active: WorkspaceModule
@@ -23,6 +23,7 @@ const MODULES: Array<{
 }> = [
   { id: "network", icon: Network, label: "sidebar.network" },
   { id: "processes", icon: Boxes, label: "sidebar.processes" },
+  { id: "ipc", icon: Cable, label: "sidebar.ipc" },
 ]
 
 function ModuleRailImpl({ active, onSelect }: ModuleRailProps) {

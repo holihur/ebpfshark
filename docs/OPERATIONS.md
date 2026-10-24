@@ -43,6 +43,10 @@
 - 不内置 TLS；公网访问请使用 HTTPS 反向代理并启用 `-secure-cookie`。
 - 登录限流按 TCP 源 IP 统计；在反向代理后请确保代理正确传递客户端地址，否则所有
   用户会共享同一个限流计数。
+- 本地 IPC 负载追踪每个 iovec 段最多复制 4 KiB（最多 8 段），超出部分标记截断。
+  事件/流分别限制为 20,000 条和 4,096 条，环形缓冲满时会有丢弃计数。
+- 可用 `-ipc-log FILE` / `EBPFSHARK_IPC_LOG` 把 IPC 事件以 JSONL 追加到磁盘；文件不会
+  自动轮转，请自行配置 logrotate。
 
 ### 协议解析已知问题
 
@@ -94,6 +98,7 @@
 - [x] pcapng 导出、按时间范围导出
 - [x] 按进程 / cgroup / Pod 范围抓包
 - [x] 显式函数 uprobe/uretprobe 调用耗时（CLI 实验）
+- [x] Unix 域套接字清单、双向流和 AF_UNIX 负载追踪（实验）
 - [x] 协议支持程度矩阵、RFC 参考、与 Wireshark/tcpdump 对比
 
 ### P0：协议覆盖

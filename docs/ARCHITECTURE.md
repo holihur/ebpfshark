@@ -76,6 +76,7 @@ internal/instrument  instrumentation contracts (targets, events, backend)
 internal/instrument/target  ELF/build-id/symbol/PID/cgroup discovery
 internal/probe       uprobe/uretprobe instrumentation backend
 internal/trace       trace session lifecycle and bounded event history
+internal/ipc         Unix-socket inventory + AF_UNIX payload tracer/store
 pkg/pluginapi        stable ABI for runtime .so plugins
 internal/filter      filter language, schema
 internal/packet      Meta/Summary/LayerMask/Field-independent packet types
@@ -117,6 +118,31 @@ ELF + symbol discovery       uprobe + uretprobe backend
 `instrument.Backend`; `probe.Backend` is the current uprobe adapter. Adding
 USDT, DWARF arguments, or a fake backend does not require changing the HTTP or
 MCP layers.
+
+## Local IPC boundary
+
+Unix-domain-socket support is deliberately independent from the packet store:
+
+```text
+/proc/net/unix + /proc/<pid>/fd     internal/ipc/inventory.go
+                |
+internal/ipc/manager.go  <--- bounded Store (events + per-inode streams)
+        ^                                  ^
+        |                                  |
+internal/ipc/tracer.go                     server / MCP / UI
+AF_UNIX fentry/fexit + ring buffer
+```
+
+`ipc.Manager` owns lifecycle, PID/cgroup filters, inventory metadata refresh and the
+bounded event store. `ipc.Tracer` is the eBPF backend. fentry/fexit programs
+capture send/receive payloads (max 4 KiB per iovec segment, up to 8 segments)
+into a ring buffer; userspace never needs to read another process's buffers.
+Datagram and seqpacket receives are read back from the caller's original iovec
+at fexit. The HTTP API exposes inventory, status, events, SSE and JSONL export
+separately so the UI can update incrementally by event ID.
+
+The tracer uses the fentry/fexit calling convention and therefore has no
+`pt_regs` architecture dependency; the same object runs on amd64 and arm64.
 
 ## Current system diagram
 

@@ -255,3 +255,75 @@ export interface TraceInfo {
   podUid?: string
   suggestions: string[]
 }
+
+export interface IPCSocket {
+  inode: number
+  path?: string
+  type: string
+  state?: string
+  pid?: number
+  comm?: string
+  exe?: string
+  cgroupPath?: string
+}
+
+export interface IPCEvent {
+  id: number
+  time: string
+  inode: number
+  pid: number
+  tid: number
+  cgroupID?: number
+  comm?: string
+  direction: "send" | "receive"
+  type?: string
+  path?: string
+  part: number
+  parts?: number
+  truncated?: boolean
+  /** Go encodes []byte as base64. */
+  payload?: string
+}
+
+export interface IPCStream {
+  key: string
+  inode: number
+  pid: number
+  comm?: string
+  type?: string
+  path?: string
+  first: string
+  last: string
+  bytesIn: number
+  bytesOut: number
+  events: number
+  truncated: boolean
+}
+
+export interface IPCStats {
+  events: number
+  streams: number
+  total: number
+  bytes: number
+}
+
+export interface IPCKernelStats {
+  events: number
+  bytes: number
+  truncated: number
+  dropped: number
+}
+
+export interface IPCStatus {
+  running: boolean
+  pid: number
+  cgroupID?: number
+  maxPayload: number
+  ringSize: number
+  startedAt?: string
+  uptimeSeconds: number
+  store: IPCStats
+  kernel: IPCKernelStats
+  attachErrors?: string[]
+  lastError?: string
+}

@@ -8,6 +8,7 @@ import { ModuleRail, type WorkspaceModule } from "@/components/ModuleRail"
 import { NetworkHealth } from "@/components/NetworkHealth"
 import { CommandPalette, PaletteIcons, type PaletteCommand } from "@/components/CommandPalette"
 import { FilterBar } from "@/components/FilterBar"
+import { IPCWorkspace } from "@/components/IPCWorkspace"
 import { Header } from "@/components/Header"
 import { PacketList } from "@/components/PacketList"
 import { ProcessWorkspace } from "@/components/ProcessWorkspace"
@@ -322,6 +323,7 @@ export default function App() {
       : [{ id: "start", label: t("sidebar.start"), icon: PaletteIcons.Activity, run: handleStart }]),
     { id: "network", label: t("sidebar.network"), icon: PaletteIcons.Globe2, run: () => setActiveModule("network") },
     { id: "processes", label: t("sidebar.processes"), icon: PaletteIcons.Layers, run: () => setActiveModule("processes") },
+    { id: "ipc", label: t("sidebar.ipc"), icon: PaletteIcons.Cable, run: () => setActiveModule("ipc") },
     { id: "clear", label: t("sidebar.clear"), icon: PaletteIcons.Trash2, run: handleClear },
     { id: "columns", label: t("columns.title"), icon: PaletteIcons.Columns3, run: () => setColumnsOpen(true) },
     { id: "tls", label: t("decrypt.title"), icon: PaletteIcons.KeyRound, run: () => setDecryptOpen(true) },
@@ -343,6 +345,7 @@ export default function App() {
 
         <div className="flex min-h-0 flex-1">
           <ModuleRail active={activeModule} onSelect={setActiveModule} />
+          {activeModule !== "ipc" && (
           <Sidebar
             module={activeModule}
             activeTab={networkTab}
@@ -378,8 +381,11 @@ export default function App() {
             cgroupID={activeCgroupID}
             onSelectCgroup={handleSelectCgroup}
           />
+          )}
 
-          {activeModule === "network" ? (
+          {activeModule === "ipc" ? (
+            <IPCWorkspace />
+          ) : activeModule === "network" ? (
             <main className="flex min-w-0 flex-1 flex-col">
             <FilterBar
             filter={capture.filter}
@@ -469,7 +475,7 @@ export default function App() {
           />
           <div className="relative z-10 h-full animate-slide-in-right shadow-2xl">
             <Sidebar
-              module={activeModule}
+              module={activeModule === "ipc" ? "network" : activeModule}
               activeTab={networkTab}
               onTabChange={setNetworkTab}
               onModuleChange={setActiveModule}

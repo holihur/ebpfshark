@@ -23,6 +23,15 @@
 | POST | `/api/decrypt/tls-keylog` | `{keylog}` 加载 SSLKEYLOGFILE 内容；空字符串清除 |
 | POST | `/api/decrypt/tls-keylog-auto` | `{enabled}` 开启/关闭自动发现进程 keylog |
 | POST | `/api/decrypt/wifi-psk` | `{psk}` 加载/清除 WPA2-PSK |
+| GET | `/api/ipc`、`/api/ipc/status` | 本地 IPC 负载追踪状态与计数器 |
+| GET | `/api/ipc/sockets?q=&type=&pid=` | `/proc/net/unix` 套接字、属主与 cgroup |
+| POST | `/api/ipc/start` | `{pid, cgroup, cgroupID, maxPayload, ringSize}` 启动 AF_UNIX 负载追踪 |
+| POST | `/api/ipc/stop` | 停止本地 IPC 负载追踪 |
+| POST | `/api/ipc/clear` | 清空已保留的 IPC 事件和流 |
+| GET | `/api/ipc/events?limit=&after=&inode=&pid=&direction=&q=` | 最近 IPC 负载事件（payload 为 base64） |
+| GET | `/api/ipc/stream?after=&inode=&pid=&direction=&q=` | SSE：`ready` / `ipc` 事件（IPC 负载批量推送） |
+| GET | `/api/ipc/export?format=jsonl&after=&inode=&pid=&direction=&q=` | 导出 IPC 事件为 JSONL/JSON（不导出 pcap） |
+| GET | `/api/ipc/streams?limit=&inode=&pid=&type=&q=` | 按 inode 聚合的双向 IPC 流 |
 | GET | `/api/packets?filter=&limit=` | 最近 N 条匹配报文 |
 | GET | `/api/packets/{id}` | 协议树 + base64 原始字节 |
 | GET | `/api/packets/{id}/stream` | 该 TCP 报文所属会话的双向重组负载 |

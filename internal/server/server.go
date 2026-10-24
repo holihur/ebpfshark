@@ -63,6 +63,7 @@ type Server struct {
 	detailBytes int
 
 	traceMgr *trace.Manager
+	ipcMgr   *ipc.Manager
 }
 
 type detailKey struct {
@@ -104,6 +105,7 @@ func New(st *store.Store, mgr *capture.Manager, log *slog.Logger, webFS fs.FS, s
 		detailLRU:   list.New(),
 		detailCache: make(map[detailKey]*list.Element),
 		traceMgr:    trace.NewManager(backends...),
+		ipcMgr:      ipc.NewManager(log),
 	}
 }
 
@@ -123,7 +125,16 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/capture/filter", s.handleCaptureFilter)
 	mux.HandleFunc("POST /api/capture/cgroup", s.handleCaptureCgroup)
 	mux.HandleFunc("GET /api/processes", s.handleProcesses)
+	mux.HandleFunc("GET /api/ipc", s.handleIPCStatus)
+	mux.HandleFunc("GET /api/ipc/status", s.handleIPCStatus)
 	mux.HandleFunc("GET /api/ipc/sockets", s.handleIPCSockets)
+	mux.HandleFunc("POST /api/ipc/start", s.handleIPCStart)
+	mux.HandleFunc("POST /api/ipc/stop", s.handleIPCStop)
+	mux.HandleFunc("POST /api/ipc/clear", s.handleIPCClear)
+	mux.HandleFunc("GET /api/ipc/events", s.handleIPCEvents)
+	mux.HandleFunc("GET /api/ipc/stream", s.handleIPCStream)
+	mux.HandleFunc("GET /api/ipc/export", s.handleIPCExport)
+	mux.HandleFunc("GET /api/ipc/streams", s.handleIPCStreams)
 	mux.HandleFunc("GET /api/decrypt", s.handleDecryptStatus)
 	mux.HandleFunc("POST /api/decrypt/tls-keylog", s.handleTLSKeyLog)
 	mux.HandleFunc("POST /api/decrypt/wifi-psk", s.handleWiFiPSK)
@@ -525,14 +536,293 @@ func (s *Server) handleWiFiPSK(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"wifiPSKConfigured": decode.WiFiPSKConfigured()})
 }
 
+func (s *Server) handleIPCStatus(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.ipcMgr.Status())
+}
+
+func (s *Server) handleIPCStart(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		PID        int    `json:"pid"`
+		Cgroup     string `json:"cgroup"`
+		CgroupID   uint64 `json:"cgroupID"`
+		MaxPayload uint32 `json:"maxPayload"`
+		RingSize   uint32 `json:"ringSize"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	cgroupID := req.CgroupID
+	if strings.TrimSpace(req.Cgroup) != "" {
+		id, err := capture.ResolveCgroup(req.Cgroup)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		cgroupID = id
+	}
+	opts := ipc.TraceOptions{
+		PID: req.PID, CgroupID: cgroupID,
+		MaxPayload: req.MaxPayload, RingSize: req.RingSize,
+	}
+	if err := s.ipcMgr.Start(opts); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, s.ipcMgr.Status())
+}
+
+func (s *Server) handleIPCStop(w http.ResponseWriter, r *http.Request) {
+	s.ipcMgr.Stop()
+	writeJSON(w, http.StatusOK, s.ipcMgr.Status())
+}
+
+func (s *Server) handleIPCClear(w http.ResponseWriter, r *http.Request) {
+	s.ipcMgr.Clear()
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": s.ipcMgr.Status()})
+}
+
 func (s *Server) handleIPCSockets(w http.ResponseWriter, r *http.Request) {
 	sockets, err := ipc.ListSockets()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"sockets": sockets, "count": len(sockets)})
+	typ := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("type")))
+	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+	pid, _ := strconv.Atoi(r.URL.Query().Get("pid"))
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	if limit <= 0 || limit > 10000 {
+		limit = 5000
+	}
+	out := sockets[:0]
+	for _, sock := range sockets {
+		if typ != "" && typ != "all" && sock.Type != typ {
+			continue
+		}
+		if pid > 0 && sock.PID != pid {
+			continue
+		}
+		if q != "" && !strings.Contains(strings.ToLower(sock.Path), q) &&
+			!strings.Contains(strings.ToLower(sock.Comm), q) &&
+			!strings.Contains(strings.ToLower(sock.Exe), q) {
+			continue
+		}
+		out = append(out, sock)
+		if len(out) >= limit {
+			break
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"sockets": out, "count": len(out), "status": s.ipcMgr.Status()})
 }
+
+func (s *Server) handleIPCEvents(w http.ResponseWriter, r *http.Request) {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	after, _ := strconv.ParseUint(r.URL.Query().Get("after"), 10, 64)
+	events := s.ipcMgr.Events(limit, after)
+	inode, _ := strconv.ParseUint(r.URL.Query().Get("inode"), 10, 64)
+	pid, _ := strconv.Atoi(r.URL.Query().Get("pid"))
+	dir := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("direction")))
+	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+	if inode != 0 || pid > 0 || (dir != "" && dir != "all") || q != "" {
+		out := events[:0]
+		for _, ev := range events {
+			if matchIPCEvent(ev, inode, pid, dir, q) {
+				out = append(out, ev)
+			}
+		}
+		events = out
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"events": events, "count": len(events), "status": s.ipcMgr.Status(),
+	})
+}
+
+func matchIPCEvent(ev ipc.Event, inode uint64, pid int, dir, q string) bool {
+	if inode != 0 && ev.Inode != inode {
+		return false
+	}
+	if pid > 0 && int(ev.PID) != pid {
+		return false
+	}
+	if dir != "" && dir != "all" && ev.Direction.String() != dir {
+		return false
+	}
+	if q != "" && !strings.Contains(strings.ToLower(ev.Path), q) &&
+		!strings.Contains(strings.ToLower(ev.Comm), q) {
+		return false
+	}
+	return true
+}
+
+func (s *Server) handleIPCStream(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "streaming unsupported")
+		return
+	}
+	after, _ := strconv.ParseUint(r.URL.Query().Get("after"), 10, 64)
+	inode, _ := strconv.ParseUint(r.URL.Query().Get("inode"), 10, 64)
+	pid, _ := strconv.Atoi(r.URL.Query().Get("pid"))
+	dir := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("direction")))
+	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+
+	h := w.Header()
+	h.Set("Content-Type", "text/event-stream")
+	h.Set("Cache-Control", "no-cache, no-transform")
+	h.Set("Connection", "keep-alive")
+	h.Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+
+	ready, _ := json.Marshal(map[string]any{"status": s.ipcMgr.Status()})
+	fmt.Fprintf(w, "retry: 2000\n\n")
+	fmt.Fprintf(w, "event: ready\ndata: %s\n\n", ready)
+	flusher.Flush()
+
+	cursor := after
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	heartbeat := time.NewTicker(15 * time.Second)
+	defer heartbeat.Stop()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-heartbeat.C:
+			// Do not let an expired session keep streaming IPC payloads.
+			if s.auth.Enabled() {
+				c, err := r.Cookie(auth.CookieName)
+				if err != nil || !s.auth.Valid(c.Value) {
+					return
+				}
+			}
+			if _, err := io.WriteString(w, ": ping\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
+		case <-ticker.C:
+			events := s.ipcMgr.Events(1000, cursor)
+			if len(events) == 0 {
+				continue
+			}
+			cursor = events[len(events)-1].ID
+			out := events[:0]
+			for _, ev := range events {
+				if matchIPCEvent(ev, inode, pid, dir, q) {
+					out = append(out, ev)
+				}
+			}
+			if len(out) == 0 {
+				continue
+			}
+			payload, err := json.Marshal(map[string]any{
+				"events": out, "status": s.ipcMgr.Status(),
+			})
+			if err != nil {
+				return
+			}
+			if _, err := fmt.Fprintf(w, "event: ipc\ndata: %s\n\n", payload); err != nil {
+				return
+			}
+			flusher.Flush()
+		}
+	}
+}
+
+func (s *Server) handleIPCExport(w http.ResponseWriter, r *http.Request) {
+	after, _ := strconv.ParseUint(r.URL.Query().Get("after"), 10, 64)
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	if limit <= 0 || limit > 50000 {
+		limit = 50000
+	}
+	events := s.ipcMgr.Events(limit, after)
+	inode, _ := strconv.ParseUint(r.URL.Query().Get("inode"), 10, 64)
+	pid, _ := strconv.Atoi(r.URL.Query().Get("pid"))
+	dir := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("direction")))
+	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+	if inode != 0 || pid > 0 || (dir != "" && dir != "all") || q != "" {
+		out := events[:0]
+		for _, ev := range events {
+			if matchIPCEvent(ev, inode, pid, dir, q) {
+				out = append(out, ev)
+			}
+		}
+		events = out
+	}
+	format := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
+	if format == "json" {
+		writeJSON(w, http.StatusOK, map[string]any{"events": events, "count": len(events)})
+		return
+	}
+	filename := fmt.Sprintf("ipc-%s.jsonl", time.Now().UTC().Format("20060102-150405"))
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.Header().Set("Cache-Control", "no-store")
+	enc := json.NewEncoder(w)
+	for _, ev := range events {
+		if err := enc.Encode(ev); err != nil {
+			return
+		}
+	}
+}
+
+func (s *Server) handleIPCStreams(w http.ResponseWriter, r *http.Request) {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	streams := s.ipcMgr.Streams(limit)
+	inode, _ := strconv.ParseUint(r.URL.Query().Get("inode"), 10, 64)
+	pid, _ := strconv.Atoi(r.URL.Query().Get("pid"))
+	typ := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("type")))
+	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+	if inode != 0 || pid > 0 || (typ != "" && typ != "all") || q != "" {
+		out := streams[:0]
+		for _, st := range streams {
+			if inode != 0 && st.Inode != inode {
+				continue
+			}
+			if pid > 0 && int(st.PID) != pid {
+				continue
+			}
+			if typ != "" && typ != "all" && st.Type != typ {
+				continue
+			}
+			if q != "" && !strings.Contains(strings.ToLower(st.Path), q) &&
+				!strings.Contains(strings.ToLower(st.Comm), q) {
+				continue
+			}
+			out = append(out, st)
+		}
+		streams = out
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"streams": streams, "count": len(streams), "status": s.ipcMgr.Status(),
+	})
+}
+
+// SetIPCLogPath configures optional JSONL persistence for IPC payload events.
+func (s *Server) SetIPCLogPath(path string) { s.ipcMgr.SetLogPath(path) }
+
+// IPCStatus returns the current local IPC tracing status.
+func (s *Server) IPCStatus() ipc.Status { return s.ipcMgr.Status() }
+
+// IPCSockets returns the current Unix-domain-socket inventory.
+func (s *Server) IPCSockets() ([]ipc.Socket, error) { return ipc.ListSockets() }
+
+// IPCEvents returns recent UDS payload events.
+func (s *Server) IPCEvents(limit int, after uint64) []ipc.Event {
+	return s.ipcMgr.Events(limit, after)
+}
+
+// IPCStreams returns recent UDS streams.
+func (s *Server) IPCStreams(limit int) []ipc.Stream { return s.ipcMgr.Streams(limit) }
+
+// StartIPC starts local IPC payload tracing.
+func (s *Server) StartIPC(opts ipc.TraceOptions) error { return s.ipcMgr.Start(opts) }
+
+// ClearIPC clears retained local IPC events and streams.
+func (s *Server) ClearIPC() { s.ipcMgr.Clear() }
+
+// StopIPC ends the UDS tracing session. It is called on shutdown.
+func (s *Server) StopIPC() { s.ipcMgr.Stop() }
 
 func (s *Server) handleProcesses(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
