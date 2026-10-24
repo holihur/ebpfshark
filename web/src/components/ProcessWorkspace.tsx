@@ -1,6 +1,5 @@
 import { lazy, Suspense } from "react"
-import { Boxes, Network, ScrollText, X } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { Boxes, ScrollText } from "lucide-react"
 import { useI18n } from "@/i18n"
 import type { ProcessInfo } from "@/lib/types"
 
@@ -10,8 +9,6 @@ const TracePanel = lazy(() =>
 
 interface ProcessWorkspaceProps {
   process: ProcessInfo | null
-  onClearScope: () => void
-  onOpenNetwork: () => void
 }
 
 function Item({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
@@ -23,7 +20,7 @@ function Item({ label, value, mono = false }: { label: string; value: string; mo
   )
 }
 
-export function ProcessWorkspace({ process, onClearScope, onOpenNetwork }: ProcessWorkspaceProps) {
+export function ProcessWorkspace({ process }: ProcessWorkspaceProps) {
   const { t } = useI18n()
 
   return (
@@ -63,14 +60,7 @@ export function ProcessWorkspace({ process, onClearScope, onOpenNetwork }: Proce
                   {process.cgroupPath}
                 </div>
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                <Button size="sm" variant="outline" className="h-8" onClick={onOpenNetwork}>
-                  <Network className="h-3.5 w-3.5" /> {t("process.openNetwork")}
-                </Button>
-                <Button size="sm" variant="ghost" className="h-8" onClick={onClearScope} title={t("process.clear")}>
-                  <X className="h-3.5 w-3.5" />
-                </Button>
-              </div>
+
             </div>
           </div>
 
@@ -90,9 +80,9 @@ export function ProcessWorkspace({ process, onClearScope, onOpenNetwork }: Proce
 
           <div className="rounded-lg border bg-muted/20 p-3 text-2xs leading-relaxed text-muted-foreground">
             <div className="flex items-center gap-1.5 font-medium text-foreground/80">
-              <ScrollText className="h-3.5 w-3.5" /> {t("process.scopeHint")}
+              <ScrollText className="h-3.5 w-3.5" /> {t("process.instrumentHint")}
             </div>
-            <p className="mt-1">{t("process.scopeHintBody")}</p>
+            <p className="mt-1">{t("process.instrumentHintBody")}</p>
           </div>
         </div>
       )}

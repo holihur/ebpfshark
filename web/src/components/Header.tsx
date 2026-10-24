@@ -2,9 +2,11 @@ import { memo } from "react"
 import {
   Languages,
   LogOut,
+  MemoryStick,
   Moon,
   MoreHorizontal,
   PanelLeft,
+  Server,
   Sun,
   Waves,
 } from "lucide-react"
@@ -24,6 +26,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import type { StatusResponse } from "@/lib/types"
+import { formatBytes, formatDuration } from "@/lib/format"
 import { LOCALE_LABELS, useI18n, type Locale } from "@/i18n"
 
 interface HeaderProps {
@@ -74,6 +77,36 @@ function HeaderImpl({
 
       <div className="flex-1" />
 
+      <div className="hidden items-center gap-2 text-2xs text-muted-foreground md:flex">
+        <span className="rounded border bg-background/40 px-1.5 py-0.5 font-mono text-foreground/70">
+          v{status?.version ?? "…"}
+        </span>
+        {status?.system?.kernel && (
+          <span className="hidden items-center gap-1 lg:flex" title={status.system.kernel}>
+            <Server className="h-3 w-3" />
+            Linux {status.system.kernel}
+          </span>
+        )}
+        {status?.system && status.system.memoryTotal > 0 && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="flex items-center gap-1 font-mono tabular-nums">
+                <MemoryStick className="h-3 w-3" />
+                {formatBytes(status.system.memoryTotal - status.system.memoryAvailable)} /{" "}
+                {formatBytes(status.system.memoryTotal)}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              <div className="space-y-0.5 text-2xs">
+                <div>{t("app.memory")}</div>
+                {status.system.os && <div>{status.system.os}</div>}
+                <div>{t("app.uptime", { value: formatDuration(status.system.uptimeSeconds) })}</div>
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        )}
+      </div>
+
       <DropdownMenu>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -119,9 +152,20 @@ function HeaderImpl({
             </DropdownMenuCheckboxItem>
           ))}
           <DropdownMenuSeparator />
+          <DropdownMenuLabel>{t("app.system")}</DropdownMenuLabel>
           <DropdownMenuItem disabled className="text-2xs text-muted-foreground">
             {t("app.version", { version: status?.version ?? "…" })}
           </DropdownMenuItem>
+          {status?.system?.kernel && (
+            <DropdownMenuItem disabled className="text-2xs text-muted-foreground">
+              Linux {status.system.kernel}
+            </DropdownMenuItem>
+          )}
+          {status?.system && status.system.memoryTotal > 0 && (
+            <DropdownMenuItem disabled className="text-2xs text-muted-foreground">
+              {formatBytes(status.system.memoryTotal - status.system.memoryAvailable)} / {formatBytes(status.system.memoryTotal)}
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </header>

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react"
-import { Activity, Boxes, RefreshCw, Search, X } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { Boxes, RefreshCw, Search, X } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { api } from "@/lib/api"
 import { formatCount } from "@/lib/format"
@@ -10,12 +9,21 @@ import type { ProcessInfo } from "@/lib/types"
 
 interface ProcessPanelProps {
   active: boolean
+  mode?: "scope" | "analysis"
   selectedCgroupID?: number
-  onSelectCgroup: (process: ProcessInfo | null) => void
-  onTraceProcess?: (process: ProcessInfo) => void
+  onSelectCgroup?: (process: ProcessInfo | null) => void
+  selectedPID?: number
+  onSelectProcess?: (process: ProcessInfo) => void
 }
 
-export function ProcessPanel({ active, selectedCgroupID, onSelectCgroup, onTraceProcess }: ProcessPanelProps) {
+export function ProcessPanel({
+  active,
+  mode = "scope",
+  selectedCgroupID,
+  onSelectCgroup,
+  selectedPID,
+  onSelectProcess,
+}: ProcessPanelProps) {
   const { t } = useI18n()
   const [query, setQuery] = useState("")
   const [processes, setProcesses] = useState<ProcessInfo[]>([])
@@ -99,9 +107,10 @@ export function ProcessPanel({ active, selectedCgroupID, onSelectCgroup, onTrace
         )}
       </div>
 
+      {mode === "scope" && (
       <button
         type="button"
-        onClick={() => onSelectCgroup(null)}
+        onClick={() => onSelectCgroup?.(null)}
         className={cn(
           "flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs transition-colors",
           !selectedCgroupID
@@ -119,34 +128,21 @@ export function ProcessPanel({ active, selectedCgroupID, onSelectCgroup, onTrace
           <span className="ml-auto text-2xs text-muted-foreground">{t("process.active")}</span>
         )}
       </button>
+      )}
 
-      {selectedCgroupID ? (
+      {mode === "scope" && selectedCgroupID ? (
         <div className="flex items-center gap-2 rounded border border-primary/30 bg-primary/[0.08] px-2 py-1 font-mono text-[10px] text-primary">
           <Boxes className="h-3 w-3 shrink-0" />
           <span className="truncate">{t("process.cgroup", { id: selectedCgroupID })}</span>
           <button
             type="button"
             className="ml-auto shrink-0 text-muted-foreground hover:text-foreground"
-            onClick={() => onSelectCgroup(null)}
+            onClick={() => onSelectCgroup?.(null)}
             aria-label={t("process.clear")}
           >
             <X className="h-3 w-3" />
           </button>
         </div>
-      ) : null}
-
-      {selectedCgroupID && onTraceProcess ? (
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-7 w-full justify-start"
-          onClick={() => {
-            const selected = processes.find((p) => p.cgroupID === selectedCgroupID)
-            if (selected) onTraceProcess(selected)
-          }}
-        >
-          <Activity className="h-3.5 w-3.5" /> {t("process.trace")}
-        </Button>
       ) : null}
 
       {error && (
@@ -162,12 +158,17 @@ export function ProcessPanel({ active, selectedCgroupID, onSelectCgroup, onTrace
       ) : (
         <div className="space-y-0.5">
           {processes.map((process) => {
-            const selected = process.cgroupID === selectedCgroupID
+            const selected = mode === "analysis"
+              ? process.pid === selectedPID
+              : process.cgroupID === selectedCgroupID
             return (
               <button
                 key={`${process.pid}:${process.cgroupID}`}
                 type="button"
-                onClick={() => onSelectCgroup(process)}
+                onClick={() => {
+                  if (mode === "analysis") onSelectProcess?.(process)
+                  else onSelectCgroup?.(process)
+                }}
                 title={process.cgroupPath}
                 className={cn(
                   "w-full rounded-md border px-2 py-1.5 text-left transition-colors",
@@ -194,7 +195,7 @@ export function ProcessPanel({ active, selectedCgroupID, onSelectCgroup, onTrace
       )}
 
       <p className="px-1 text-[10px] leading-relaxed text-muted-foreground/60">
-        {t("process.hint")}
+        {t(mode === "analysis" ? "process.analysisHint" : "process.hint")}
       </p>
     </div>
   )

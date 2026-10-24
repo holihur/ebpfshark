@@ -147,6 +147,15 @@ export interface StoreStats {
   lastPacket?: string
 }
 
+export interface SystemInfo {
+  kernel?: string
+  os?: string
+  hostname?: string
+  memoryTotal: number
+  memoryAvailable: number
+  uptimeSeconds: number
+}
+
 export interface StatusResponse {
   capture: CaptureStatus
   store: StoreStats
@@ -154,6 +163,7 @@ export interface StatusResponse {
   subscribers: number
   serverTime: number
   version: string
+  system?: SystemInfo
 }
 
 export interface Flow {

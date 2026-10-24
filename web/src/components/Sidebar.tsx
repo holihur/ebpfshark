@@ -64,7 +64,8 @@ interface SidebarProps {
   onTabChange?: (tab: string) => void
   module?: "network" | "processes"
   onModuleChange?: (module: "network" | "processes") => void
-  onTraceProcess?: (process: ProcessInfo) => void
+  selectedPID?: number
+  onSelectProcess?: (process: ProcessInfo) => void
   onOpenProcesses?: () => void
 }
 
@@ -664,7 +665,6 @@ function SidebarImpl(props: SidebarProps) {
                 active={tab === "processes"}
                 selectedCgroupID={props.cgroupID}
                 onSelectCgroup={props.onSelectCgroup}
-                onTraceProcess={props.onTraceProcess}
               />
             </ScrollArea>
           </TabsContent>
@@ -697,9 +697,9 @@ function SidebarImpl(props: SidebarProps) {
           <ScrollArea className="min-h-0 flex-1">
             <ProcessPanel
               active
-              selectedCgroupID={props.cgroupID}
-              onSelectCgroup={props.onSelectCgroup}
-              onTraceProcess={props.onTraceProcess}
+              mode="analysis"
+              selectedPID={props.selectedPID}
+              onSelectProcess={props.onSelectProcess}
             />
           </ScrollArea>
         </div>

@@ -358,6 +358,7 @@ type statusResponse struct {
 	Subscribers int                 `json:"subscribers"`
 	ServerTime  int64               `json:"serverTime"`
 	Version     string              `json:"version"`
+	System      SystemInfo          `json:"system"`
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -374,6 +375,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		Subscribers: s.store.SubscriberCount(),
 		ServerTime:  time.Now().UnixNano(),
 		Version:     Version,
+		System:      currentSystemInfo(),
 	})
 }
 

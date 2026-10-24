@@ -41,6 +41,7 @@ export default function App() {
   const [ringSize, setRingSize] = useState(32 << 20)
   const [clearOnStart, setClearOnStart] = useState(true)
   const [cgroupFilter, setCgroupFilter] = useState<ProcessInfo | null>(null)
+  const [selectedProcess, setSelectedProcess] = useState<ProcessInfo | null>(null)
   const [busy, setBusy] = useState(false)
   const [splitPct, setSplitPct] = useState(44)
   const [columns, setColumns] = usePacketColumns()
@@ -261,8 +262,12 @@ export default function App() {
             activeTab={networkTab}
             onTabChange={setNetworkTab}
             onModuleChange={setActiveModule}
-            onTraceProcess={() => setActiveModule("processes")}
-            onOpenProcesses={() => setActiveModule("processes")}
+            selectedPID={selectedProcess?.pid}
+            onSelectProcess={setSelectedProcess}
+            onOpenProcesses={() => {
+              setActiveModule("network")
+              setNetworkTab("processes")
+            }}
             status={capture.status}
             filter={capture.filter}
             selectedIfaces={selectedIfaces}
@@ -351,11 +356,7 @@ export default function App() {
               )}
             </main>
           ) : (
-            <ProcessWorkspace
-              process={cgroupFilter}
-              onClearScope={() => handleSelectCgroup(null)}
-              onOpenNetwork={() => setActiveModule("network")}
-            />
+            <ProcessWorkspace process={selectedProcess} />
           )}
         </div>
       </div>
@@ -385,8 +386,12 @@ export default function App() {
               activeTab={networkTab}
               onTabChange={setNetworkTab}
               onModuleChange={setActiveModule}
-              onTraceProcess={() => setActiveModule("processes")}
-              onOpenProcesses={() => setActiveModule("processes")}
+              selectedPID={selectedProcess?.pid}
+              onSelectProcess={setSelectedProcess}
+              onOpenProcesses={() => {
+                setActiveModule("network")
+                setNetworkTab("processes")
+              }}
               status={capture.status}
               filter={capture.filter}
               selectedIfaces={selectedIfaces}
