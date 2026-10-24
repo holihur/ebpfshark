@@ -55,7 +55,7 @@ func main() {
 	maxPackets := flag.Int("max-packets", envInt("EBPFSHARK_MAX_PACKETS", 100000), "packets kept in the ring buffer")
 	webDir := flag.String("web-dir", env("EBPFSHARK_WEB_DIR", ""), "serve the UI from this directory instead of the embedded build")
 	iface := flag.String("capture", env("EBPFSHARK_IFACE", ""), "comma separated interfaces to capture on at startup")
-	snaplen := flag.Uint("snaplen", 2048, "bytes captured per packet (max 2048)")
+	snaplen := flag.Uint("snaplen", 2048, "bytes captured per packet (2K/4K/16K/64K/256K supported)")
 	sampleRate := flag.Uint("sample-rate", 1, "capture 1 out of every N packets")
 	ringSize := flag.Uint("ring-size", 32<<20, "BPF ring buffer size in bytes")
 	streamBudget := flag.Int("stream-budget", envInt("EBPFSHARK_STREAM_BUDGET", 64), "TCP reassembly memory budget in MiB")

@@ -43,6 +43,7 @@ interface SidebarProps {
   selectedIfaces: string[]
   snaplen: number
   sampleRate: number
+  ringSize: number
   clearOnStart: boolean
   busy: boolean
   onToggleIface: (name: string) => void
@@ -50,6 +51,7 @@ interface SidebarProps {
   onClearIfaces: () => void
   onSnaplenChange: (value: number) => void
   onSampleRateChange: (value: number) => void
+  onRingSizeChange: (value: number) => void
   onClearOnStartChange: (value: boolean) => void
   onApplyFilter: (filter: string) => void
   onStart: () => void
@@ -60,6 +62,8 @@ interface SidebarProps {
   onSelectCgroup: (process: ProcessInfo | null) => void
   mobile?: boolean
   onClose?: () => void
+  activeTab?: string
+  onTabChange?: (tab: string) => void
 }
 
 function Section({
@@ -236,6 +240,10 @@ function CapturePanel(props: SidebarProps) {
                 <SelectItem value="512">512 B</SelectItem>
                 <SelectItem value="1024">1 KB</SelectItem>
                 <SelectItem value="2048">2 KB</SelectItem>
+                <SelectItem value="4096">4 KB</SelectItem>
+                <SelectItem value="16384">16 KB</SelectItem>
+                <SelectItem value="65536">64 KB</SelectItem>
+                <SelectItem value="262144">256 KB</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -257,6 +265,27 @@ function CapturePanel(props: SidebarProps) {
               </SelectContent>
             </Select>
           </div>
+        </div>
+        <div className="mt-2 space-y-1">
+          <label className="text-2xs text-muted-foreground/70">{t("sidebar.ringBuffer")}</label>
+          <Select
+            value={String(props.ringSize)}
+            onValueChange={(v) => props.onRingSizeChange(Number(v))}
+            disabled={running}
+          >
+            <SelectTrigger className="h-8">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={String(8 << 20)}>8 MB</SelectItem>
+              <SelectItem value={String(16 << 20)}>16 MB</SelectItem>
+              <SelectItem value={String(32 << 20)}>32 MB</SelectItem>
+              <SelectItem value={String(64 << 20)}>64 MB</SelectItem>
+              <SelectItem value={String(128 << 20)}>128 MB</SelectItem>
+              <SelectItem value={String(256 << 20)}>256 MB</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-[10px] text-muted-foreground/60">{t("sidebar.ringBufferHint")}</p>
         </div>
         <div className="mt-2 flex items-center justify-between rounded-md border bg-background/30 px-2 py-1.5">
           <span className="text-2xs text-muted-foreground">{t("sidebar.clearOnStart")}</span>
@@ -554,7 +583,12 @@ function FlowsPanel({
 
 function SidebarImpl(props: SidebarProps) {
   const { t } = useI18n()
-  const [tab, setTab] = useState("capture")
+  const [localTab, setLocalTab] = useState("capture")
+  const tab = props.activeTab ?? localTab
+  const setTab = (next: string) => {
+    if (props.onTabChange) props.onTabChange(next)
+    else setLocalTab(next)
+  }
   const running = props.status?.capture.running ?? false
 
   return (

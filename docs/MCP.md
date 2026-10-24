@@ -228,7 +228,7 @@ youruser ALL=(root) NOPASSWD: /root/ebpf/bin/ebpfshark mcp
 | 参数 | 类型 | 默认 | 说明 |
 | --- | --- | --- | --- |
 | `interfaces` | string[] | 必填 | 网卡名，例如 `["eth0", "lo"]` |
-| `snaplen` | number | 2048 | 每包捕获字节数，最大 2048 |
+| `snaplen` | number | 2048 | 每包捕获字节数，默认 2048，最大 262144 |
 | `sampleRate` | number | 1 | 每 N 个包抓 1 个 |
 | `ringSize` | number | 32 MiB | eBPF ringbuffer 字节数 |
 | `cgroup` | string | 空 | 只抓指定 cgroup：ID、路径、`pid:N`、`pod:NAME`、`container:ID` |

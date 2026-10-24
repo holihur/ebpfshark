@@ -122,7 +122,7 @@ Web 侧栏 **Trace** 标签和 MCP 的 `start_function_trace` / `query_function_
 -addr :9999              监听地址
 -auth-pass ""            登录密码；留空则随机生成
 -max-packets 100000      内存中保留的报文数
--snaplen 2048            每包捕获字节数
+-snaplen 2048            每包捕获字节数（2K/4K/16K/64K/256K）
 -sample-rate 1           每 N 个包抓 1 个
 -capture-filter ""       可选显示过滤器；其 L2–L4 子集会在 eBPF 中预过滤
 -tls-keylog ""           NSS SSLKEYLOGFILE，用于 TLS 解密

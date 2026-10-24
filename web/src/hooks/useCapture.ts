@@ -7,6 +7,7 @@ export interface StartOptions {
   interfaces: string[]
   snaplen: number
   sampleRate: number
+  ringSize?: number
   clear?: boolean
   filter?: string
   cgroup?: string
@@ -155,6 +156,7 @@ export function useCapture() {
         interfaces: opts.interfaces,
         snaplen: opts.snaplen,
         sampleRate: opts.sampleRate,
+        ringSize: opts.ringSize ?? 32 << 20,
         clear: opts.clear ?? true,
         filter: opts.filter ?? "",
         cgroup: opts.cgroup,

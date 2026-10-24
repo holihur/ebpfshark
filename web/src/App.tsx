@@ -4,11 +4,13 @@ import { ColumnSettingsDialog } from "@/components/ColumnSettingsDialog"
 import { DecryptionDialog } from "@/components/DecryptionDialog"
 import { DetailPanel } from "@/components/DetailPanel"
 import { MITMDialog } from "@/components/MITMDialog"
+import { ModuleRail, type SidebarModule } from "@/components/ModuleRail"
 import { FilterBar } from "@/components/FilterBar"
 import { Header } from "@/components/Header"
 import { PacketList } from "@/components/PacketList"
 import { Sidebar } from "@/components/Sidebar"
 import { StatusBar } from "@/components/StatusBar"
+import { TraceDialog } from "@/components/TraceDialog"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { useAuth } from "@/auth/context"
 import { useCapture } from "@/hooks/useCapture"
@@ -36,6 +38,7 @@ export default function App() {
   const [selectedIfaces, setSelectedIfaces] = useState<string[]>([])
   const [snaplen, setSnaplen] = useState(2048)
   const [sampleRate, setSampleRate] = useState(1)
+  const [ringSize, setRingSize] = useState(32 << 20)
   const [clearOnStart, setClearOnStart] = useState(true)
   const [cgroupFilter, setCgroupFilter] = useState<ProcessInfo | null>(null)
   const [busy, setBusy] = useState(false)
@@ -45,6 +48,8 @@ export default function App() {
   const [decryptOpen, setDecryptOpen] = useState(false)
   const [mitmOpen, setMitmOpen] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const [traceOpen, setTraceOpen] = useState(false)
+  const [sidebarTab, setSidebarTab] = useState<SidebarModule>("capture")
 
   const workRef = useRef<HTMLDivElement>(null)
   const initialized = useRef(false)
@@ -72,6 +77,7 @@ export default function App() {
     if (s.capture.running && !wasRunning.current && s.capture.interfaces.length > 0) {
       setSelectedIfaces(s.capture.interfaces)
     }
+    if (s.capture.running && s.capture.ringSize > 0) setRingSize(s.capture.ringSize)
     wasRunning.current = s.capture.running
   }, [capture.status])
 
@@ -123,6 +129,7 @@ export default function App() {
         interfaces: selectedIfaces,
         snaplen,
         sampleRate,
+        ringSize,
         clear: clearOnStart,
         filter: capture.filter,
         cgroup: activeCgroupID ? String(activeCgroupID) : "",
@@ -134,7 +141,7 @@ export default function App() {
           rate: res.sampleRate,
         }),
       })
-    }), [run, selectedIfaces, snaplen, sampleRate, clearOnStart, capture.start, activeCgroupID, t])
+    }), [run, selectedIfaces, snaplen, sampleRate, ringSize, clearOnStart, capture.start, activeCgroupID, t])
 
   const handleStop = useCallback(() =>
     run(async () => {
@@ -254,6 +261,7 @@ export default function App() {
           onDecryption={() => setDecryptOpen(true)}
           onMITM={() => setMitmOpen(true)}
           onOpenSidebar={() => setMobileSidebarOpen(true)}
+          onTrace={() => setTraceOpen(true)}
         />
 
         <FilterBar
@@ -266,12 +274,20 @@ export default function App() {
         />
 
         <div className="flex min-h-0 flex-1">
+          <ModuleRail
+            active={sidebarTab}
+            onSelect={setSidebarTab}
+            onTrace={() => setTraceOpen(true)}
+          />
           <Sidebar
+            activeTab={sidebarTab}
+            onTabChange={(tab) => setSidebarTab(tab as SidebarModule)}
             status={capture.status}
             filter={capture.filter}
             selectedIfaces={selectedIfaces}
             snaplen={snaplen}
             sampleRate={sampleRate}
+            ringSize={ringSize}
             clearOnStart={clearOnStart}
             busy={busy}
             onToggleIface={toggleIface}
@@ -279,6 +295,7 @@ export default function App() {
             onClearIfaces={clearIfaces}
             onSnaplenChange={setSnaplen}
             onSampleRateChange={setSampleRate}
+            onRingSizeChange={setRingSize}
             onClearOnStartChange={setClearOnStart}
             onApplyFilter={handleApplyFilter}
             onStart={handleStart}
@@ -347,6 +364,8 @@ export default function App() {
 
       <MITMDialog open={mitmOpen} onOpenChange={setMitmOpen} />
 
+      <TraceDialog open={traceOpen} onOpenChange={setTraceOpen} />
+
       {mobileSidebarOpen && (
         <div className="fixed inset-0 z-50 flex md:hidden" role="dialog" aria-modal="true">
           <button
@@ -357,11 +376,14 @@ export default function App() {
           />
           <div className="relative z-10 h-full animate-slide-in-right shadow-2xl">
             <Sidebar
+              activeTab={sidebarTab}
+              onTabChange={(tab) => setSidebarTab(tab as SidebarModule)}
               status={capture.status}
               filter={capture.filter}
               selectedIfaces={selectedIfaces}
               snaplen={snaplen}
               sampleRate={sampleRate}
+              ringSize={ringSize}
               clearOnStart={clearOnStart}
               busy={busy}
               onToggleIface={toggleIface}
@@ -369,6 +391,7 @@ export default function App() {
               onClearIfaces={clearIfaces}
               onSnaplenChange={setSnaplen}
               onSampleRateChange={setSampleRate}
+              onRingSizeChange={setRingSize}
               onClearOnStartChange={setClearOnStart}
               onApplyFilter={handleApplyFilter}
               onStart={handleStart}

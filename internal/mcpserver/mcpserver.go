@@ -163,7 +163,7 @@ func addInterfaceTool(srv *mcp.Server) {
 
 type startCaptureInput struct {
 	Interfaces []string `json:"interfaces" jsonschema:"interface names to capture on, e.g. [\"eth0\"]"`
-	Snaplen    uint32   `json:"snaplen,omitempty" jsonschema:"bytes captured per packet (default 2048, max 2048)"`
+	Snaplen    uint32   `json:"snaplen,omitempty" jsonschema:"bytes captured per packet (default 2048, max 262144)"`
 	SampleRate uint32   `json:"sampleRate,omitempty" jsonschema:"capture 1 out of every N packets (default 1)"`
 	RingSize   uint32   `json:"ringSize,omitempty" jsonschema:"BPF ring buffer size in bytes (default 32 MiB)"`
 	Clear      bool     `json:"clear,omitempty" jsonschema:"clear the packet buffer before starting"`
@@ -181,6 +181,9 @@ func addCaptureTools(srv *mcp.Server, st *store.Store, mgr *capture.Manager, api
 		}
 		if in.Snaplen == 0 {
 			in.Snaplen = 2048
+			if in.Snaplen > capture.MaxSnaplen {
+				in.Snaplen = capture.MaxSnaplen
+			}
 		}
 		if in.SampleRate == 0 {
 			in.SampleRate = 1

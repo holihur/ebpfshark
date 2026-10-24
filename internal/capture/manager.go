@@ -64,7 +64,7 @@ type Manager struct {
 	log   *slog.Logger
 
 	mu      sync.Mutex
-	objs    *captureObjects
+	objs    bpfObjects
 	reader  *ringbuf.Reader
 	links   []link.Link
 	opts    Options
@@ -86,6 +86,10 @@ type Manager struct {
 	ifaceNames map[uint32]string
 	linkTypes  map[uint32]packet.LinkType
 }
+
+// MaxSnaplen is the largest per-packet capture length supported by the BPF
+// ring buffer buckets.
+const MaxSnaplen = 256 * 1024
 
 // NewManager creates a capture manager feeding packets into st.
 func NewManager(st *store.Store, log *slog.Logger) *Manager {
@@ -154,7 +158,7 @@ func (m *Manager) SetCgroupID(id uint64) error {
 		return nil
 	}
 	cfg := captureConfigFor(m.opts, 1, m.opts.ExcludePort)
-	return m.objs.CaptureCfg.Put(uint32(0), cfg)
+	return m.objs.ConfigMap().Put(uint32(0), cfg)
 }
 
 // SetCaptureFilter updates the kernel prefilter without restarting capture.
@@ -166,7 +170,7 @@ func (m *Manager) SetCaptureFilter(spec filter.CaptureSpec) error {
 		return nil
 	}
 	cfg := captureConfigFor(m.opts, 1, m.opts.ExcludePort)
-	return m.objs.CaptureCfg.Put(uint32(0), cfg)
+	return m.objs.ConfigMap().Put(uint32(0), cfg)
 }
 
 // Start tears down any running session and starts a new one.
@@ -179,8 +183,8 @@ func (m *Manager) Start(opts Options) error {
 	if opts.Snaplen == 0 {
 		opts.Snaplen = 256
 	}
-	if opts.Snaplen > 2048 {
-		opts.Snaplen = 2048
+	if opts.Snaplen > MaxSnaplen {
+		opts.Snaplen = MaxSnaplen
 	}
 	if opts.SampleRate == 0 {
 		opts.SampleRate = 1
@@ -199,17 +203,33 @@ func (m *Manager) Start(opts Options) error {
 		m.log.Warn("failed to raise memlock limit", "err", err)
 	}
 
-	spec, err := loadCapture()
-	if err != nil {
-		return fmt.Errorf("load eBPF spec: %w", err)
-	}
-	if ms, ok := spec.Maps["events"]; ok {
-		ms.MaxEntries = opts.RingSize
-	}
-
-	var objs captureObjects
-	if err := spec.LoadAndAssign(&objs, nil); err != nil {
-		return fmt.Errorf("load eBPF objects: %w (kernel 6.6+ with BTF is required)", err)
+	var objs bpfObjects
+	if opts.Snaplen > 2048 {
+		spec, err := loadCapture_large()
+		if err != nil {
+			return fmt.Errorf("load large eBPF spec: %w", err)
+		}
+		if ms, ok := spec.Maps["events"]; ok {
+			ms.MaxEntries = opts.RingSize
+		}
+		var large capture_largeObjects
+		if err := spec.LoadAndAssign(&large, nil); err != nil {
+			return fmt.Errorf("load large eBPF objects: %w (kernel 6.6+ with BTF is required)", err)
+		}
+		objs = &large
+	} else {
+		spec, err := loadCapture()
+		if err != nil {
+			return fmt.Errorf("load eBPF spec: %w", err)
+		}
+		if ms, ok := spec.Maps["events"]; ok {
+			ms.MaxEntries = opts.RingSize
+		}
+		var small captureObjects
+		if err := spec.LoadAndAssign(&small, nil); err != nil {
+			return fmt.Errorf("load eBPF objects: %w (kernel 6.6+ with BTF is required)", err)
+		}
+		objs = &small
 	}
 
 	cleanup := func() {
@@ -221,7 +241,7 @@ func (m *Manager) Start(opts Options) error {
 		excludePort = 0
 	}
 	cfg := captureConfigFor(opts, 0, excludePort)
-	if err := objs.CaptureCfg.Put(uint32(0), cfg); err != nil {
+	if err := objs.ConfigMap().Put(uint32(0), cfg); err != nil {
 		cleanup()
 		return fmt.Errorf("configure map: %w", err)
 	}
@@ -243,8 +263,8 @@ func (m *Manager) Start(opts Options) error {
 			attach ebpf.AttachType
 			label  string
 		}{
-			{objs.CaptureIngress, ebpf.AttachTCXIngress, "ingress"},
-			{objs.CaptureEgress, ebpf.AttachTCXEgress, "egress"},
+			{objs.IngressProgram(), ebpf.AttachTCXIngress, "ingress"},
+			{objs.EgressProgram(), ebpf.AttachTCXEgress, "egress"},
 		} {
 			l, err := link.AttachTCX(link.TCXOptions{
 				Interface: ifi.Index,
@@ -264,7 +284,7 @@ func (m *Manager) Start(opts Options) error {
 		return fmt.Errorf("failed to attach to any interface: %s", strings.Join(attachErrors, "; "))
 	}
 
-	rd, err := ringbuf.NewReader(objs.Events)
+	rd, err := ringbuf.NewReader(objs.EventsMap())
 	if err != nil {
 		for _, l := range links {
 			l.Close()
@@ -283,7 +303,7 @@ func (m *Manager) Start(opts Options) error {
 	}
 
 	cfg.Enabled = 1
-	if err := objs.CaptureCfg.Put(uint32(0), cfg); err != nil {
+	if err := objs.ConfigMap().Put(uint32(0), cfg); err != nil {
 		rd.Close()
 		for _, l := range links {
 			l.Close()
@@ -293,7 +313,7 @@ func (m *Manager) Start(opts Options) error {
 	}
 
 	m.mu.Lock()
-	m.objs = &objs
+	m.objs = objs
 	m.reader = rd
 	m.links = links
 	m.opts = opts
@@ -332,7 +352,7 @@ func (m *Manager) Stop() {
 
 	if objs != nil {
 		// Disable capture first so no new events are produced.
-		_ = objs.CaptureCfg.Put(uint32(0), captureCaptureConfig{Enabled: 0})
+		_ = objs.ConfigMap().Put(uint32(0), captureCaptureConfig{Enabled: 0})
 		pkts, bytes, skipped, filtered := readKernelStats(objs)
 		m.mu.Lock()
 		m.lastKernelPackets, m.lastKernelBytes, m.lastKernelSkipped = pkts, bytes, skipped
@@ -450,9 +470,9 @@ func (m *Manager) Status() Status {
 	return st
 }
 
-func readKernelStats(objs *captureObjects) (packets, bytes, skipped, filtered uint64) {
+func readKernelStats(objs bpfObjects) (packets, bytes, skipped, filtered uint64) {
 	var per []captureCaptureStats
-	if err := objs.Stats.Lookup(uint32(0), &per); err != nil {
+	if err := objs.StatsMap().Lookup(uint32(0), &per); err != nil {
 		return 0, 0, 0, 0
 	}
 	for _, s := range per {

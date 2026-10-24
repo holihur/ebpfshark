@@ -11,7 +11,11 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
 
+#ifdef CAPTURE_LARGE
+#define SNAPLEN_MAX 262144
+#else
 #define SNAPLEN_MAX 2048
+#endif
 #define EVENT_MAX_SIZE (sizeof(struct pkt_event) + SNAPLEN_MAX)
 
 /* Values intentionally match TC_ACT_OK. */

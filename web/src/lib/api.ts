@@ -82,6 +82,7 @@ export const api = {
     interfaces: string[]
     snaplen: number
     sampleRate: number
+    ringSize: number
     clear: boolean
     filter?: string
     cgroup?: string

@@ -10,6 +10,7 @@ import {
   Moon,
   MoreHorizontal,
   PanelLeft,
+  Activity,
   Play,
   Square,
   Sun,
@@ -56,6 +57,7 @@ interface HeaderProps {
   onDecryption: () => void
   onMITM: () => void
   onOpenSidebar: () => void
+  onTrace: () => void
 }
 
 function HeaderImpl({
@@ -76,6 +78,7 @@ function HeaderImpl({
   onDecryption,
   onMITM,
   onOpenSidebar,
+  onTrace,
 }: HeaderProps) {
   const { t, locale, setLocale } = useI18n()
   const running = status?.capture.running ?? false
@@ -171,6 +174,21 @@ function HeaderImpl({
           {t("app.start")}
         </Button>
       )}
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onTrace}
+            aria-label={t("trace.workspace")}
+            title={t("trace.workspace")}
+          >
+            <Activity />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{t("trace.workspace")}</TooltipContent>
+      </Tooltip>
 
       <DropdownMenu>
         <Tooltip>

@@ -74,8 +74,11 @@ func TestKernelCaptureFilter(t *testing.T) {
 	// lost while the veth peer is still resolving ARP.
 	send(9998)
 	time.Sleep(300 * time.Millisecond)
-	send(9999)
-	send(9998)
+	for i := 0; i < 5; i++ {
+		send(9999)
+		send(9998)
+		time.Sleep(50 * time.Millisecond)
+	}
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
