@@ -46,6 +46,35 @@ interface FilterBarProps {
   onMITM: () => void
 }
 
+function SuggestionSection({
+  title,
+  items,
+  onPick,
+}: {
+  title: string
+  items: Array<{ label: string; hint?: string; insert: string }>
+  onPick: (insert: string) => void
+}) {
+  if (items.length === 0) return null
+  return (
+    <>
+      <div className="border-t px-2 py-1 text-2xs text-muted-foreground">{title}</div>
+      {items.map((item) => (
+        <button
+          key={`${title}-${item.label}`}
+          type="button"
+          className="flex w-full items-center gap-2 px-2 py-1 text-left font-mono text-[11px] hover:bg-accent"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => onPick(item.insert)}
+        >
+          <span className="min-w-0 flex-1 truncate">{item.label}</span>
+          {item.hint && <span className="shrink-0 text-2xs text-muted-foreground/60">{item.hint}</span>}
+        </button>
+      ))}
+    </>
+  )
+}
+
 export function FilterBar({
   filter,
   error,
@@ -69,9 +98,35 @@ export function FilterBar({
     .filter((item) => !draft.trim() || item.toLowerCase().includes(draft.trim().toLowerCase()))
     .slice(0, 8)
   const partial = draft.match(/([A-Za-z_][\w.-]*)$/)?.[1]?.toLowerCase() ?? ""
+  const lastField = fields.find((field) => field.name.toLowerCase() === partial)
+  const valueMatch = draft.match(/([A-Za-z_][\w.-]*)\s*(==|!=|contains|~=)\s*([^\s]*)$/i)
+  const valueField = valueMatch
+    ? fields.find((field) => field.name.toLowerCase() === valueMatch[1].toLowerCase())
+    : undefined
   const fieldSuggestions = fields
     .filter((field) => !partial || field.name.toLowerCase().startsWith(partial))
     .slice(0, 10)
+  const operatorSuggestions = lastField?.ops?.map((op) => ({
+    label: `${lastField.name} ${op}`,
+    insert: `${lastField.name} ${op} `,
+  })) ?? []
+  const valueSuggestions = valueField && valueMatch && valueMatch[3] === ""
+    ? [...(valueField.values ?? []), ...(valueField.suggest ?? [])]
+        .filter((value, index, all) => all.indexOf(value) === index)
+        .slice(0, 10)
+        .map((value) => ({ label: value, insert: `${value} ` }))
+    : []
+  const keywordSuggestions = ["and", "or", "not"]
+    .filter((keyword) => !partial || keyword.startsWith(partial))
+    .map((keyword) => ({ label: keyword, insert: `${keyword} ` }))
+  const applyCompletion = (insert: string) => {
+    const next = draft.endsWith(" ") || !draft
+      ? draft + insert
+      : draft.replace(/[A-Za-z_][\w.-]*$/, insert)
+    setDraft(next)
+    setHistoryOpen(false)
+    inputRef.current?.focus()
+  }
   const inputRef = useRef<HTMLInputElement>(null)
   const highlightRef = useRef<HTMLDivElement>(null)
 
@@ -192,7 +247,7 @@ export function FilterBar({
               <span className="min-w-0 break-words">{error}</span>
             </div>
           )}
-          {!error && historyOpen && (suggestions.length > 0 || fieldSuggestions.length > 0) && (
+          {!error && historyOpen && (suggestions.length > 0 || fieldSuggestions.length > 0 || operatorSuggestions.length > 0 || valueSuggestions.length > 0 || keywordSuggestions.length > 0) && (
             <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-50 overflow-hidden rounded-md border bg-popover shadow-xl">
               <div className="flex items-center justify-between border-b px-2 py-1 text-2xs text-muted-foreground">
                 <span>{t("filter.history")}</span>
@@ -223,28 +278,17 @@ export function FilterBar({
                   <FilterHighlight text={item} />
                 </button>
               ))}
-              {fieldSuggestions.length > 0 && (
-                <>
-                  <div className="border-t px-2 py-1 text-2xs text-muted-foreground">{t("filter.fields")}</div>
-                  {fieldSuggestions.map((field) => (
-                    <button
-                      key={field.name}
-                      type="button"
-                      className="flex w-full items-center gap-2 px-2 py-1 text-left font-mono text-[11px] hover:bg-accent"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => {
-                        const next = draft.replace(/[A-Za-z_][\w.-]*$/, `${field.name} `)
-                        setDraft(next)
-                        setHistoryOpen(false)
-                        inputRef.current?.focus()
-                      }}
-                    >
-                      <span className="min-w-0 flex-1 truncate">{field.name}</span>
-                      <span className="shrink-0 text-2xs text-muted-foreground/60">{field.type}</span>
-                    </button>
-                  ))}
-                </>
-              )}
+              <SuggestionSection title={t("filter.fields")} items={fieldSuggestions.map((field) => ({
+                label: field.name,
+                hint: field.type,
+                insert: `${field.name} `,
+              }))} onPick={applyCompletion} />
+              <SuggestionSection title={t("filter.operators")} items={operatorSuggestions.map((item) => ({
+                label: item.label,
+                insert: item.insert,
+              }))} onPick={applyCompletion} />
+              <SuggestionSection title={t("filter.values")} items={valueSuggestions} onPick={applyCompletion} />
+              <SuggestionSection title={t("filter.keywords")} items={keywordSuggestions} onPick={applyCompletion} />
             </div>
           )}
         </div>

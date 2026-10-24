@@ -32,10 +32,10 @@ function errorMessage(err: unknown): string {
 export default function App() {
   const { t } = useI18n()
   const auth = useAuth()
-  const capture = useCapture()
+  const initialRoute = useRef(parseHash())
+  const capture = useCapture(initialRoute.current.filter ?? "")
   const { theme, toggle } = useTheme()
 
-  const initialRoute = useRef(parseHash())
   const [selectedId, setSelectedId] = useState<number | null>(initialRoute.current.packet ?? null)
   const [detail, setDetail] = useState<PacketDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
@@ -276,23 +276,31 @@ export default function App() {
 
   // Keep the current workspace in the URL so refresh/back-forward restores it.
   useEffect(() => {
-    const next = formatHash({ module: activeModule, tab: networkTab, packet: selectedId ?? undefined })
+    const next = formatHash({
+      module: activeModule,
+      tab: networkTab,
+      filter: capture.filter || undefined,
+      packet: selectedId ?? undefined,
+    })
     if (window.location.hash !== next) {
       window.history.replaceState(null, "", next)
     }
-  }, [activeModule, networkTab, selectedId])
+  }, [activeModule, networkTab, selectedId, capture.filter])
 
   useEffect(() => {
     const apply = () => {
       const route = parseHash()
       setActiveModule(route.module)
       setNetworkTab(route.tab)
+      if ((route.filter ?? "") !== capture.filter) {
+        void capture.applyFilter(route.filter ?? "")
+      }
       if (route.packet) setSelectedId(route.packet)
       else setSelectedId(null)
     }
     window.addEventListener("hashchange", apply)
     return () => window.removeEventListener("hashchange", apply)
-  }, [])
+  }, [capture.filter, capture.applyFilter])
 
   const running = capture.status?.capture.running ?? false
   const showNetworkFilter = activeModule === "network"

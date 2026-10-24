@@ -13,13 +13,13 @@ export interface StartOptions {
   cgroup?: string
 }
 
-export function useCapture() {
+export function useCapture(initialFilter = "") {
   const [status, setStatus] = useState<StatusResponse | null>(null)
-  const [filter, setFilter] = useState("")
+  const [filter, setFilter] = useState(initialFilter)
   const [filterError, setFilterError] = useState<string | null>(null)
   const [connected, setConnected] = useState(false)
   const [loadingPackets, setLoadingPackets] = useState(false)
-  const filterRef = useRef(filter)
+  const filterRef = useRef(initialFilter)
   const instanceRef = useRef<string | null>(null)
   const readyRef = useRef(0)
   filterRef.current = filter

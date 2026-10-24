@@ -23,9 +23,7 @@ import { Input } from "@/components/ui/input"
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
@@ -60,6 +58,77 @@ const GROUP_KEYS: Record<string, MessageKey> = {
   "ICMP / ARP": "filter.group.icmp",
   Application: "filter.group.application",
   Payload: "filter.group.payload",
+}
+
+function FieldPicker({
+  value,
+  grouped,
+  onChange,
+}: {
+  value: string
+  grouped: Map<string, FilterField[]>
+  onChange: (value: string) => void
+}) {
+  const { t } = useI18n()
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState("")
+  const all = Array.from(grouped.values()).flat()
+  const current = all.find((field) => field.name === value)
+  const filtered = all.filter((field) => {
+    const q = query.trim().toLowerCase()
+    return !q || field.name.toLowerCase().includes(q) || field.group.toLowerCase().includes(q)
+  })
+  return (
+    <Popover open={open} onOpenChange={(next) => { setOpen(next); if (!next) setQuery("") }}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="h-7 w-[200px] justify-between px-2 font-mono text-[11px] font-normal">
+          <span className="truncate">{current?.name ?? t("filter.field")}</span>
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-60" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[260px] p-0">
+        <div className="relative border-b p-2">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            autoFocus
+            placeholder={t("filter.searchField")}
+            className="h-7 pl-7 font-mono text-[11px]"
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && filtered[0]) {
+                onChange(filtered[0].name)
+                setOpen(false)
+              }
+              if (e.key === "Escape") setOpen(false)
+            }}
+          />
+        </div>
+        <div className="max-h-64 overflow-auto p-1 scrollbar-thin">
+          {Array.from(grouped.entries()).map(([group, items]) => {
+            const visible = items.filter((item) => filtered.includes(item))
+            if (visible.length === 0) return null
+            return (
+              <div key={group}>
+                <div className="px-2 py-1 text-2xs text-muted-foreground">{t(GROUP_KEYS[group] ?? "filter.group.other")}</div>
+                {visible.map((item) => (
+                  <button
+                    key={item.name}
+                    type="button"
+                    className={cn("flex w-full items-center rounded px-2 py-1.5 text-left font-mono text-[11px] hover:bg-accent", item.name === value && "bg-primary/10 text-primary")}
+                    onClick={() => { onChange(item.name); setOpen(false) }}
+                  >
+                    {item.name}
+                  </button>
+                ))}
+              </div>
+            )
+          })}
+          {filtered.length === 0 && <div className="px-2 py-3 text-center text-2xs text-muted-foreground">{t("filter.noField")}</div>}
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
 }
 
 export function FilterBuilder({
@@ -440,27 +509,7 @@ export function FilterBuilder({
                   >
                     !
                   </Button>
-                  <Select value={row.field} onValueChange={(value) => changeField(row.id, value)}>
-                    <SelectTrigger className="h-7 w-[200px] font-mono text-[11px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-[320px]">
-                      {Array.from(grouped.entries()).map(([group, items]) => (
-                        <SelectGroup key={group}>
-                          <SelectLabel>{t(GROUP_KEYS[group] ?? "filter.group.other")}</SelectLabel>
-                          {items.map((item) => (
-                            <SelectItem
-                              key={item.name}
-                              value={item.name}
-                              className="font-mono text-[11px]"
-                            >
-                              {item.name}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <FieldPicker value={row.field} grouped={grouped} onChange={(value) => changeField(row.id, value)} />
                   <Select
                     value={row.op}
                     onValueChange={(value) => updateRow(row.id, { op: value })}
