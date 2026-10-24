@@ -91,3 +91,67 @@ web/                 React UI
    and a predicate in `internal/filter/filter.go` if it is a layer.
 6. Add a focused decode test and update `plugin_full_test.go` expectations.
 7. Update the README support matrix: support level, limitations and primary RFC/standard.
+
+## Current system diagram
+
+```mermaid
+flowchart TB
+  subgraph Host["Linux host"]
+    Apps["opencode / curl / browser / containers"]
+    Keylog["SSLKEYLOGFILE / --tls-keylog"]
+    NIC["eth0 / lo / wg0 / veth"]
+    TCX["TCX ingress + egress<br/>capture.c"]
+    Ring[("BPF ring buffer")]
+    Cgroup["cgroup v2 + /proc"]
+    ProcList["process list<br/>/api/processes"]
+    MITM["local HTTPS MITM<br/>127.0.0.1:18081"]
+  end
+
+  subgraph Go["ebpfshark service (:9999)"]
+    Manager["capture.Manager"]
+    Store[("bounded packet / flow store")]
+    Decode["decode pipeline<br/>link → IP → TCP/UDP → plugins"]
+    Plugins["compiled + dynamic plugins"]
+    DisplayFilter["display filter AST"]
+    CaptureFilter["capture filter → eBPF spec"]
+    Reassembly["TCP reassembly"]
+    Trace["uprobe / uretprobe trace"]
+    API["HTTP API + SSE"]
+    MCP["MCP / CLI"]
+    Updater["auto-update<br/>10 min manifest check"]
+  end
+
+  UI["React Web UI"]
+
+  Apps -->|HTTPS_PROXY| MITM
+  MITM -->|TLS terminate + HTTP plaintext| Store
+  MITM -->|upstream TLS| NIC
+  Apps -->|TLS keylog| Keylog
+  Keylog -->|auto-discover / load| Decode
+  NIC --> TCX
+  TCX --> Ring
+  Ring --> Manager
+  Manager -->|packet bytes| Store
+  Cgroup --> Manager
+  ProcList -->|cgroup scope| Manager
+  Store -->|summary + raw| Decode
+  Decode --- Plugins
+  Decode --> Store
+  DisplayFilter -->|safe L2–L4 subset| CaptureFilter
+  CaptureFilter -->|BPF config| TCX
+  Store --> Reassembly
+  Reassembly --> API
+  Trace --> API
+  Store --> API
+  Store --> MCP
+  API -->|SSE packets/status| UI
+  MCP -->|tools| UI
+  Updater -->|replace binary| Go
+
+  classDef kernel fill:#1f2937,color:#e5e7eb,stroke:#22d3ee;
+  classDef go fill:#0f172a,color:#e5e7eb,stroke:#34d399;
+  classDef ui fill:#111827,color:#e5e7eb,stroke:#a78bfa;
+  class TCX,Ring,Cgroup kernel;
+  class Manager,Store,Decode,Plugins,DisplayFilter,CaptureFilter,Reassembly,Trace,API,MCP,Updater go;
+  class UI ui;
+```
