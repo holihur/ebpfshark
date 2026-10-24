@@ -1,4 +1,4 @@
-import { Fragment, memo, useEffect, useRef } from "react"
+import { Fragment, memo, useEffect, useRef, useState } from "react"
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -51,9 +51,17 @@ function PacketListImpl({
   const { t } = useI18n()
   usePacketVersion()
   const count = store.length
+  const [rowHeight, setRowHeight] = useState(ROW_HEIGHT)
   const headerRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)")
+    const update = () => setRowHeight(media.matches ? 36 : ROW_HEIGHT)
+    update()
+    media.addEventListener("change", update)
+    return () => media.removeEventListener("change", update)
+  }, [])
   const { containerRef, onScroll, atBottom, scrollToBottom, startFor, endFor, totalHeight } =
-    useVirtualList({ rowHeight: ROW_HEIGHT })
+    useVirtualList({ rowHeight })
 
   useEffect(() => {
     if (atBottom && count > 0) scrollToBottom()
@@ -179,14 +187,15 @@ function PacketListImpl({
     <div className="flex min-h-0 flex-1 flex-col bg-background">
       <div
         ref={headerRef}
-        className="h-7 shrink-0 overflow-hidden border-b bg-panel/70"
+        className="shrink-0 overflow-hidden border-b bg-panel/70"
+        style={{ height: rowHeight }}
       >
         <div
           className={cn(
             GRID_BASE,
-            "h-7 text-2xs font-medium uppercase tracking-wide text-muted-foreground/80",
+            "text-2xs font-medium uppercase tracking-wide text-muted-foreground/80",
           )}
-          style={{ gridTemplateColumns: template, minWidth }}
+          style={{ gridTemplateColumns: template, minWidth, height: rowHeight }}
         >
           {columns.map((id) => {
             const col = COLUMN_BY_ID.get(id)
@@ -222,8 +231,8 @@ function PacketListImpl({
                   aria-selected={selected}
                   onClick={() => onSelect(packet.id)}
                   style={{
-                    top: index * ROW_HEIGHT,
-                    height: ROW_HEIGHT,
+                    top: index * rowHeight,
+                    height: rowHeight,
                     gridTemplateColumns: template,
                   }}
                   className={cn(

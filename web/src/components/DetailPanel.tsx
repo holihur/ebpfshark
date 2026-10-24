@@ -1,5 +1,5 @@
-import { lazy, memo, Suspense, useState } from "react"
-import { AlignLeft, ChevronRight, Copy, Crosshair, Network } from "lucide-react"
+import { lazy, memo, Suspense, useEffect, useState } from "react"
+import { AlignLeft, ChevronRight, Copy, Crosshair, Layers, Network } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -14,6 +14,35 @@ import type { Field, PacketDetail } from "@/lib/types"
 interface DetailPanelProps {
   detail: PacketDetail | null
   loading: boolean
+  filter?: string
+}
+
+type LayerClass = "link" | "network" | "transport" | "app"
+
+function layerClass(field: Field): LayerClass {
+  const label = field.label.toLowerCase()
+  if (/ethernet|linux cooked|802\.11|radiotap|frame|vlan/.test(label)) return "link"
+  if (/internet protocol|ipv4|ipv6|address resolution|arp/.test(label)) return "network"
+  if (/transmission control|user datagram|stream control|tcp|udp|sctp/.test(label)) return "transport"
+  return "app"
+}
+
+function focusLayer(filter: string): LayerClass | "all" {
+  const s = filter.toLowerCase()
+  if (/(http2?|dns|tls|https|quic|dhcp|redis|postgresql|mysql|mqtt|amqp|coap|modbus|sip|rtp|rtcp|ssh|smb|ldap|websocket|grpc|ai|openai|anthropic|openai-responses)/.test(s)) return "app"
+  if (/(tcp|udp|sctp)/.test(s)) return "transport"
+  if (/(ip|ipv6|arp|icmp|icmpv6)/.test(s)) return "network"
+  if (/(eth|vlan|wifi|radiotap)/.test(s)) return "link"
+  return "all"
+}
+
+function layersForFocus(focus: LayerClass | "all"): LayerClass[] {
+  switch (focus) {
+    case "app": return ["app"]
+    case "transport": return ["transport", "app"]
+    case "network": return ["network", "transport", "app"]
+    default: return ["link", "network", "transport", "app"]
+  }
 }
 
 function splitLabel(field: Field, depth: number): { key: string; value: string } {
@@ -97,10 +126,17 @@ function FieldNode({ field, depth, highlight, onHighlight }: FieldNodeProps) {
   )
 }
 
-function DetailPanelImpl({ detail, loading }: DetailPanelProps) {
+function DetailPanelImpl({ detail, loading, filter = "" }: DetailPanelProps) {
   const { t } = useI18n()
   const [highlight, setHighlight] = useState<ByteRange | null>(null)
   const [followOpen, setFollowOpen] = useState(false)
+  const [showAllLayers, setShowAllLayers] = useState(false)
+  const focus = focusLayer(filter)
+  const visibleLayers = layersForFocus(focus)
+
+  useEffect(() => {
+    setShowAllLayers(false)
+  }, [detail?.packet.id, filter])
 
   const packet = detail?.packet
   const style = packet ? protoStyle(packet.protocol) : null
@@ -152,6 +188,17 @@ function DetailPanelImpl({ detail, loading }: DetailPanelProps) {
           </span>
         )}
         <div className="flex-1" />
+        {detail && focus !== "all" && (
+          <Button
+            variant={showAllLayers ? "secondary" : "ghost"}
+            size="icon-sm"
+            onClick={() => setShowAllLayers((v) => !v)}
+            title={showAllLayers ? t("detail.onlyLayer") : t("detail.allLayers")}
+            aria-pressed={showAllLayers}
+          >
+            <Layers />
+          </Button>
+        )}
         {packet && (
           <Button
             variant="ghost"
@@ -173,15 +220,17 @@ function DetailPanelImpl({ detail, loading }: DetailPanelProps) {
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         <div className="min-h-0 flex-1 overflow-auto py-1 scrollbar-thin">
           {detail ? (
-            detail.fields.map((field, i) => (
-              <FieldNode
-                key={`${field.label}-${i}`}
-                field={field}
-                depth={0}
-                highlight={highlight}
-                onHighlight={setHighlight}
-              />
-            ))
+            detail.fields
+              .filter((field) => showAllLayers || focus === "all" || visibleLayers.includes(layerClass(field)))
+              .map((field, i) => (
+                <FieldNode
+                  key={`${field.label}-${i}`}
+                  field={field}
+                  depth={0}
+                  highlight={highlight}
+                  onHighlight={setHighlight}
+                />
+              ))
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
               <div className="grid h-10 w-10 place-items-center rounded-lg border bg-muted/30">

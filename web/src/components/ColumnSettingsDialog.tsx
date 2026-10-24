@@ -56,6 +56,23 @@ export function ColumnSettingsDialog({
         </DialogHeader>
 
         <div className="max-h-[60vh] space-y-4 overflow-auto p-4 scrollbar-thin">
+          <div className="flex flex-wrap gap-1.5">
+            {[
+              { id: "phone", cols: ["time", "source", "destination", "protocol", "info"] },
+              { id: "web", cols: ["no", "time", "source", "destination", "protocol", "length", "info"] },
+              { id: "full", cols: DEFAULT_COLUMNS },
+            ].map((preset) => (
+              <Button
+                key={preset.id}
+                size="sm"
+                variant="outline"
+                className="h-7 px-2 text-2xs"
+                onClick={() => onChange(preset.cols as ColumnID[])}
+              >
+                {t(`columns.preset${preset.id[0].toUpperCase()}${preset.id.slice(1)}` as MessageKey)}
+              </Button>
+            ))}
+          </div>
           <div className="space-y-1.5">
             <div className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
               {t("columns.visible")}

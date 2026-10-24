@@ -5,6 +5,7 @@ import { DecryptionDialog } from "@/components/DecryptionDialog"
 import { DetailPanel } from "@/components/DetailPanel"
 import { MITMDialog } from "@/components/MITMDialog"
 import { ModuleRail, type WorkspaceModule } from "@/components/ModuleRail"
+import { NetworkHealth } from "@/components/NetworkHealth"
 import { FilterBar } from "@/components/FilterBar"
 import { Header } from "@/components/Header"
 import { PacketList } from "@/components/PacketList"
@@ -18,6 +19,7 @@ import { useTheme } from "@/hooks/useTheme"
 import { useI18n } from "@/i18n"
 import { api } from "@/lib/api"
 import { usePacketColumns } from "@/lib/packetColumns"
+import { loadCaptureSettings, saveCaptureSettings } from "@/lib/captureSettings"
 import type { PacketDetail, ProcessInfo } from "@/lib/types"
 
 function errorMessage(err: unknown): string {
@@ -36,10 +38,11 @@ export default function App() {
   const [detailLoading, setDetailLoading] = useState(false)
 
   const [selectedIfaces, setSelectedIfaces] = useState<string[]>([])
-  const [snaplen, setSnaplen] = useState(2048)
-  const [sampleRate, setSampleRate] = useState(1)
-  const [ringSize, setRingSize] = useState(32 << 20)
-  const [clearOnStart, setClearOnStart] = useState(true)
+  const initialCaptureSettings = useRef(loadCaptureSettings())
+  const [snaplen, setSnaplen] = useState(initialCaptureSettings.current.snaplen)
+  const [sampleRate, setSampleRate] = useState(initialCaptureSettings.current.sampleRate)
+  const [ringSize, setRingSize] = useState(initialCaptureSettings.current.ringSize)
+  const [clearOnStart, setClearOnStart] = useState(initialCaptureSettings.current.clearOnStart)
   const [cgroupFilter, setCgroupFilter] = useState<ProcessInfo | null>(null)
   const [selectedProcess, setSelectedProcess] = useState<ProcessInfo | null>(null)
   const [busy, setBusy] = useState(false)
@@ -119,6 +122,10 @@ export default function App() {
     }
   }, [])
 
+  useEffect(() => {
+    saveCaptureSettings({ snaplen, sampleRate, ringSize, clearOnStart })
+  }, [snaplen, sampleRate, ringSize, clearOnStart])
+
   const activeCgroupID = cgroupFilter?.cgroupID ?? capture.status?.capture.cgroupID ?? 0
 
   const handleStart = useCallback(() =>
@@ -180,6 +187,30 @@ export default function App() {
     },
     [capture.applyFilter],
   )
+
+  const applyPreset = useCallback((preset: string) => {
+    switch (preset) {
+      case "web":
+        setSnaplen(2048); setSampleRate(1); setRingSize(64 << 20)
+        void handleApplyFilter("http or tls")
+        break
+      case "tls":
+        setSnaplen(4096); setSampleRate(1); setRingSize(64 << 20)
+        void handleApplyFilter("https")
+        break
+      case "database":
+        setSnaplen(4096); setSampleRate(1); setRingSize(128 << 20)
+        void handleApplyFilter("redis or postgresql or mysql")
+        break
+      case "ai":
+        setSnaplen(16384); setSampleRate(1); setRingSize(128 << 20)
+        void handleApplyFilter("ai")
+        break
+      default:
+        setSnaplen(2048); setSampleRate(1); setRingSize(32 << 20)
+        void handleApplyFilter("")
+    }
+  }, [handleApplyFilter])
 
   const handleSelectCgroup = useCallback(
     (process: ProcessInfo | null) => {
@@ -288,6 +319,7 @@ export default function App() {
             onStop={handleStop}
             onClear={handleClear}
             onImport={handleImport}
+            onApplyPreset={applyPreset}
             cgroupID={activeCgroupID}
             onSelectCgroup={handleSelectCgroup}
           />
@@ -307,6 +339,7 @@ export default function App() {
             onDecryption={() => setDecryptOpen(true)}
             onMITM={() => setMitmOpen(true)}
             />
+              <NetworkHealth status={capture.status} />
               <div ref={workRef} className="flex min-h-0 flex-1 flex-col">
                 <div className="flex min-h-0 flex-1 flex-col">
                   <PacketList
@@ -339,7 +372,7 @@ export default function App() {
                   style={{ height: `${splitPct}%` }}
                   className="flex min-h-0 shrink-0 flex-col overflow-hidden"
                 >
-                  <DetailPanel detail={detail} loading={detailLoading} />
+                  <DetailPanel detail={detail} loading={detailLoading} filter={capture.filter} />
                 </div>
               </div>
   
@@ -411,6 +444,7 @@ export default function App() {
               onStop={handleStop}
               onClear={handleClear}
               onImport={handleImport}
+              onApplyPreset={applyPreset}
               cgroupID={activeCgroupID}
               onSelectCgroup={handleSelectCgroup}
               mobile

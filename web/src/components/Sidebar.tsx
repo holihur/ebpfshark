@@ -54,6 +54,7 @@ interface SidebarProps {
   onStop: () => void
   onClear: () => void
   onImport: (file: File) => void
+  onApplyPreset?: (preset: string) => void
   cgroupID?: number
   onSelectCgroup: (process: ProcessInfo | null) => void
   mobile?: boolean
@@ -222,6 +223,21 @@ function CapturePanel(props: SidebarProps) {
             {t("sidebar.selectionNote")}
           </p>
         )}
+      </Section>
+
+      <Section title={t("sidebar.preset")}>
+        <Select onValueChange={(value) => props.onApplyPreset?.(value)}>
+          <SelectTrigger className="h-8">
+            <SelectValue placeholder={t("sidebar.presetPlaceholder")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="web">{t("sidebar.presetWeb")}</SelectItem>
+            <SelectItem value="tls">{t("sidebar.presetTLS")}</SelectItem>
+            <SelectItem value="database">{t("sidebar.presetDatabase")}</SelectItem>
+            <SelectItem value="ai">{t("sidebar.presetAI")}</SelectItem>
+            <SelectItem value="all">{t("sidebar.presetAll")}</SelectItem>
+          </SelectContent>
+        </Select>
       </Section>
 
       <Section title={t("sidebar.options")}>
