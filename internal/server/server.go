@@ -28,6 +28,7 @@ import (
 	"ebpfshark/internal/filter"
 	"ebpfshark/internal/instrument"
 	"ebpfshark/internal/instrument/target"
+	"ebpfshark/internal/ipc"
 	"ebpfshark/internal/mitm"
 	"ebpfshark/internal/packet"
 	"ebpfshark/internal/pcapio"
@@ -122,6 +123,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/capture/filter", s.handleCaptureFilter)
 	mux.HandleFunc("POST /api/capture/cgroup", s.handleCaptureCgroup)
 	mux.HandleFunc("GET /api/processes", s.handleProcesses)
+	mux.HandleFunc("GET /api/ipc/sockets", s.handleIPCSockets)
 	mux.HandleFunc("GET /api/decrypt", s.handleDecryptStatus)
 	mux.HandleFunc("POST /api/decrypt/tls-keylog", s.handleTLSKeyLog)
 	mux.HandleFunc("POST /api/decrypt/wifi-psk", s.handleWiFiPSK)
@@ -521,6 +523,15 @@ func (s *Server) handleWiFiPSK(w http.ResponseWriter, r *http.Request) {
 	}
 	decode.LoadWiFiPSK(strings.TrimSpace(req.PSK))
 	writeJSON(w, http.StatusOK, map[string]any{"wifiPSKConfigured": decode.WiFiPSKConfigured()})
+}
+
+func (s *Server) handleIPCSockets(w http.ResponseWriter, r *http.Request) {
+	sockets, err := ipc.ListSockets()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"sockets": sockets, "count": len(sockets)})
 }
 
 func (s *Server) handleProcesses(w http.ResponseWriter, r *http.Request) {
