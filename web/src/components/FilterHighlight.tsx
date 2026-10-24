@@ -38,7 +38,7 @@ const PROTOCOLS = new Set([
   "tcp", "udp", "icmp", "icmpv6", "arp", "ip", "ipv6", "dns", "http", "http2",
   "tls", "quic", "ssh", "dhcp", "dhcpv6", "smtp", "imap", "pop", "ftp", "mqtt",
   "coap", "modbus", "amqp", "radius", "sip", "rtp", "rtcp", "rtsp", "websocket",
-  "grpc", "sctp", "vlan", "wifi", "eapol", "ai", "anthropic", "openai",
+  "grpc", "sctp", "vlan", "wifi", "eapol", "ai", "anthropic", "openai", "openai-responses",
 ])
 
 function classify(text: string): TokenKind {

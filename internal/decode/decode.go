@@ -206,6 +206,7 @@ func (c *ctx) fallbackInfo() string {
 
 func (c *ctx) addLayer(name string) {
 	c.layers = append(c.layers, name)
+	c.m.Layers = append(c.m.Layers, name)
 	c.m.LayerMask |= packet.LayerBit(name)
 }
 

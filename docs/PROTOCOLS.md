@@ -41,7 +41,7 @@
 | 应用层 | HTTP/1.x | core | **常用** | 请求行/状态行、Header、Body 预览；不做 chunked/gzip 解压或跨段 HTTP 消息重组 | RFC 9112 |
 | 应用层 | HLS manifest | core | **基础** | `#EXTM3U`、VERSION/TARGETDURATION/MEDIA-SEQUENCE/EXTINF/STREAM-INF、Segment 列表；不解析媒体分片 | RFC 8216 |
 | 应用层 | DASH manifest | core | **基础** | MPD 属性、Period/AdaptationSet/Representation 常用字段、BaseURL；不解析媒体分片 | ISO/IEC 23009-1 |
-| 应用层 | Anthropic / OpenAI / Responses API | core | **常用** | HTTP/1.1 与 HTTP/2 请求/响应、跨 TCP 段 body、chunked、gzip/deflate/zlib/brotli、SSE、公开字段 + 通用 JSON 树；不做 token 计费、完整 schema 校验 | Anthropic Messages API / OpenAI Chat Completions / Responses API |
+| 应用层 | Anthropic / OpenAI / Responses API | core | **常用** | HTTP/1.1 与 HTTP/2 请求/响应、跨 TCP 段 body、chunked、gzip/deflate/zlib/brotli、SSE、公开字段 + 通用 JSON 树；过滤器层：`ai`、`anthropic`、`openai`（Chat Completions）、`openai-responses`；不做 token 计费、完整 schema 校验 | Anthropic Messages API / OpenAI Chat Completions / Responses API |
 | 应用层 | gRPC / protobuf | full | **基础** | gRPC length-prefixed message、压缩标记、protobuf wire 字段（varint/fixed/bytes/nested）；不依赖 `.proto` schema | gRPC HTTP/2 spec / protobuf encoding |
 | 应用层 | HTTP/2 | full | **常用** | 帧、HPACK 静态/动态表/Huffman、HEADERS+CONTINUATION、DATA 预览；从连接中间抓包时动态表可能缺失 | RFC 9113；HPACK RFC 7541 |
 | 应用层 | DHCP | core | **常用** | 完整 DHCPv4 消息类型、常用 option、Option Overload、Relay Agent、Classless Routes；未实现全部 255 个 option | RFC 2131 / 2132 |

@@ -15,7 +15,7 @@ func aiHTTP(body, path, ctype string) []byte {
 func TestOpenAIChatRequest(t *testing.T) {
 	b := aiHTTP(`{"model":"gpt-4o","messages":[{"role":"user","content":"hello"}],"stream":true}`, "/v1/chat/completions", "application/json")
 	c := appCtx(b)
-	if !c.dissectHTTP(b, 0) || !c.m.HasLayer("ai") || !strings.Contains(c.appInfo, "OpenAI") {
+	if !c.dissectHTTP(b, 0) || !c.m.HasLayer("ai") || !c.m.HasLayer("openai") || !strings.Contains(c.appInfo, "OpenAI") {
 		t.Fatalf("layers=%v info=%q", c.m.Layers, c.appInfo)
 	}
 }
@@ -23,7 +23,7 @@ func TestOpenAIChatRequest(t *testing.T) {
 func TestAnthropicMessages(t *testing.T) {
 	b := aiHTTP(`{"model":"claude-3-5-sonnet","max_tokens":128,"messages":[{"role":"user","content":"hi"}]}`, "/v1/messages", "application/json")
 	c := appCtx(b)
-	if !c.dissectHTTP(b, 0) || !c.m.HasLayer("ai") || !strings.Contains(c.appInfo, "Anthropic") {
+	if !c.dissectHTTP(b, 0) || !c.m.HasLayer("ai") || !c.m.HasLayer("anthropic") || !strings.Contains(c.appInfo, "Anthropic") {
 		t.Fatalf("layers=%v info=%q", c.m.Layers, c.appInfo)
 	}
 }
@@ -31,7 +31,7 @@ func TestAnthropicMessages(t *testing.T) {
 func TestOpenAIResponses(t *testing.T) {
 	b := aiHTTP(`{"id":"resp_1","object":"response","status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"ok"}]}]}`, "/v1/responses", "application/json")
 	c := appCtx(b)
-	if !c.dissectHTTP(b, 0) || !c.m.HasLayer("ai") || !strings.Contains(c.appInfo, "OpenAI Responses") {
+	if !c.dissectHTTP(b, 0) || !c.m.HasLayer("ai") || !c.m.HasLayer("openai-responses") || !strings.Contains(c.appInfo, "OpenAI Responses") {
 		t.Fatalf("layers=%v info=%q", c.m.Layers, c.appInfo)
 	}
 }

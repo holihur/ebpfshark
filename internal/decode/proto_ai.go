@@ -28,6 +28,14 @@ func (c *ctx) dissectAI(body []byte, base int, root *Field, path, contentType st
 		return "", false
 	}
 	c.addLayer("ai")
+	switch provider {
+	case "anthropic":
+		c.addLayer("anthropic")
+	case "openai":
+		c.addLayer("openai")
+	case "openresponses":
+		c.addLayer("openai-responses")
+	}
 	c.proto = "ai"
 	name := aiProviderName(provider)
 	n := c.newField("AI API: "+name, "", base, len(body))
