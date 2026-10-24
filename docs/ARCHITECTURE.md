@@ -72,6 +72,10 @@ plugins. CI does both, plus race, fuzz and benchmark smoke.
 cmd/ebpfshark        flags, startup, doc
 internal/capture     eBPF/pcap capture
 internal/decode      link/IP/transport + application plugins
+internal/instrument  instrumentation contracts (targets, events, backend)
+internal/instrument/target  ELF/build-id/symbol/PID/cgroup discovery
+internal/probe       uprobe/uretprobe instrumentation backend
+internal/trace       trace session lifecycle and bounded event history
 pkg/pluginapi        stable ABI for runtime .so plugins
 internal/filter      filter language, schema
 internal/packet      Meta/Summary/LayerMask/Field-independent packet types
@@ -91,6 +95,28 @@ web/                 React UI
    and a predicate in `internal/filter/filter.go` if it is a layer.
 6. Add a focused decode test and update `plugin_full_test.go` expectations.
 7. Update the README support matrix: support level, limitations and primary RFC/standard.
+
+## Instrumentation boundary
+
+Function tracing is split so the API/UI never depend on uprobe internals:
+
+```text
+internal/instrument        Target / Event / Session / Backend
+        ^                         ^
+        |                         |
+internal/instrument/target   internal/probe
+ELF + symbol discovery       uprobe + uretprobe backend
+        ^                         ^
+        +-------- internal/trace -+
+                  session/history/query
+                         ^
+                server / MCP / CLI
+```
+
+`trace.Manager` owns session lifecycle and queries. It accepts an
+`instrument.Backend`; `probe.Backend` is the current uprobe adapter. Adding
+USDT, DWARF arguments, or a fake backend does not require changing the HTTP or
+MCP layers.
 
 ## Current system diagram
 

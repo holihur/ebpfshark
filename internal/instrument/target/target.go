@@ -1,4 +1,4 @@
-package probe
+package target
 
 import (
 	"bytes"

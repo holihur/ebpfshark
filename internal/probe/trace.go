@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +16,8 @@ import (
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/cilium/ebpf/rlimit"
 	"golang.org/x/sys/unix"
+
+	"ebpfshark/internal/instrument"
 )
 
 // Function identifies one uprobe target.
@@ -33,16 +34,9 @@ type Options struct {
 	Functions []Function
 }
 
-// Event is one completed function call.
-type Event struct {
-	Time     time.Time
-	Duration time.Duration
-	PID      uint32
-	TID      uint32
-	Function string
-	Comm     string
-	CgroupID uint64
-}
+// Event is one completed function call. It is an alias so the tracing service
+// can share the event contract without importing the uprobe engine.
+type Event = instrument.Event
 
 // Tracer owns uprobe programs and their ring buffer reader.
 type Tracer struct {
@@ -58,42 +52,29 @@ type Tracer struct {
 	events chan Event
 }
 
-// ParseFunctions parses comma-separated binary:symbol entries. A symbol may
-// contain colons, so the first colon separates the executable.
+// ParseFunctions is kept for the CLI/legacy callers. New code should use
+// instrument.ParseTargets.
 func ParseFunctions(s string) ([]Function, error) {
-	var out []Function
-	for _, item := range strings.Split(s, ",") {
-		item = strings.TrimSpace(item)
-		if item == "" {
-			continue
-		}
-		i := strings.IndexByte(item, ':')
-		if i < 0 || i == len(item)-1 {
-			return nil, fmt.Errorf("invalid function %q (want binary:symbol or binary:0xADDR)", item)
-		}
-		binary, target := item[:i], item[i+1:]
-		f := Function{Binary: binary}
-		if strings.HasPrefix(target, "@") {
-			v, err := strconv.ParseUint(strings.TrimPrefix(target, "@"), 0, 64)
-			if err != nil {
-				return nil, fmt.Errorf("invalid address %q: %w", target, err)
-			}
-			f.Address = v
-		} else if strings.HasPrefix(target, "0x") || strings.HasPrefix(target, "0X") {
-			v, err := strconv.ParseUint(target, 0, 64)
-			if err != nil {
-				return nil, fmt.Errorf("invalid address %q: %w", target, err)
-			}
-			f.Address = v
-		} else {
-			f.Symbol = target
-		}
-		out = append(out, f)
+	targets, err := instrument.ParseTargets(s)
+	if err != nil {
+		return nil, err
 	}
-	if len(out) == 0 {
-		return nil, errors.New("no functions selected")
+	out := make([]Function, 0, len(targets))
+	for _, t := range targets {
+		out = append(out, Function{Binary: t.Binary, Symbol: t.Symbol, Address: t.Address})
 	}
 	return out, nil
+}
+
+// Backend adapts the uprobe engine to instrument.Backend.
+type Backend struct{}
+
+func (Backend) Start(pid int, targets []instrument.Target) (instrument.Session, error) {
+	functions := make([]Function, 0, len(targets))
+	for _, t := range targets {
+		functions = append(functions, Function{Binary: t.Binary, Symbol: t.Symbol, Address: t.Address})
+	}
+	return Start(Options{PID: pid, Functions: functions})
 }
 
 // Start loads the probe programs and attaches entry/return uprobes.

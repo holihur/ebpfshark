@@ -26,10 +26,11 @@ import (
 	"ebpfshark/internal/capture"
 	"ebpfshark/internal/decode"
 	"ebpfshark/internal/filter"
+	"ebpfshark/internal/instrument"
+	"ebpfshark/internal/instrument/target"
 	"ebpfshark/internal/mitm"
 	"ebpfshark/internal/packet"
 	"ebpfshark/internal/pcapio"
-	"ebpfshark/internal/probe"
 	"ebpfshark/internal/store"
 	"ebpfshark/internal/stream"
 	"ebpfshark/internal/trace"
@@ -86,7 +87,7 @@ func (s *Server) SetMCPHandler(h http.Handler) { s.mcpHandler = h }
 func (s *Server) SetUpdateStatus(fn func() any) { s.updateStatus = fn }
 
 // New builds a Server. webFS should contain the built UI at its root.
-func New(st *store.Store, mgr *capture.Manager, log *slog.Logger, webFS fs.FS, selfPort uint16, authSvc *auth.Service) *Server {
+func New(st *store.Store, mgr *capture.Manager, log *slog.Logger, webFS fs.FS, selfPort uint16, authSvc *auth.Service, backends ...instrument.Backend) *Server {
 	var id [6]byte
 	_, _ = rand.Read(id[:])
 	return &Server{
@@ -101,7 +102,7 @@ func New(st *store.Store, mgr *capture.Manager, log *slog.Logger, webFS fs.FS, s
 		auth:        authSvc,
 		detailLRU:   list.New(),
 		detailCache: make(map[detailKey]*list.Element),
-		traceMgr:    trace.NewManager(),
+		traceMgr:    trace.NewManager(backends...),
 	}
 }
 
@@ -928,7 +929,7 @@ func (s *Server) handleTrace(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleTraceSymbols(w http.ResponseWriter, r *http.Request) {
 	pid, _ := strconv.Atoi(r.URL.Query().Get("pid"))
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	path, symbols, err := probe.ListSymbols(
+	path, symbols, err := target.ListSymbols(
 		pid,
 		r.URL.Query().Get("binary"),
 		r.URL.Query().Get("q"),
@@ -945,7 +946,7 @@ func (s *Server) handleTraceSymbols(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleTraceInspect(w http.ResponseWriter, r *http.Request) {
 	pid, _ := strconv.Atoi(r.URL.Query().Get("pid"))
-	info, err := probe.Inspect(pid, r.URL.Query().Get("binary"))
+	info, err := target.Inspect(pid, r.URL.Query().Get("binary"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -1018,7 +1019,7 @@ func (s *Server) StartTrace(pid int, functions string) error {
 	if pid < 0 {
 		return fmt.Errorf("pid must be >= 0")
 	}
-	fns, err := probe.ParseFunctions(functions)
+	fns, err := instrument.ParseTargets(functions)
 	if err != nil {
 		return err
 	}

@@ -15,8 +15,8 @@ import (
 	"ebpfshark/internal/capture"
 	"ebpfshark/internal/decode"
 	"ebpfshark/internal/filter"
+	"ebpfshark/internal/instrument/target"
 	"ebpfshark/internal/packet"
-	"ebpfshark/internal/probe"
 	"ebpfshark/internal/store"
 	"ebpfshark/internal/stream"
 	"ebpfshark/internal/trace"
@@ -378,7 +378,7 @@ func addTraceTools(srv *mcp.Server, c TraceController) {
 		Name:        "inspect_function_target",
 		Description: "Inspect an ELF target for build-id, stripped status, symbol count and debuginfo suggestions before starting a function trace.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in inspectInput) (*mcp.CallToolResult, any, error) {
-		info, err := probe.Inspect(in.PID, in.Binary)
+		info, err := target.Inspect(in.PID, in.Binary)
 		if err != nil {
 			return nil, nil, err
 		}

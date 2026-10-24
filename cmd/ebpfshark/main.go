@@ -24,6 +24,8 @@ import (
 	"ebpfshark/internal/capture"
 	"ebpfshark/internal/decode"
 	"ebpfshark/internal/filter"
+	"ebpfshark/internal/instrument"
+	"ebpfshark/internal/instrument/target"
 	"ebpfshark/internal/mcpserver"
 	"ebpfshark/internal/mitm"
 	"ebpfshark/internal/probe"
@@ -230,7 +232,7 @@ func main() {
 			defer proxy.Close()
 		}
 	}
-	srv := server.New(st, mgr, log, webFS, selfPort, authSvc)
+	srv := server.New(st, mgr, log, webFS, selfPort, authSvc, probe.Backend{})
 	srv.SetMITM(mitmProxy)
 	srv.SetSecureCookie(*secureCookie)
 	defer srv.StopTrace()
@@ -339,7 +341,7 @@ func runTrace(args []string) {
 		fmt.Fprintln(os.Stderr, "usage: ebpfshark trace -pid PID -func /path/to/bin:symbol[,binary:symbol...]")
 		os.Exit(2)
 	}
-	fns, err := probe.ParseFunctions(*functions)
+	fns, err := instrument.ParseTargets(*functions)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "invalid -func:", err)
 		os.Exit(2)
@@ -353,7 +355,7 @@ func runTrace(args []string) {
 		if len(fns) > 0 {
 			binary = fns[0].Binary
 		}
-		info, ierr := probe.Inspect(*pid, binary)
+		info, ierr := target.Inspect(*pid, binary)
 		if ierr != nil {
 			fmt.Fprintln(os.Stderr, "inspect:", ierr)
 			os.Exit(1)
@@ -365,14 +367,14 @@ func runTrace(args []string) {
 		}
 		return
 	}
-	tracer, err := probe.Start(probe.Options{PID: *pid, Functions: fns})
+	session, err := (probe.Backend{}).Start(*pid, fns)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "start trace:", err)
 		binary := ""
 		if len(fns) > 0 {
 			binary = fns[0].Binary
 		}
-		if info, ierr := probe.Inspect(*pid, binary); ierr == nil {
+		if info, ierr := target.Inspect(*pid, binary); ierr == nil {
 			fmt.Fprintf(os.Stderr, "target: %s build-id=%s stripped=%v symbols=%d\n", info.Path, info.BuildID, info.Stripped, info.Symbols)
 			for _, s := range info.Suggestions {
 				fmt.Fprintln(os.Stderr, "  -", s)
@@ -380,7 +382,7 @@ func runTrace(args []string) {
 		}
 		os.Exit(1)
 	}
-	defer tracer.Close()
+	defer session.Close()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	var timer <-chan time.Time
@@ -392,7 +394,7 @@ func runTrace(args []string) {
 	fmt.Fprintf(os.Stderr, "tracing %d function(s) pid=%d (Ctrl-C to stop)\n", len(fns), *pid)
 	for {
 		select {
-		case ev, ok := <-tracer.Events():
+		case ev, ok := <-session.Events():
 			if !ok {
 				return
 			}

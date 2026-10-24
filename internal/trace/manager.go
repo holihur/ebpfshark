@@ -3,10 +3,11 @@
 package trace
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
-	"ebpfshark/internal/probe"
+	"ebpfshark/internal/instrument"
 )
 
 // Event is a completed traced function call.
@@ -34,7 +35,8 @@ type Status struct {
 // Manager serializes trace start/stop and keeps the last 10k events.
 type Manager struct {
 	mu      sync.Mutex
-	tracer  *probe.Tracer
+	session instrument.Session
+	backend instrument.Backend
 	pid     int
 	funcs   []string
 	events  []Event
@@ -48,16 +50,40 @@ type Manager struct {
 
 const maxEvents = 10000
 
-func NewManager() *Manager { return &Manager{} }
+func NewManager(backends ...instrument.Backend) *Manager {
+	m := &Manager{}
+	if len(backends) > 0 {
+		m.backend = backends[0]
+	}
+	return m
+}
+
+// SetBackend installs the instrumentation backend. It is normally provided at
+// construction time.
+func (m *Manager) SetBackend(backend instrument.Backend) {
+	m.mu.Lock()
+	m.backend = backend
+	m.mu.Unlock()
+}
 
 // Start replaces any running trace session.
-func (m *Manager) Start(pid int, functions []probe.Function) error {
+func (m *Manager) Start(pid int, functions []instrument.Target) error {
 	m.Stop()
 	names := make([]string, 0, len(functions))
 	for _, f := range functions {
-		names = append(names, f.Binary+":"+f.Symbol)
+		name := f.Binary + ":" + f.Symbol
+		if f.Symbol == "" {
+			name = f.Binary + ":0x" + fmt.Sprintf("%x", f.Address)
+		}
+		names = append(names, name)
 	}
-	t, err := probe.Start(probe.Options{PID: pid, Functions: functions})
+	m.mu.Lock()
+	backend := m.backend
+	m.mu.Unlock()
+	if backend == nil {
+		return fmt.Errorf("no instrumentation backend configured")
+	}
+	session, err := backend.Start(pid, functions)
 	m.mu.Lock()
 	m.pid, m.funcs, m.started, m.errText = pid, names, time.Now(), ""
 	if err != nil {
@@ -65,33 +91,33 @@ func (m *Manager) Start(pid int, functions []probe.Function) error {
 		m.mu.Unlock()
 		return err
 	}
-	m.tracer = t
+	m.session = session
 	m.running = true
 	m.events = nil
 	m.count = 0
 	m.nextID = 0
 	m.mu.Unlock()
 	m.wg.Add(1)
-	go m.readLoop(t)
+	go m.readLoop(session)
 	return nil
 }
 
 // Stop closes the current trace session.
 func (m *Manager) Stop() {
 	m.mu.Lock()
-	t := m.tracer
-	m.tracer = nil
+	session := m.session
+	m.session = nil
 	m.running = false
 	m.mu.Unlock()
-	if t != nil {
-		_ = t.Close()
+	if session != nil {
+		_ = session.Close()
 		m.wg.Wait()
 	}
 }
 
-func (m *Manager) readLoop(t *probe.Tracer) {
+func (m *Manager) readLoop(session instrument.Session) {
 	defer m.wg.Done()
-	for ev := range t.Events() {
+	for ev := range session.Events() {
 		m.mu.Lock()
 		m.nextID++
 		m.count++
