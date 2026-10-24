@@ -182,7 +182,17 @@ export function FilterBar({
               {loading ? "…" : t("filter.apply")}
             </Button>
           </div>
-          {historyOpen && (suggestions.length > 0 || fieldSuggestions.length > 0) && (
+          {error && (
+            <div
+              role="alert"
+              aria-live="polite"
+              className="absolute left-0 right-0 top-[calc(100%+4px)] z-50 flex items-start gap-1.5 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-2xs text-destructive shadow-lg"
+            >
+              <AlertCircle className="mt-[1px] h-3 w-3 shrink-0" />
+              <span className="min-w-0 break-words">{error}</span>
+            </div>
+          )}
+          {!error && historyOpen && (suggestions.length > 0 || fieldSuggestions.length > 0) && (
             <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-50 overflow-hidden rounded-md border bg-popover shadow-xl">
               <div className="flex items-center justify-between border-b px-2 py-1 text-2xs text-muted-foreground">
                 <span>{t("filter.history")}</span>
