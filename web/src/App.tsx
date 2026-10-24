@@ -6,6 +6,7 @@ import { DetailPanel } from "@/components/DetailPanel"
 import { MITMDialog } from "@/components/MITMDialog"
 import { ModuleRail, type WorkspaceModule } from "@/components/ModuleRail"
 import { NetworkHealth } from "@/components/NetworkHealth"
+import { CommandPalette, PaletteIcons, type PaletteCommand } from "@/components/CommandPalette"
 import { FilterBar } from "@/components/FilterBar"
 import { Header } from "@/components/Header"
 import { PacketList } from "@/components/PacketList"
@@ -52,6 +53,7 @@ export default function App() {
   const [decryptOpen, setDecryptOpen] = useState(false)
   const [mitmOpen, setMitmOpen] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const [commandOpen, setCommandOpen] = useState(false)
   const [activeModule, setActiveModule] = useState<WorkspaceModule>("network")
   const [networkTab, setNetworkTab] = useState("capture")
 
@@ -273,6 +275,29 @@ export default function App() {
   const running = capture.status?.capture.running ?? false
   const showNetworkFilter = activeModule === "network"
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault()
+        setCommandOpen((v) => !v)
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [])
+
+  const commands: PaletteCommand[] = [
+    ...(running
+      ? [{ id: "stop", label: t("sidebar.stop"), icon: PaletteIcons.Square, run: handleStop }]
+      : [{ id: "start", label: t("sidebar.start"), icon: PaletteIcons.Activity, run: handleStart }]),
+    { id: "network", label: t("sidebar.network"), icon: PaletteIcons.Globe2, run: () => setActiveModule("network") },
+    { id: "processes", label: t("sidebar.processes"), icon: PaletteIcons.Layers, run: () => setActiveModule("processes") },
+    { id: "clear", label: t("sidebar.clear"), icon: PaletteIcons.Trash2, run: handleClear },
+    { id: "columns", label: t("columns.title"), icon: PaletteIcons.Columns3, run: () => setColumnsOpen(true) },
+    { id: "tls", label: t("decrypt.title"), icon: PaletteIcons.KeyRound, run: () => setDecryptOpen(true) },
+    { id: "mitm", label: t("mitm.title"), icon: PaletteIcons.Globe2, run: () => setMitmOpen(true) },
+  ]
+
   return (
     <TooltipProvider delayDuration={350}>
       <div className="flex h-full flex-col overflow-hidden">
@@ -453,6 +478,8 @@ export default function App() {
           </div>
         </div>
       )}
+
+      <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} commands={commands} />
 
       <Toaster
         theme={theme}

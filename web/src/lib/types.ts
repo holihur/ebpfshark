@@ -91,9 +91,16 @@ export interface DecryptStatus {
 
 export interface ProcessInfo {
   pid: number
+  ppid?: number
   comm: string
+  state?: string
+  threads?: number
+  rss?: number
+  vsize?: number
   cgroupID?: number
   cgroupPath?: string
+  command?: string
+  exe?: string
 }
 
 export interface RatePoint {

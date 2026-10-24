@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react"
 import { Boxes, ScrollText } from "lucide-react"
 import { useI18n } from "@/i18n"
+import { formatBytes } from "@/lib/format"
 import type { ProcessInfo } from "@/lib/types"
 
 const TracePanel = lazy(() =>
@@ -69,6 +70,14 @@ export function ProcessWorkspace({ process }: ProcessWorkspaceProps) {
             <Item label={t("process.cgroupId")} value={process.cgroupID ? `#${process.cgroupID}` : "—"} mono />
             <div className="sm:col-span-2">
               <Item label={t("process.cgroupPath")} value={process.cgroupPath || "—"} mono />
+            <Item label={t("process.state")} value={process.state || "—"} mono />
+            <Item label={t("process.threads")} value={String(process.threads ?? 0)} mono />
+            <Item label={t("process.rss")} value={formatBytes(process.rss ?? 0)} mono />
+            <Item label={t("process.vsize")} value={formatBytes(process.vsize ?? 0)} mono />
+            <Item label={t("process.exe")} value={process.exe || "—"} mono />
+            <div className="sm:col-span-2">
+              <Item label={t("process.command")} value={process.command || "—"} mono />
+            </div>
             </div>
           </div>
 
