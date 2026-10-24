@@ -76,6 +76,8 @@ sudo ./install.sh \
 | `--update-url` | 自动更新 manifest 地址（默认使用 GitHub Release manifest） |
 | `--update-interval` | 检查间隔，默认 `10m` |
 | `--no-auto-update` | 关闭自动更新 |
+| `--mitm-addr ADDR` | 本地 MITM 代理地址，默认自动选择回环端口 |
+| `--no-mitm-system` | 不安装系统 CA，也不写 HTTPS_PROXY profile |
 | `--force-env` | 重新生成 env 文件（会覆盖现有密码/Token） |
 | `--no-systemd` | 只安装文件，不操作 systemd |
 | `--prefix DIR` | 安装到指定根目录（测试用，隐含 `--no-systemd`） |

@@ -9,6 +9,10 @@ BINARY=""
 REBUILD=0
 AUTO_UPDATE="true"
 UPDATE_INTERVAL="10m"
+MITM_SYSTEM=1
+MITM_ADDR="127.0.0.1:18080"
+MITM_ADDR_SET=0
+MITM_CA_DIR="/etc/ebpfshark/mitm"
 UPDATE_URL=""
 REPO="holihur/ebpfshark"
 VARIANT="full"
@@ -41,6 +45,8 @@ Options:
   --update-url URL        Auto-update manifest URL (default: GitHub release manifest)
   --update-interval DUR   Check interval (default 10m)
   --no-auto-update        Disable auto-update
+  --mitm-addr ADDR        Local MITM proxy address (default 127.0.0.1:18080)
+  --no-mitm-system        Do not install the MITM CA or system proxy profile
   --force-env             Rewrite /etc/ebpfshark/ebpfshark.env
   --no-systemd            Install files only, do not enable the service
   --prefix DIR            Install under DIR (testing; implies --no-systemd)
@@ -69,6 +75,8 @@ while [[ $# -gt 0 ]]; do
     --update-url) UPDATE_URL="$2"; shift 2 ;;
     --update-interval) UPDATE_INTERVAL="$2"; shift 2 ;;
     --no-auto-update) AUTO_UPDATE="false"; shift ;;
+    --mitm-addr) MITM_ADDR="$2"; MITM_ADDR_SET=1; shift 2 ;;
+    --no-mitm-system) MITM_SYSTEM=0; shift ;;
     --force-env) FORCE_ENV=1; shift ;;
     --no-systemd) NO_SYSTEMD=1; shift ;;
     --prefix) PREFIX="$2"; NO_SYSTEMD=1; shift 2 ;;
@@ -81,6 +89,14 @@ done
 
 [[ ${EUID:-$(id -u)} -eq 0 ]] || die "run as root (sudo ./install.sh)"
 [[ "$VARIANT" == "core" || "$VARIANT" == "full" ]] || die "--variant must be core or full"
+if [[ "$MITM_ADDR_SET" -eq 0 && "$MITM_ADDR" == "127.0.0.1:18080" ]] && command -v ss >/dev/null 2>&1; then
+  port=18080
+  while ss -ltn 2>/dev/null | grep -qE "[:.]${port}[[:space:]]"; do
+    port=$((port + 1))
+    [[ "$port" -le 18099 ]] || die "no free loopback port for MITM proxy"
+  done
+  MITM_ADDR="127.0.0.1:${port}"
+fi
 
 ROOT="${PREFIX%/}"
 BIN_PATH="${ROOT}/usr/local/bin/ebpfshark"
@@ -201,6 +217,12 @@ if [[ "$UNINSTALL" -eq 1 ]]; then
     systemctl disable "$SERVICE" 2>/dev/null || true
   fi
   rm -f "$UNIT_FILE" "$BIN_PATH"
+  rm -f "${ROOT}/usr/local/share/ca-certificates/ebpfshark-mitm.crt"
+  rm -f "${ROOT}/etc/pki/ca-trust/source/anchors/ebpfshark-mitm.crt"
+  rm -f "${ROOT}/etc/profile.d/ebpfshark-mitm.sh"
+  if command -v update-ca-certificates >/dev/null 2>&1; then
+    update-ca-certificates >/dev/null 2>&1 || true
+  fi
   if [[ "$NO_SYSTEMD" -eq 0 ]] && command -v systemctl >/dev/null 2>&1; then
     systemctl daemon-reload || true
   fi
@@ -260,9 +282,53 @@ else
   info "keeping existing $ENV_FILE (use --force-env to rewrite)"
 fi
 
+ensure_env() {
+  local key="$1" value="$2"
+  if ! grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
+    printf '%s="%s"\n' "$key" "$value" >> "$ENV_FILE"
+  fi
+}
+
+setup_system_mitm() {
+  local ca_path ca_cert
+  if [[ -n "$ROOT" ]]; then
+    info "prefix install: skipping system-wide CA/profile changes"
+    return
+  fi
+  mkdir -p "$MITM_CA_DIR"
+  chmod 700 "$MITM_CA_DIR"
+  ca_path="$("$BIN_PATH" -mitm-ca-init "$MITM_CA_DIR")" || die "could not generate MITM CA"
+  ca_cert="${ca_path:-$MITM_CA_DIR/ca.crt}"
+  ensure_env EBPFSHARK_MITM "$MITM_ADDR"
+  ensure_env EBPFSHARK_MITM_CA_DIR "$MITM_CA_DIR"
+
+  if [[ -d /usr/local/share/ca-certificates ]] && command -v update-ca-certificates >/dev/null 2>&1; then
+    install -m 0644 "$ca_cert" /usr/local/share/ca-certificates/ebpfshark-mitm.crt
+    update-ca-certificates >/dev/null 2>&1 || true
+  elif [[ -d /etc/pki/ca-trust/source/anchors ]] && command -v update-ca-trust >/dev/null 2>&1; then
+    install -m 0644 "$ca_cert" /etc/pki/ca-trust/source/anchors/ebpfshark-mitm.crt
+    update-ca-trust >/dev/null 2>&1 || true
+  else
+    info "system CA store not detected; trust $ca_cert manually"
+  fi
+
+  cat > /etc/profile.d/ebpfshark-mitm.sh <<PROFILEEOF
+# Added by ebpfshark: route HTTPS through the local MITM proxy.
+export HTTPS_PROXY="\${HTTPS_PROXY:-http://${MITM_ADDR}}"
+export NO_PROXY="\${NO_PROXY:-localhost,127.0.0.1,::1}"
+export NODE_EXTRA_CA_CERTS="\${NODE_EXTRA_CA_CERTS:-${ca_cert}}"
+PROFILEEOF
+  chmod 0644 /etc/profile.d/ebpfshark-mitm.sh
+  info "system MITM enabled (CA: $ca_cert, proxy: http://$MITM_ADDR)"
+}
+
 get_kv() {
   grep -E "^$1=" "$ENV_FILE" | tail -n 1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//'
 }
+
+if [[ "$MITM_SYSTEM" -eq 1 ]]; then
+  setup_system_mitm
+fi
 
 mkdir -p "$(dirname "$UNIT_FILE")"
 cat > "$UNIT_FILE" <<UNITEOF
@@ -305,6 +371,9 @@ echo "  username:   $(get_kv EBPFSHARK_AUTH_USER)"
 echo "  password:   $(get_kv EBPFSHARK_AUTH_PASS)"
 echo "  MCP token:  $(get_kv EBPFSHARK_MCP_TOKEN)"
 echo "  auto-update: $(get_kv EBPFSHARK_AUTO_UPDATE) ($(get_kv EBPFSHARK_UPDATE_INTERVAL))"
+if [[ "$MITM_SYSTEM" -eq 1 ]]; then
+  echo "  HTTPS MITM:  http://${MITM_ADDR} (system CA/profile installed; re-login or restart apps)"
+fi
 if [[ -n "$(get_kv EBPFSHARK_UPDATE_URL)" ]]; then
   echo "  update URL: $(get_kv EBPFSHARK_UPDATE_URL)"
 else

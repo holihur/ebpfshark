@@ -118,7 +118,7 @@ func (p *Proxy) Close() {
 func (p *Proxy) Status() Status {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	addr := ""
+	addr := p.cfg.Addr
 	if p.listener != nil {
 		addr = p.listener.Addr().String()
 	}

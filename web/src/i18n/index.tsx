@@ -94,8 +94,10 @@ const en = {
   "mitm.restart": "Apply",
   "mitm.disable": "Disable",
   "mitm.downloadCA": "CA cert",
+  "mitm.oneSwitchHint": "One switch starts the local TLS terminating proxy. Trust the CA once, then HTTPS plaintext appears in the packet list.",
+  "mitm.advanced": "Advanced setup",
   "mitm.usage": "Client setup",
-  "mitm.trust": "Install the downloaded CA (or pass it via SSL_CERT_FILE / NODE_EXTRA_CA_CERTS), then route HTTPS through the proxy.",
+  "mitm.trust": "Trust the downloaded CA system-wide (or set NODE_EXTRA_CA_CERTS), then route HTTPS through the proxy.",
   "mitm.note": "The proxy is loopback-only by default. Apps with certificate pinning will reject the MITM certificate. This changes trust boundaries; do not expose the proxy to untrusted networks.",
   "mitm.close": "Close",
 
@@ -392,8 +394,10 @@ const zh: Record<MessageKey, string> = {
   "mitm.restart": "应用",
   "mitm.disable": "停用",
   "mitm.downloadCA": "CA 证书",
+  "mitm.oneSwitchHint": "一个开关启动本地 TLS 终止代理。信任一次 CA 后，HTTPS 明文会直接进入报文列表。",
+  "mitm.advanced": "高级设置",
   "mitm.usage": "客户端设置",
-  "mitm.trust": "安装下载的 CA（或通过 SSL_CERT_FILE / NODE_EXTRA_CA_CERTS 指定），然后把 HTTPS 流量走这个代理。",
+  "mitm.trust": "把下载的 CA 加入系统信任库（或设置 NODE_EXTRA_CA_CERTS），然后把 HTTPS 流量走这个代理。",
   "mitm.note": "代理默认仅监听回环地址。使用证书 pinning 的应用会拒绝 MITM 证书。这会改变信任边界，不要把代理暴露到不可信网络。",
   "mitm.close": "关闭",
 

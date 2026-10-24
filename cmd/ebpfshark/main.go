@@ -79,6 +79,7 @@ func main() {
 	wifiPSK := flag.String("wifi-psk", env("EBPFSHARK_WIFI_PSK", ""), "WPA2-PSK passphrase for CCMP frame decryption")
 	wifiKeys := flag.String("wifi-keys", env("EBPFSHARK_WIFI_KEYS", ""), "JSON PMK/PTK session keys for WPA2/WPA3 (missing handshake)")
 	mitmAddr := flag.String("mitm", env("EBPFSHARK_MITM", "127.0.0.1:18080"), "local HTTPS MITM proxy address (empty disables)")
+	mitmCAInit := flag.String("mitm-ca-init", "", "generate/reuse the MITM CA in this directory and print the certificate path")
 	mitmCADir := flag.String("mitm-ca-dir", env("EBPFSHARK_MITM_CA_DIR", defaultMITMCADir()), "directory for the MITM CA certificate and key")
 	noMCP := flag.Bool("no-mcp", false, "disable the HTTP MCP endpoint")
 	showVersion := flag.Bool("version", false, "print version and exit")
@@ -87,6 +88,15 @@ func main() {
 	log := newLogger(*logLevel)
 	if *showVersion {
 		fmt.Printf("ebpfshark %s\n", server.Version)
+		return
+	}
+	if *mitmCAInit != "" {
+		path, err := mitm.EnsureCA(*mitmCAInit)
+		if err != nil {
+			log.Error("initialize MITM CA failed", "err", err)
+			os.Exit(1)
+		}
+		fmt.Println(path)
 		return
 	}
 	if *pprofAddr != "" {

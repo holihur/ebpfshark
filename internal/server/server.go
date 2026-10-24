@@ -308,7 +308,10 @@ func (s *Server) handleMITMConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Enabled {
 		if req.Addr == "" {
-			req.Addr = "127.0.0.1:18080"
+			req.Addr = s.mitm.Status().Addr
+			if req.Addr == "" {
+				req.Addr = "127.0.0.1:18080"
+			}
 		}
 		if err := s.mitm.Reconfigure(req.Addr); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())

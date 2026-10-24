@@ -30,6 +30,14 @@ type authority struct {
 	leafs map[string]*tls.Certificate
 }
 
+// EnsureCA generates or reuses a CA and returns the public certificate path.
+func EnsureCA(dir string) (string, error) {
+	if _, err := loadOrCreateCA(dir); err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "ca.crt"), nil
+}
+
 func loadOrCreateCA(dir string) (*authority, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err

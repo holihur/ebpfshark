@@ -55,7 +55,13 @@ Docker 需要 host network、eBPF capability、放宽 seccomp/AppArmor 和 BTF�
 curl -fsSL https://raw.githubusercontent.com/holihur/ebpfshark/main/install.sh | sudo bash
 ```
 
-默认安装 **full** 版本，启用 systemd 和自动更新；每 **10 分钟**检查 GitHub Release 的更新 manifest。安装完成后会打印登录密码和 MCP Token。
+默认安装 **full** 版本，启用 systemd 和自动更新；每 **10 分钟**检查 GitHub Release 的更新 manifest。安装时还会生成并信任本地 MITM CA、写入 `HTTPS_PROXY` 登录 profile，使新启动的应用可直接看到 HTTPS 明文。安装完成后会打印登录密码和 MCP Token。
+
+不需要系统级 HTTPS 明文时使用：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/holihur/ebpfshark/main/install.sh | sudo bash -s -- --no-mitm-system
+```
 
 也可以从本地仓库安装：
 
@@ -78,8 +84,8 @@ sudo ./bin/ebpfshark -addr :9999 -capture eth0
 
 默认在 `127.0.0.1:18080` 启动本地 HTTPS 解密代理（端口占用时自动换一个回环端口）。进入 **More → HTTPS decryption proxy**：
 
-1. 下载 CA 证书并在客户端信任，或设置 `SSL_CERT_FILE` / `NODE_EXTRA_CA_CERTS`
-2. 设置 `HTTPS_PROXY=http://<页面显示的地址>`
+1. 安装脚本默认已经把 CA 加入系统信任，并写入登录 profile；重新登录或重启应用一次
+2. 如果禁用系统模式，则在页面下载 CA 并设置 `HTTPS_PROXY=http://<页面显示的地址>`
 3. 代理解密后的请求/响应会作为 `mitm` 虚拟报文进入报文列表，可直接用 `http`、`https`、`ai` 等过滤器查看
 
 不使用代理时，HTTPS 仍只能看到 TLS 元数据。证书 pinning、强制代理外的直连和部分非 HTTP 协议无法通过 MITM 解密。

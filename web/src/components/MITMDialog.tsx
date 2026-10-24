@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
-import { Download, Globe2, Power, RefreshCw } from "lucide-react"
+import { Download, Globe2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
 import {
   Dialog,
   DialogContent,
@@ -22,7 +22,6 @@ interface MITMDialogProps {
 export function MITMDialog({ open, onOpenChange }: MITMDialogProps) {
   const { t } = useI18n()
   const [status, setStatus] = useState<MITMStatus | null>(null)
-  const [addr, setAddr] = useState("127.0.0.1:18080")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
 
@@ -33,7 +32,6 @@ export function MITMDialog({ open, onOpenChange }: MITMDialogProps) {
       .mitmStatus()
       .then((s) => {
         setStatus(s)
-        if (s.addr) setAddr(s.addr)
       })
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
   }, [open])
@@ -42,9 +40,7 @@ export function MITMDialog({ open, onOpenChange }: MITMDialogProps) {
     setBusy(true)
     setError("")
     try {
-      const next = await api.setMITM(enabled, addr)
-      setStatus(next)
-      if (next.addr) setAddr(next.addr)
+      setStatus(await api.setMITM(enabled, ""))
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -52,7 +48,7 @@ export function MITMDialog({ open, onOpenChange }: MITMDialogProps) {
     }
   }
 
-  const proxyURL = `http://${status?.addr || addr}`
+  const proxyURL = `http://${status?.addr || "127.0.0.1:18080"}`
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -75,29 +71,14 @@ export function MITMDialog({ open, onOpenChange }: MITMDialogProps) {
               <span className="ml-auto font-mono text-2xs text-muted-foreground">
                 {proxyURL}
               </span>
-            </div>
-            <div className="mt-2 flex gap-1.5">
-              <Input
-                value={addr}
-                onChange={(e) => setAddr(e.target.value)}
-                placeholder="127.0.0.1:18080"
-                className="h-8 font-mono text-xs"
+              <Switch
+                checked={status?.enabled ?? false}
+                disabled={busy || !status}
+                onCheckedChange={(enabled) => { void apply(enabled) }}
+                aria-label={t("mitm.title")}
               />
-              <Button size="sm" variant="outline" className="h-8" onClick={() => { void apply(true) }} disabled={busy}>
-                {status?.enabled ? <RefreshCw className="h-3.5 w-3.5" /> : <Power className="h-3.5 w-3.5" />}
-                {status?.enabled ? t("mitm.restart") : t("mitm.enable")}
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-8"
-                onClick={() => { void apply(false) }}
-                disabled={busy || !status?.enabled}
-                title={t("mitm.disable")}
-              >
-                <Power className="h-3.5 w-3.5" />
-              </Button>
             </div>
+            <p className="mt-1 text-[10px] text-muted-foreground">{t("mitm.oneSwitchHint")}</p>
             <div className="mt-2 flex items-center gap-2 text-2xs text-muted-foreground">
               <span className="min-w-0 flex-1 truncate font-mono" title={status?.caPath}>{status?.caPath || "CA unavailable"}</span>
               <Button size="sm" variant="outline" className="h-7 shrink-0" asChild disabled={!status?.enabled}>
@@ -108,14 +89,17 @@ export function MITMDialog({ open, onOpenChange }: MITMDialogProps) {
             </div>
           </div>
 
-          <div className="space-y-1.5 rounded-md border bg-muted/20 p-3 text-2xs leading-relaxed text-muted-foreground">
+          <details className="rounded-md border bg-muted/20 p-3 text-2xs leading-relaxed text-muted-foreground">
+            <summary className="cursor-pointer font-medium text-foreground/80">{t("mitm.advanced")}</summary>
+            <div className="mt-2 space-y-1.5">
             <div className="font-medium text-foreground/80">{t("mitm.usage")}</div>
             <code className="block break-all rounded bg-background/60 px-2 py-1 font-mono text-[10px] text-foreground/80">
               export HTTPS_PROXY={proxyURL}
             </code>
             <p>{t("mitm.trust")}</p>
             <p>{t("mitm.note")}</p>
-          </div>
+            </div>
+          </details>
 
           {error && <div className="rounded border border-destructive/30 bg-destructive/10 p-2 text-2xs text-destructive">{error}</div>}
         </div>
