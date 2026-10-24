@@ -1,4 +1,5 @@
 import { Activity, Database, Radio, Users } from "lucide-react"
+import { QUICK_FILTERS } from "@/lib/protocols"
 import { Sparkline } from "@/components/Sparkline"
 import { formatBytes, formatCount, formatPps } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -11,9 +12,11 @@ interface StatusBarProps {
   packetStore: PacketStore
   connected: boolean
   totalVisible: number
+  filter: string
+  onApplyFilter: (filter: string) => void
 }
 
-export function StatusBar({ status, packetStore, connected, totalVisible }: StatusBarProps) {
+export function StatusBar({ status, packetStore, connected, totalVisible, filter, onApplyFilter }: StatusBarProps) {
   const { t } = useI18n()
   usePacketVersion()
   const matchCount = packetStore.length
@@ -24,6 +27,8 @@ export function StatusBar({ status, packetStore, connected, totalVisible }: Stat
   const pps = rate.length > 0 ? rate[rate.length - 1].packets : 0
   const spark = rate.map((r) => r.packets)
   const usage = store && store.capacity > 0 ? (store.stored / store.capacity) * 100 : 0
+  const activeFilter = filter.trim().toLowerCase()
+  const protocols = store?.protocols ?? {}
 
   return (
     <footer className="flex h-7 shrink-0 items-center gap-3 border-t bg-panel/80 px-3 text-2xs text-muted-foreground">
@@ -75,6 +80,30 @@ export function StatusBar({ status, packetStore, connected, totalVisible }: Stat
           {t("status.kernelDrops", { count: formatCount(capture?.kernelSkipped ?? 0) })}
         </span>
       )}
+
+      <div className="hidden items-center gap-1 xl:flex">
+        {QUICK_FILTERS.map((proto) => {
+          const count = protocols[proto.toUpperCase()] ?? 0
+          const active = activeFilter === proto
+          return (
+            <button
+              key={proto}
+              type="button"
+              onClick={() => onApplyFilter(active ? "" : proto)}
+              className={cn(
+                "rounded border px-1.5 py-0.5 font-mono text-[10px] transition-colors",
+                active
+                  ? "border-primary/40 bg-primary/15 text-primary"
+                  : "border-border bg-background/40 text-muted-foreground hover:bg-accent",
+              )}
+              title={`${proto} (${formatCount(count)})`}
+            >
+              {proto}
+              <span className="ml-1 text-muted-foreground/60">{formatCount(count)}</span>
+            </button>
+          )
+        })}
+      </div>
 
       <div className="flex-1" />
 

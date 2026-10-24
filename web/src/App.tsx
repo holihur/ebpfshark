@@ -297,10 +297,7 @@ export default function App() {
             <FilterBar
             filter={capture.filter}
             error={capture.filterError}
-            status={capture.status}
-            packetStore={capture.packetStore}
             loading={capture.loadingPackets}
-            connected={capture.connected}
             running={running}
             busy={busy}
             onApply={handleApplyFilter}
@@ -352,6 +349,8 @@ export default function App() {
                   packetStore={capture.packetStore}
                   totalVisible={capture.status?.store.stored ?? 0}
                   connected={capture.connected}
+                  filter={capture.filter}
+                  onApplyFilter={handleApplyFilter}
                 />
               )}
             </main>

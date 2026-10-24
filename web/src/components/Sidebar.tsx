@@ -8,9 +8,7 @@ import {
   FileUp,
   Gauge,
   Layers,
-  Play,
   RefreshCw,
-  Square,
   Trash2,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -320,15 +318,6 @@ function CapturePanel(props: SidebarProps) {
       </Section>
 
       <div className="space-y-1.5">
-        {running ? (
-          <Button variant="outline" className="w-full" onClick={props.onStop} disabled={props.busy}>
-            <Square className="fill-current" /> {t("sidebar.stop")}
-          </Button>
-        ) : (
-          <Button className="w-full" onClick={props.onStart} disabled={props.busy}>
-            <Play className="fill-current" /> {t("sidebar.start")}
-          </Button>
-        )}
         <div className="grid grid-cols-3 gap-1.5">
           <Button
             variant="secondary"

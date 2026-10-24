@@ -131,6 +131,32 @@ func respValue(b []byte, off, depth int) (string, int, bool) {
 	return "", off, false
 }
 
+func matchRedis(_ *ctx, sport, dport uint16, b []byte) bool {
+	if sport == 6379 || dport == 6379 {
+		return true
+	}
+	if len(b) == 0 {
+		return false
+	}
+	if b[0] == '*' {
+		if line, _, ok := respLine(b, 1); ok {
+			if n, err := strconv.Atoi(line); err == nil && n > 0 {
+				return bytes.Contains(b, []byte("$"))
+			}
+		}
+		return false
+	}
+	if b[0] == '+' || b[0] == '-' || b[0] == ':' {
+		line, _, ok := respLine(b, 1)
+		return ok && line != ""
+	}
+	if line, _, ok := respLine(b, 0); ok {
+		fields := strings.Fields(line)
+		return len(fields) > 0 && redisCommands[strings.ToUpper(fields[0])]
+	}
+	return false
+}
+
 func (c *ctx) dissectRedis(b []byte, base int) bool {
 	if len(b) == 0 {
 		return false
@@ -183,5 +209,5 @@ func (c *ctx) dissectRedis(b []byte, base int) bool {
 
 func init() {
 	RegisterPlugin(pluginSpec{Name: "redis", Priority: 40, Transport: TransportTCP,
-		Match: portMatch(map[uint16]bool{6379: true}), Dissect: func(c *ctx, b []byte, base int) bool { return c.dissectRedis(b, base) }})
+		Match: matchRedis, Dissect: func(c *ctx, b []byte, base int) bool { return c.dissectRedis(b, base) }})
 }
