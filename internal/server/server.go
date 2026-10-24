@@ -119,6 +119,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/capture/filter", s.handleCaptureFilter)
 	mux.HandleFunc("POST /api/capture/cgroup", s.handleCaptureCgroup)
 	mux.HandleFunc("GET /api/processes", s.handleProcesses)
+	mux.HandleFunc("GET /api/decrypt", s.handleDecryptStatus)
+	mux.HandleFunc("POST /api/decrypt/tls-keylog", s.handleTLSKeyLog)
+	mux.HandleFunc("POST /api/decrypt/wifi-psk", s.handleWiFiPSK)
 	mux.HandleFunc("GET /api/packets", s.handlePackets)
 	mux.HandleFunc("GET /api/packets/{id}", s.handlePacketDetail)
 	mux.HandleFunc("GET /api/packets/{id}/stream", s.handlePacketStream)
@@ -401,6 +404,50 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleStop(w http.ResponseWriter, r *http.Request) {
 	s.mgr.Stop()
 	writeJSON(w, http.StatusOK, s.mgr.Status())
+}
+
+func (s *Server) handleDecryptStatus(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"tlsKeylogEntries":  decode.KeyLogEntries(),
+		"wifiPSKConfigured": decode.WiFiPSKConfigured(),
+	})
+}
+
+func (s *Server) handleTLSKeyLog(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Keylog string `json:"keylog"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if strings.TrimSpace(req.Keylog) == "" {
+		decode.ClearKeyLog()
+		writeJSON(w, http.StatusOK, map[string]any{"tlsKeylogEntries": 0})
+		return
+	}
+	n, err := decode.LoadKeyLogData([]byte(req.Keylog))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if n == 0 {
+		writeError(w, http.StatusBadRequest, "no valid SSLKEYLOGFILE lines found")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"tlsKeylogEntries": decode.KeyLogEntries()})
+}
+
+func (s *Server) handleWiFiPSK(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		PSK string `json:"psk"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	decode.LoadWiFiPSK(strings.TrimSpace(req.PSK))
+	writeJSON(w, http.StatusOK, map[string]any{"wifiPSKConfigured": decode.WiFiPSKConfigured()})
 }
 
 func (s *Server) handleProcesses(w http.ResponseWriter, r *http.Request) {

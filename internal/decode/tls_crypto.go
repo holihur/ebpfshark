@@ -31,8 +31,16 @@ func LoadKeyLog(path string) error {
 	if err != nil {
 		return err
 	}
+	_, err = LoadKeyLogData(data)
+	return err
+}
+
+// LoadKeyLogData loads NSS SSLKEYLOGFILE contents (the format used by Chrome,
+// Firefox, curl and many TLS libraries). Existing entries are kept.
+func LoadKeyLogData(data []byte) (int, error) {
 	keylogData.Lock()
 	defer keylogData.Unlock()
+	added := 0
 	for _, line := range strings.Split(string(data), "\n") {
 		fields := strings.Fields(strings.TrimSpace(line))
 		if len(fields) != 3 || strings.HasPrefix(fields[0], "#") {
@@ -47,8 +55,33 @@ func LoadKeyLog(path string) error {
 			keylogData.m[random] = make(map[string][]byte)
 		}
 		keylogData.m[random][fields[0]] = secret
+		added++
 	}
-	return nil
+	return added, nil
+}
+
+// ClearKeyLog removes all loaded TLS secrets.
+func ClearKeyLog() {
+	keylogData.Lock()
+	keylogData.m = make(map[string]map[string][]byte)
+	keylogData.Unlock()
+}
+
+// KeyLogEntries returns the number of loaded TLS secrets.
+func KeyLogEntries() int {
+	keylogData.RLock()
+	defer keylogData.RUnlock()
+	n := 0
+	for _, labels := range keylogData.m {
+		n += len(labels)
+	}
+	return n
+}
+
+func keylogAvailable() bool {
+	keylogData.RLock()
+	defer keylogData.RUnlock()
+	return len(keylogData.m) > 0
 }
 
 func keylogSecret(clientRandom []byte, labels ...string) []byte {

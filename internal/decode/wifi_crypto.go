@@ -28,6 +28,14 @@ type wifiSession struct {
 	pmk, ptk, tk   []byte
 }
 
+// WiFiPSKConfigured reports whether a WPA2 PSK is loaded (the key is never
+// exposed through the API).
+func WiFiPSKConfigured() bool {
+	wifiKeys.Lock()
+	defer wifiKeys.Unlock()
+	return wifiKeys.psk != ""
+}
+
 // LoadWiFiPSK enables WPA2-PSK/CCMP decryption. SSID and 4-way nonces must be
 // present in the capture.
 func LoadWiFiPSK(psk string) {

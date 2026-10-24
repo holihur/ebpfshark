@@ -233,6 +233,16 @@ sudo systemctl restart ebpfshark
 ebpfshark -auto-update=false -update-interval 30m -update-url https://...
 ```
 
+TLS 解密也可以自动发现进程的 `SSLKEYLOGFILE` / `--tls-keylog`：
+
+```bash
+EBPFSHARK_TLS_KEYLOG_AUTO=true ebpfshark
+# 或关闭自动发现：
+ebpfshark -tls-keylog-auto=false
+```
+
+自动发现只读取已经由客户端导出的 keylog，不能从 TLS 密文反推出密钥。
+
 ### 3.5 查看更新状态
 
 受保护的 API：

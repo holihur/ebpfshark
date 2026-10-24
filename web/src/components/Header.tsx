@@ -3,6 +3,7 @@ import {
   Download,
   Columns3,
   FileUp,
+  KeyRound,
   Languages,
   LogOut,
   Moon,
@@ -50,6 +51,7 @@ interface HeaderProps {
   onClear: () => void
   onImport: (file: File) => void
   onEditColumns: () => void
+  onDecryption: () => void
 }
 
 function HeaderImpl({
@@ -67,6 +69,7 @@ function HeaderImpl({
   onClear,
   onImport,
   onEditColumns,
+  onDecryption,
 }: HeaderProps) {
   const { t, locale, setLocale } = useI18n()
   const running = status?.capture.running ?? false
@@ -190,6 +193,10 @@ function HeaderImpl({
           <DropdownMenuItem onSelect={onEditColumns}>
             <Columns3 />
             {t("columns.title")}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={onDecryption}>
+            <KeyRound />
+            {t("decrypt.title")}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           {authEnabled && (

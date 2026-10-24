@@ -5,7 +5,7 @@ package filter
 // protocolLayerNames lists protocols compiled into the core build.
 func protocolLayerNames() []string {
 	return []string{
-		"ip", "ipv6", "tcp", "udp", "sctp", "wifi", "radiotap", "eapol", "hls", "ai", "anthropic", "openai", "openai-responses", "dash", "icmp", "icmpv6", "arp", "dns", "http", "tls",
+		"ip", "ipv6", "tcp", "udp", "sctp", "wifi", "radiotap", "eapol", "hls", "ai", "anthropic", "openai", "openai-responses", "dash", "icmp", "icmpv6", "arp", "dns", "http", "tls", "https",
 		"dhcp", "vlan", "eth", "mpls", "gre", "igmp",
 	}
 }

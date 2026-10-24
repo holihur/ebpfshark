@@ -138,6 +138,9 @@ func decode(data []byte, linkType packet.LinkType, wireLen, depth int, noFields 
 }
 
 func (c *ctx) topProtocol() string {
+	if c.proto == "https" {
+		return "HTTPS"
+	}
 	if c.proto != "" {
 		if name := displayName(c.proto); name != "" {
 			return name

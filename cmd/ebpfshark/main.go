@@ -62,6 +62,7 @@ func main() {
 	mcpToken := flag.String("mcp-token", env("EBPFSHARK_MCP_TOKEN", ""), "bearer token for the HTTP MCP endpoint (empty = generate)")
 	pprofAddr := flag.String("pprof-addr", env("EBPFSHARK_PPROF_ADDR", ""), "optional local profiling address, e.g. 127.0.0.1:6060")
 	tlsKeylog := flag.String("tls-keylog", env("EBPFSHARK_TLS_KEYLOG", env("SSLKEYLOGFILE", "")), "NSS SSLKEYLOGFILE for TLS 1.2/1.3 decryption")
+	tlsKeylogAuto := flag.Bool("tls-keylog-auto", envBool("EBPFSHARK_TLS_KEYLOG_AUTO", true), "discover and watch SSLKEYLOGFILE from running processes")
 	plugins := flag.String("plugins", env("EBPFSHARK_PLUGINS", ""), "comma separated Go .so dissector plugins")
 	cgroup := flag.String("cgroup", env("EBPFSHARK_CGROUP", ""), "capture only sockets in a cgroup: ID, path, pid:N, pod:NAME or container:ID")
 	captureFilter := flag.String("capture-filter", env("EBPFSHARK_CAPTURE_FILTER", ""), "display filter whose safe L2-L4 subset is applied in eBPF")
@@ -215,6 +216,10 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	if *tlsKeylogAuto {
+		go decode.WatchKeyLogs(ctx, *tlsKeylog, 5*time.Second)
+	}
 
 	updater := update.New(update.Config{
 		Enabled:        *autoUpdate,

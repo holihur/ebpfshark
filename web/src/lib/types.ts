@@ -77,6 +77,11 @@ export interface CaptureStatus {
   lastError?: string
 }
 
+export interface DecryptStatus {
+  tlsKeylogEntries: number
+  wifiPSKConfigured: boolean
+}
+
 export interface ProcessInfo {
   pid: number
   comm: string

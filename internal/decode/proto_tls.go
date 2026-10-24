@@ -98,6 +98,9 @@ func (c *ctx) dissectTLS(b []byte, base int) bool {
 	}
 	flow := tlsFlowFor(c)
 	c.addLayer("tls")
+	if c.m.SrcPort == 443 || c.m.DstPort == 443 {
+		c.addLayer("https")
+	}
 	c.proto = "tls"
 
 	root := c.newNode(fmt.Sprintf("Transport Layer Security (%s)", tlsContentTypeName(ct)), base, 5+recLen)
@@ -137,9 +140,25 @@ func (c *ctx) dissectTLS(b []byte, base int) bool {
 	} else if ct == 23 {
 		root.add(c.newField(fmt.Sprintf("Encrypted Application Data (%d bytes)", len(body)), hexPreview(body, 32), base+5, len(body)))
 		if c.noFields {
-			// Summary mode only needs the record metadata; decryption is
-			// deferred until the packet detail is opened.
-			c.appInfo = fmt.Sprintf("Application Data (%d bytes)", len(body))
+			// Summary mode normally only needs record metadata. When a keylog
+			// is loaded, decrypt application data here as well so HTTPS
+			// requests (including AI APIs) appear in the packet list without
+			// opening every detail view first.
+			if keylogAvailable() {
+				if pt, inner, _, ok := flow.decryptRecord(c, b[:5], body); ok {
+					c.addLayer("https")
+					if inner == 23 {
+						c.m.Payload = pt
+						c.dissectDecryptedApp(pt, base+5)
+						if c.proto == "http" {
+							c.proto = "https"
+						}
+					}
+				}
+			}
+			if c.proto == "tls" {
+				c.appInfo = fmt.Sprintf("Application Data (%d bytes)", len(body))
+			}
 			c.addRoot(root)
 			return true
 		}
@@ -162,9 +181,15 @@ func (c *ctx) dissectTLS(b []byte, base int) bool {
 				}
 			case 23:
 				dn.add(c.newField(fmt.Sprintf("Decrypted Application Data (%d bytes)", len(pt)), printablePreview(pt, 300), 0, len(pt)))
+				c.addLayer("https")
 				c.m.Payload = pt
 				c.dissectDecryptedApp(pt, base+5)
-				c.appInfo = fmt.Sprintf("Decrypted Application Data (%d bytes)", len(pt))
+				if c.proto == "http" {
+					c.proto = "https"
+				}
+				if c.proto == "https" || c.proto == "tls" {
+					c.appInfo = fmt.Sprintf("Decrypted Application Data (%d bytes)", len(pt))
+				}
 			case 21:
 				if len(pt) >= 2 {
 					dn.add(c.newField(fmt.Sprintf("Alert Level: %d, Description: %d", pt[0], pt[1]), "", 0, 2))

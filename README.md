@@ -13,7 +13,7 @@ ebpfshark 通过 TCX 在 Linux 网卡 ingress/egress 抓包，浏览器中提供
 - **显示过滤器**：字段比较、CIDR、端口范围、布尔表达式、`contains`，以及可视化构造器。
 - **混合过滤**：安全可下推的 L2–L4 条件编译进 eBPF，应用层字段和复杂表达式继续在用户态精确匹配。
 - **TCP 流分析**：乱序/重传/重叠处理、Follow Stream、双向会话统计。
-- **AI API 解析**：Anthropic Messages、OpenAI Chat Completions、OpenAI Responses，支持 JSON/SSE。
+- **AI / HTTPS 解析**：Anthropic Messages、OpenAI Chat Completions、OpenAI Responses，支持 JSON/SSE；加载 TLS keylog 后可查看 HTTPS 最终明文。
 - **范围抓包**：左侧进程列表直接按 cgroup 过滤；也支持 cgroup v2 路径、Pod/容器片段。
 - **函数调用追踪（实验）**：CLI、Web 页面和 MCP 均可对显式 `binary:symbol` 挂 uprobe/uretprobe；Web 支持进程 PID 提示和函数符号列表。
 - **服务化访问**：登录认证、SSE 实时推送、HTTP API、MCP；支持单二进制、Docker 和动态插件。
@@ -110,6 +110,7 @@ Web 侧栏 **Trace** 标签和 MCP 的 `start_function_trace` / `query_function_
 -sample-rate 1           每 N 个包抓 1 个
 -capture-filter ""       可选显示过滤器；其 L2–L4 子集会在 eBPF 中预过滤
 -tls-keylog ""           NSS SSLKEYLOGFILE，用于 TLS 解密
+-tls-keylog-auto true    自动发现进程的 SSLKEYLOGFILE / --tls-keylog
 -wifi-psk ""             WPA2-PSK，解密 CCMP/GCMP 无线数据帧
 -plugins ""              动态 Go .so 协议插件
 ```

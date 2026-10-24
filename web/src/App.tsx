@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Toaster, toast } from "sonner"
 import { ColumnSettingsDialog } from "@/components/ColumnSettingsDialog"
+import { DecryptionDialog } from "@/components/DecryptionDialog"
 import { DetailPanel } from "@/components/DetailPanel"
 import { FilterBar } from "@/components/FilterBar"
 import { Header } from "@/components/Header"
@@ -40,6 +41,7 @@ export default function App() {
   const [splitPct, setSplitPct] = useState(44)
   const [columns, setColumns] = usePacketColumns()
   const [columnsOpen, setColumnsOpen] = useState(false)
+  const [decryptOpen, setDecryptOpen] = useState(false)
 
   const workRef = useRef<HTMLDivElement>(null)
   const initialized = useRef(false)
@@ -238,6 +240,7 @@ export default function App() {
           onClear={handleClear}
           onImport={handleImport}
           onEditColumns={() => setColumnsOpen(true)}
+          onDecryption={() => setDecryptOpen(true)}
         />
 
         <FilterBar
@@ -326,6 +329,8 @@ export default function App() {
         columns={columns}
         onChange={setColumns}
       />
+
+      <DecryptionDialog open={decryptOpen} onOpenChange={setDecryptOpen} />
 
       <Toaster
         theme={theme}

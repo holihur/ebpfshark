@@ -16,6 +16,9 @@
 | POST | `/api/capture/filter` | `{filter}` 更新 eBPF 预过滤（安全 L2–L4 子集） |
 | POST | `/api/capture/cgroup` | `{cgroup}` 运行中动态更新 cgroup 过滤（空字符串清除） |
 | GET | `/api/processes?q=&limit=` | 进程列表及 cgroup ID/路径，用于按进程过滤 |
+| GET | `/api/decrypt` | TLS keylog / Wi-Fi PSK 配置状态（不返回密钥） |
+| POST | `/api/decrypt/tls-keylog` | `{keylog}` 加载 SSLKEYLOGFILE 内容；空字符串清除 |
+| POST | `/api/decrypt/wifi-psk` | `{psk}` 加载/清除 WPA2-PSK |
 | GET | `/api/packets?filter=&limit=` | 最近 N 条匹配报文 |
 | GET | `/api/packets/{id}` | 协议树 + base64 原始字节 |
 | GET | `/api/packets/{id}/stream` | 该 TCP 报文所属会话的双向重组负载 |

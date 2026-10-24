@@ -1,5 +1,6 @@
 import type {
   FilterField,
+  DecryptStatus,
   FilterFields,
   FilterValidation,
   Flow,
@@ -98,6 +99,17 @@ export const api = {
     request<StatusResponse["capture"]>("/api/capture/cgroup", {
       method: "POST",
       body: JSON.stringify({ cgroup }),
+    }),
+  decryptStatus: () => request<DecryptStatus>("/api/decrypt"),
+  setTLSKeylog: (keylog: string) =>
+    request<{ tlsKeylogEntries: number }>("/api/decrypt/tls-keylog", {
+      method: "POST",
+      body: JSON.stringify({ keylog }),
+    }),
+  setWiFiPSK: (psk: string) =>
+    request<{ wifiPSKConfigured: boolean }>("/api/decrypt/wifi-psk", {
+      method: "POST",
+      body: JSON.stringify({ psk }),
     }),
   processes: (query = "", limit = 300) =>
     request<{ processes: ProcessInfo[]; count: number }>(

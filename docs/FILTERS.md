@@ -46,7 +46,8 @@ POST /api/capture/filter  {filter}
 | 表达式 | 含义 |
 | --- | --- |
 | `tcp` `udp` `icmp` `icmpv6` `arp` `ip` `ipv6` | 按协议层匹配 |
-| `dns` `http` `tls` `dhcp` `vlan` `eth` | 按应用层 / 链路层匹配 |
+| `dns` `http` `https` `tls` `dhcp` `vlan` `eth` | 按应用层 / 链路层匹配 |
+| `ai` `anthropic` `openai` `openai-responses` | AI API（OpenAI Chat Completions 与 Responses 分开） |
 | `host 10.0.0.5` | 源或目的 IP |
 | `src host 10.0.0.5` / `dst host 10.0.0.5` | 指定方向 |
 | `net 10.0.0.0/8` / `net 10.0.0.0 8` | 网段（IPv4/IPv6） |

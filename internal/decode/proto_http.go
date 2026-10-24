@@ -111,7 +111,7 @@ func (c *ctx) dissectHTTP(b []byte, base int) bool {
 		}
 	}
 	if len(body) > 0 {
-		root.add(c.newField(fmt.Sprintf("Body (%d bytes)", len(body)), hexPreview(body, 32), base+headerEnd, len(body)))
+		root.add(c.newField(fmt.Sprintf("Body (%d bytes)", len(body)), printablePreview(body, 2048), base+headerEnd, len(body)))
 	}
 
 	if isRequest {
