@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Switch } from "@/components/ui/switch"
 import { api } from "@/lib/api"
 import { useI18n } from "@/i18n"
 import type { DecryptStatus } from "@/lib/types"
@@ -42,7 +43,7 @@ export function DecryptionDialog({ open, onOpenChange }: DecryptionDialogProps) 
     setError("")
     try {
       const res = await api.setTLSKeylog(keylog)
-      setStatus((prev) => ({ ...(prev ?? { wifiPSKConfigured: false }), tlsKeylogEntries: res.tlsKeylogEntries }))
+      setStatus((prev) => ({ ...(prev ?? { wifiPSKConfigured: false, tlsKeylogAuto: false }), tlsKeylogEntries: res.tlsKeylogEntries }))
       setKeylog("")
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -56,7 +57,7 @@ export function DecryptionDialog({ open, onOpenChange }: DecryptionDialogProps) 
     setError("")
     try {
       await api.setTLSKeylog("")
-      setStatus((prev) => ({ ...(prev ?? { wifiPSKConfigured: false }), tlsKeylogEntries: 0 }))
+      setStatus((prev) => ({ ...(prev ?? { wifiPSKConfigured: false, tlsKeylogAuto: false }), tlsKeylogEntries: 0 }))
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -69,7 +70,7 @@ export function DecryptionDialog({ open, onOpenChange }: DecryptionDialogProps) 
     setError("")
     try {
       const res = await api.setWiFiPSK(psk)
-      setStatus((prev) => ({ ...(prev ?? { tlsKeylogEntries: 0 }), wifiPSKConfigured: res.wifiPSKConfigured }))
+      setStatus((prev) => ({ ...(prev ?? { tlsKeylogEntries: 0, tlsKeylogAuto: false }), wifiPSKConfigured: res.wifiPSKConfigured }))
       setPSK("")
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -99,6 +100,25 @@ export function DecryptionDialog({ open, onOpenChange }: DecryptionDialogProps) 
               <span className="font-mono text-2xs text-muted-foreground">
                 {t("decrypt.entries", { count: status?.tlsKeylogEntries ?? 0 })}
               </span>
+            </div>
+            <div className="mb-2 flex items-center justify-between gap-3 rounded border bg-background/40 px-2 py-1.5">
+              <div className="min-w-0">
+                <div className="text-2xs font-medium">{t("decrypt.auto")}</div>
+                <div className="text-[10px] text-muted-foreground">{t("decrypt.autoHint")}</div>
+              </div>
+              <Switch
+                checked={status?.tlsKeylogAuto ?? false}
+                disabled={busy || !status}
+                onCheckedChange={(enabled) => {
+                  setBusy(true)
+                  setError("")
+                  api
+                    .setTLSKeylogAuto(enabled)
+                    .then((res) => setStatus((prev) => prev ? { ...prev, tlsKeylogAuto: res.tlsKeylogAuto } : prev))
+                    .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+                    .finally(() => setBusy(false))
+                }}
+              />
             </div>
             <textarea
               value={keylog}

@@ -6,8 +6,20 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 )
+
+var keylogAuto atomic.Bool
+
+func init() { keylogAuto.Store(true) }
+
+// SetKeyLogAuto controls automatic discovery of keylog files from running
+// processes. Explicit -tls-keylog paths are still watched when this is off.
+func SetKeyLogAuto(enabled bool) { keylogAuto.Store(enabled) }
+
+// KeyLogAutoEnabled reports whether automatic discovery is enabled.
+func KeyLogAutoEnabled() bool { return keylogAuto.Load() }
 
 // WatchKeyLogs discovers SSLKEYLOGFILE paths from running processes (both the
 // environment and the common --tls-keylog argument) and reloads files when
@@ -37,9 +49,12 @@ func WatchKeyLogs(ctx context.Context, explicit string, interval time.Duration) 
 		}
 	}
 	scan := func() {
-		paths := DiscoverKeyLogPaths()
+		paths := make([]string, 0, 8)
 		if explicit != "" {
 			paths = append(paths, explicit)
+		}
+		if KeyLogAutoEnabled() {
+			paths = append(paths, DiscoverKeyLogPaths()...)
 		}
 		dedup := make(map[string]struct{}, len(paths))
 		for _, p := range paths {

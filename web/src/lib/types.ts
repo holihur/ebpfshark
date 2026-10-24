@@ -80,6 +80,7 @@ export interface CaptureStatus {
 export interface DecryptStatus {
   tlsKeylogEntries: number
   wifiPSKConfigured: boolean
+  tlsKeylogAuto: boolean
 }
 
 export interface ProcessInfo {

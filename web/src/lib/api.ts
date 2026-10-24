@@ -106,6 +106,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ keylog }),
     }),
+  setTLSKeylogAuto: (enabled: boolean) =>
+    request<{ tlsKeylogAuto: boolean }>("/api/decrypt/tls-keylog-auto", {
+      method: "POST",
+      body: JSON.stringify({ enabled }),
+    }),
   setWiFiPSK: (psk: string) =>
     request<{ wifiPSKConfigured: boolean }>("/api/decrypt/wifi-psk", {
       method: "POST",

@@ -122,6 +122,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/decrypt", s.handleDecryptStatus)
 	mux.HandleFunc("POST /api/decrypt/tls-keylog", s.handleTLSKeyLog)
 	mux.HandleFunc("POST /api/decrypt/wifi-psk", s.handleWiFiPSK)
+	mux.HandleFunc("POST /api/decrypt/tls-keylog-auto", s.handleTLSKeyLogAuto)
 	mux.HandleFunc("GET /api/packets", s.handlePackets)
 	mux.HandleFunc("GET /api/packets/{id}", s.handlePacketDetail)
 	mux.HandleFunc("GET /api/packets/{id}/stream", s.handlePacketStream)
@@ -410,6 +411,7 @@ func (s *Server) handleDecryptStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"tlsKeylogEntries":  decode.KeyLogEntries(),
 		"wifiPSKConfigured": decode.WiFiPSKConfigured(),
+		"tlsKeylogAuto":     decode.KeyLogAutoEnabled(),
 	})
 }
 
@@ -436,6 +438,18 @@ func (s *Server) handleTLSKeyLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"tlsKeylogEntries": decode.KeyLogEntries()})
+}
+
+func (s *Server) handleTLSKeyLogAuto(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	decode.SetKeyLogAuto(req.Enabled)
+	writeJSON(w, http.StatusOK, map[string]any{"tlsKeylogAuto": decode.KeyLogAutoEnabled()})
 }
 
 func (s *Server) handleWiFiPSK(w http.ResponseWriter, r *http.Request) {

@@ -217,9 +217,10 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if *tlsKeylogAuto {
-		go decode.WatchKeyLogs(ctx, *tlsKeylog, 5*time.Second)
-	}
+	decode.SetKeyLogAuto(*tlsKeylogAuto)
+	// Keep the watcher alive even when discovery is disabled: the Web UI can
+	// enable it at runtime. Explicit -tls-keylog paths are still watched.
+	go decode.WatchKeyLogs(ctx, *tlsKeylog, 5*time.Second)
 
 	updater := update.New(update.Config{
 		Enabled:        *autoUpdate,
