@@ -21,6 +21,7 @@ import { useI18n } from "@/i18n"
 import { api } from "@/lib/api"
 import { usePacketColumns } from "@/lib/packetColumns"
 import { loadCaptureSettings, saveCaptureSettings } from "@/lib/captureSettings"
+import { formatHash, parseHash } from "@/lib/hashRoute"
 import type { PacketDetail, ProcessInfo } from "@/lib/types"
 
 function errorMessage(err: unknown): string {
@@ -34,7 +35,8 @@ export default function App() {
   const capture = useCapture()
   const { theme, toggle } = useTheme()
 
-  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const initialRoute = useRef(parseHash())
+  const [selectedId, setSelectedId] = useState<number | null>(initialRoute.current.packet ?? null)
   const [detail, setDetail] = useState<PacketDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
 
@@ -54,8 +56,8 @@ export default function App() {
   const [mitmOpen, setMitmOpen] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [commandOpen, setCommandOpen] = useState(false)
-  const [activeModule, setActiveModule] = useState<WorkspaceModule>("network")
-  const [networkTab, setNetworkTab] = useState("capture")
+  const [activeModule, setActiveModule] = useState<WorkspaceModule>(initialRoute.current.module)
+  const [networkTab, setNetworkTab] = useState(initialRoute.current.tab)
 
   const workRef = useRef<HTMLDivElement>(null)
   const initialized = useRef(false)
@@ -270,6 +272,26 @@ export default function App() {
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
+  }, [])
+
+  // Keep the current workspace in the URL so refresh/back-forward restores it.
+  useEffect(() => {
+    const next = formatHash({ module: activeModule, tab: networkTab, packet: selectedId ?? undefined })
+    if (window.location.hash !== next) {
+      window.history.replaceState(null, "", next)
+    }
+  }, [activeModule, networkTab, selectedId])
+
+  useEffect(() => {
+    const apply = () => {
+      const route = parseHash()
+      setActiveModule(route.module)
+      setNetworkTab(route.tab)
+      if (route.packet) setSelectedId(route.packet)
+      else setSelectedId(null)
+    }
+    window.addEventListener("hashchange", apply)
+    return () => window.removeEventListener("hashchange", apply)
   }, [])
 
   const running = capture.status?.capture.running ?? false
