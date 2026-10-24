@@ -49,13 +49,21 @@ docker run --rm -it \
 
 Docker 需要 host network、eBPF capability、放宽 seccomp/AppArmor 和 BTF。风险和排障见 **[docs/DOCKER.md](docs/DOCKER.md)**。
 
-### systemd
+### 一键安装（systemd）
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/holihur/ebpfshark/main/install.sh | sudo bash
+```
+
+默认安装 **full** 版本，启用 systemd 和自动更新；每 **10 分钟**检查 GitHub Release 的更新 manifest。安装完成后会打印登录密码和 MCP Token。
+
+也可以从本地仓库安装：
 
 ```bash
 sudo ./install.sh
 ```
 
-安装、服务配置、自动更新和卸载见 **[docs/INSTALL.md](docs/INSTALL.md)**。
+安装、更新 manifest、卸载和回滚见 **[docs/INSTALL.md](docs/INSTALL.md)**。
 
 ### 源码构建
 

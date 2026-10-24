@@ -10,6 +10,12 @@ REBUILD=0
 AUTO_UPDATE="true"
 UPDATE_INTERVAL="10m"
 UPDATE_URL=""
+REPO="holihur/ebpfshark"
+VARIANT="full"
+RELEASE_VERSION="latest"
+ARCH=""
+DOWNLOAD_TMP=""
+INSTALLED_FROM_RELEASE=0
 NO_SYSTEMD=0
 FORCE_ENV=0
 UNINSTALL=0
@@ -29,7 +35,10 @@ Options:
   --auth-user USER        Login user for a fresh env file (default admin)
   --auth-pass PASS        Login password (default: generate)
   --mcp-token TOKEN       MCP bearer token (default: generate)
-  --update-url URL        Auto-update manifest URL
+  --repo OWNER/REPO       GitHub repository for release downloads (default: holihur/ebpfshark)
+  --variant core|full     Release/build variant (default: full)
+  --release-version VER   Release tag or "latest" (default: latest)
+  --update-url URL        Auto-update manifest URL (default: GitHub release manifest)
   --update-interval DUR   Check interval (default 10m)
   --no-auto-update        Disable auto-update
   --force-env             Rewrite /etc/ebpfshark/ebpfshark.env
@@ -54,6 +63,9 @@ while [[ $# -gt 0 ]]; do
     --auth-user) AUTH_USER="$2"; shift 2 ;;
     --auth-pass) AUTH_PASS="$2"; shift 2 ;;
     --mcp-token) MCP_TOKEN="$2"; shift 2 ;;
+    --repo) REPO="$2"; shift 2 ;;
+    --variant) VARIANT="$2"; shift 2 ;;
+    --release-version) RELEASE_VERSION="$2"; shift 2 ;;
     --update-url) UPDATE_URL="$2"; shift 2 ;;
     --update-interval) UPDATE_INTERVAL="$2"; shift 2 ;;
     --no-auto-update) AUTO_UPDATE="false"; shift ;;
@@ -68,13 +80,95 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ ${EUID:-$(id -u)} -eq 0 ]] || die "run as root (sudo ./install.sh)"
+[[ "$VARIANT" == "core" || "$VARIANT" == "full" ]] || die "--variant must be core or full"
 
 ROOT="${PREFIX%/}"
 BIN_PATH="${ROOT}/usr/local/bin/ebpfshark"
 ENV_DIR="${ROOT}/etc/ebpfshark"
 ENV_FILE="${ENV_DIR}/ebpfshark.env"
 UNIT_FILE="${ROOT}/etc/systemd/system/${SERVICE}.service"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"
+if [[ -n "$SCRIPT_SOURCE" && "$SCRIPT_SOURCE" != "/dev/stdin" && -f "$SCRIPT_SOURCE" ]]; then
+  SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_SOURCE")" && pwd)"
+else
+  SCRIPT_DIR=""
+fi
+
+ARCH="$(uname -m)"
+case "$ARCH" in
+  x86_64|amd64) ARCH="amd64" ;;
+  aarch64|arm64) ARCH="arm64" ;;
+  *) die "unsupported CPU architecture: $ARCH (release installs support amd64/arm64)" ;;
+esac
+
+fetch_stdout() {
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL --retry 3 "$1"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -qO- "$1"
+  else
+    return 1
+  fi
+}
+
+fetch_to() {
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL --retry 3 -o "$2" "$1"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -O "$2" "$1"
+  else
+    return 1
+  fi
+}
+
+download_release() {
+  local base asset manifest_tmp archive_tmp version url sha actual
+  base="https://github.com/${REPO}/releases"
+  if [[ "$RELEASE_VERSION" == "latest" ]]; then
+    base="${base}/latest/download"
+  else
+    base="${base}/download/${RELEASE_VERSION}"
+  fi
+  asset="ebpfshark-${VARIANT}-linux-${ARCH}"
+  manifest_tmp="$(mktemp)"
+  archive_tmp="$(mktemp)"
+  if ! fetch_to "${base}/manifest-${VARIANT}-linux-${ARCH}.json" "$manifest_tmp"; then
+    rm -f "$manifest_tmp" "$archive_tmp"
+    return 1
+  fi
+  version="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$manifest_tmp" | head -n1)"
+  url="$(sed -n 's/.*"url"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$manifest_tmp" | head -n1)"
+  sha="$(sed -n 's/.*"sha256"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$manifest_tmp" | head -n1)"
+  if [[ -z "$version" || -z "$url" || -z "$sha" ]]; then
+    rm -f "$manifest_tmp" "$archive_tmp"
+    return 1
+  fi
+  info "downloading ebpfshark ${version} (${VARIANT}, linux/${ARCH})"
+  if ! fetch_to "$url" "$archive_tmp"; then
+    rm -f "$manifest_tmp" "$archive_tmp"
+    return 1
+  fi
+  actual="$(sha256sum "$archive_tmp" | awk '{print $1}')"
+  if [[ "$actual" != "$sha" ]]; then
+    rm -f "$manifest_tmp" "$archive_tmp"
+    die "downloaded binary checksum mismatch (expected $sha, got $actual)"
+  fi
+  chmod 0755 "$archive_tmp"
+  BINARY="$archive_tmp"
+  DOWNLOAD_TMP="$archive_tmp"
+  INSTALLED_FROM_RELEASE=1
+  rm -f "$manifest_tmp"
+  return 0
+}
+
+build_from_source() {
+  require_build_deps
+  info "building ebpfshark from source (${VARIANT})"
+  local target="go-build"
+  [[ "$VARIANT" == "full" ]] && target="go-build-full"
+  (cd "$SCRIPT_DIR" && make web && make "$target")
+  BINARY="$SCRIPT_DIR/bin/ebpfshark"
+}
 
 require_build_deps() {
   local missing=0
@@ -118,22 +212,30 @@ if [[ "$UNINSTALL" -eq 1 ]]; then
 fi
 
 if [[ "$REBUILD" -eq 1 ]]; then
-  require_build_deps
-  info "building ebpfshark"
-  (cd "$SCRIPT_DIR" && make web && make go-build)
+  [[ -n "$SCRIPT_DIR" ]] || die "--rebuild requires a local checkout of the repository"
+  build_from_source
 fi
 
 if [[ -z "$BINARY" ]]; then
-  if [[ -x "$SCRIPT_DIR/bin/ebpfshark" ]]; then
+  if [[ -n "$SCRIPT_DIR" && -x "$SCRIPT_DIR/bin/ebpfshark" ]]; then
     BINARY="$SCRIPT_DIR/bin/ebpfshark"
-  else
-    require_build_deps
-    info "no prebuilt binary, building (eBPF objects are generated locally)"
-    (cd "$SCRIPT_DIR" && make web && make go-build)
-    BINARY="$SCRIPT_DIR/bin/ebpfshark"
+  elif ! download_release; then
+    if [[ -n "$SCRIPT_DIR" ]]; then
+      build_from_source
+    else
+      die "could not download a release; check --repo/--release-version or run install.sh from the repository"
+    fi
   fi
 fi
 [[ -x "$BINARY" ]] || die "binary not executable: $BINARY"
+
+if [[ -z "$UPDATE_URL" && "$AUTO_UPDATE" == "true" ]]; then
+  if [[ "$RELEASE_VERSION" == "latest" ]]; then
+    UPDATE_URL="https://github.com/${REPO}/releases/latest/download/manifest-${VARIANT}-linux-${ARCH}.json"
+  else
+    UPDATE_URL="https://github.com/${REPO}/releases/download/${RELEASE_VERSION}/manifest-${VARIANT}-linux-${ARCH}.json"
+  fi
+fi
 
 info "installing binary to $BIN_PATH"
 install -D -m 0755 "$BINARY" "$BIN_PATH"
@@ -208,5 +310,7 @@ if [[ -n "$(get_kv EBPFSHARK_UPDATE_URL)" ]]; then
 else
   echo "  update URL: (not configured; auto-update stays idle)"
 fi
+if [[ -n "$DOWNLOAD_TMP" && -f "$DOWNLOAD_TMP" ]]; then rm -f "$DOWNLOAD_TMP"; fi
 echo
+echo "  variant:    ${VARIANT} / linux-${ARCH}"
 echo "Keep the env file private. To change credentials, edit it and restart $SERVICE."

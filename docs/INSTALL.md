@@ -9,7 +9,13 @@
 > 如果仓库中没有 `bin/ebpfshark`，安装脚本会从源码构建，需要 eBPF 构建依赖。
 > 只想安装现成二进制时使用 `--binary PATH`。
 
-在项目目录中执行：
+从 GitHub Release 一键安装：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/holihur/ebpfshark/main/install.sh | sudo bash
+```
+
+默认下载 **full** 版本并安装 systemd 服务，自动更新默认每 **10 分钟**检查一次 GitHub Release。也可以从源码目录安装：
 
 ```bash
 cd /root/ebpf
@@ -21,7 +27,7 @@ sudo ./install.sh
 1. 使用已有的 `bin/ebpfshark`；没有则自动执行 `make web && make go-build`
    （会先生成 `vmlinux.h` 与 `capture_bpfel.{go,o}`，需要 `clang`、`llvm`、
    `bpftool`、`libbpf-dev`；也可用 `--binary` 安装现成二进制）
-2. 安装二进制到 `/usr/local/bin/ebpfshark`
+2. 从 GitHub Release 下载 full 二进制（本地有 `--binary`/`bin/ebpfshark` 时优先使用本地文件），安装到 `/usr/local/bin/ebpfshark`
 3. 生成 `/etc/ebpfshark/ebpfshark.env`（权限 600）：
    - 管理员用户名 / 随机密码
    - 随机 MCP Bearer Token
@@ -61,10 +67,13 @@ sudo ./install.sh \
 | --- | --- |
 | `--port` | HTTP/Web 端口，默认 9999 |
 | `--binary PATH` | 安装指定二进制，不重新构建 |
+| `--variant core\|full` | Release/源码构建变体，默认 `full` |
+| `--repo OWNER/REPO` | GitHub 仓库，默认 `holihur/ebpfshark` |
+| `--release-version VER` | 指定 Release tag，默认 `latest` |
 | `--rebuild` | 强制 `make web && make go-build` |
 | `--auth-user` / `--auth-pass` | 首次安装的登录凭据 |
 | `--mcp-token` | MCP HTTP Bearer Token |
-| `--update-url` | 自动更新 manifest 地址 |
+| `--update-url` | 自动更新 manifest 地址（默认使用 GitHub Release manifest） |
 | `--update-interval` | 检查间隔，默认 `10m` |
 | `--no-auto-update` | 关闭自动更新 |
 | `--force-env` | 重新生成 env 文件（会覆盖现有密码/Token） |
@@ -132,9 +141,10 @@ LimitMEMLOCK=infinity
 | 启用 | 是（`EBPFSHARK_AUTO_UPDATE=true`） |
 | 检查间隔 | 10 分钟（`EBPFSHARK_UPDATE_INTERVAL=10m`） |
 | 首次检查 | 启动后约 30 秒 |
-| Manifest | 空（未配置时不会下载任何内容） |
+| Manifest | 默认 GitHub Release `manifest-<variant>-linux-<arch>.json` |
 
-**自动更新需要配置 manifest URL**（`--update-url` 或 `EBPFSHARK_UPDATE_URL`）。未配置时
+安装脚本默认写入 GitHub Release 的架构/变体 manifest，因此一键安装后自动更新可直接工作。
+也可以用 `--update-url` 或 `EBPFSHARK_UPDATE_URL` 指向自建 HTTPS manifest；未配置且手动安装时，
 服务仍正常运行，只在日志中提示自动更新处于 idle 状态。
 
 ### 3.2 更新流程

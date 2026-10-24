@@ -55,3 +55,33 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish standalone binaries and update manifests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          work="$(mktemp -d)"
+          for arch in amd64 arm64; do
+            for variant in core full; do
+              archive="$(find dist -maxdepth 2 -type f -name "ebpfshark_${version}_${variant}_linux_${arch}.tar.gz" -print -quit)"
+              if [[ -z "$archive" ]]; then
+                echo "missing archive for ${variant}/${arch}" >&2
+                exit 1
+              fi
+              mkdir -p "$work/${variant}-${arch}"
+              tar -xzf "$archive" -C "$work/${variant}-${arch}"
+              asset="ebpfshark-${variant}-linux-${arch}"
+              cp "$work/${variant}-${arch}/ebpfshark" "$work/${asset}"
+              sha="$(sha256sum "$work/${asset}" | awk '{print $1}')"
+              cat > "$work/manifest-${variant}-linux-${arch}.json" <<EOF
+          {"version":"${version}","url":"https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${asset}","sha256":"${sha}"}
+          EOF
+              gh release upload "$GITHUB_REF_NAME" \
+                "$work/${asset}" \
+                "$work/manifest-${variant}-linux-${arch}.json" \
+                --clobber
+            done
+          done
+          rm -rf "$work"
