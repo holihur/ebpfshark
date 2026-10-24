@@ -1,6 +1,5 @@
 import { memo } from "react"
 import {
-  Activity,
   Languages,
   LogOut,
   Moon,
@@ -35,7 +34,6 @@ interface HeaderProps {
   onLogout: () => void
   onToggleTheme: () => void
   onOpenSidebar: () => void
-  onTrace: () => void
 }
 
 function HeaderImpl({
@@ -46,7 +44,6 @@ function HeaderImpl({
   onLogout,
   onToggleTheme,
   onOpenSidebar,
-  onTrace,
 }: HeaderProps) {
   const { t, locale, setLocale } = useI18n()
 
@@ -76,21 +73,6 @@ function HeaderImpl({
       </div>
 
       <div className="flex-1" />
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onTrace}
-            aria-label={t("trace.workspace")}
-            title={t("trace.workspace")}
-          >
-            <Activity />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{t("trace.workspace")}</TooltipContent>
-      </Tooltip>
 
       <DropdownMenu>
         <Tooltip>

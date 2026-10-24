@@ -1,5 +1,5 @@
 import { memo } from "react"
-import { Activity, Boxes, Network } from "lucide-react"
+import { Boxes, Network } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Tooltip,
@@ -10,13 +10,10 @@ import { cn } from "@/lib/utils"
 import { useI18n, type MessageKey } from "@/i18n"
 
 export type WorkspaceModule = "network" | "processes"
-export type SidebarModule = WorkspaceModule | "trace"
 
 interface ModuleRailProps {
   active: WorkspaceModule
   onSelect: (module: WorkspaceModule) => void
-  onTrace: () => void
-  traceOpen: boolean
 }
 
 const MODULES: Array<{
@@ -28,7 +25,7 @@ const MODULES: Array<{
   { id: "processes", icon: Boxes, label: "sidebar.processes" },
 ]
 
-function ModuleRailImpl({ active, onSelect, onTrace, traceOpen }: ModuleRailProps) {
+function ModuleRailImpl({ active, onSelect }: ModuleRailProps) {
   const { t } = useI18n()
   return (
     <nav
@@ -37,7 +34,7 @@ function ModuleRailImpl({ active, onSelect, onTrace, traceOpen }: ModuleRailProp
     >
       {MODULES.map((module) => {
         const Icon = module.icon
-        const selected = active === module.id && !traceOpen
+        const selected = active === module.id
         return (
           <Tooltip key={module.id}>
             <TooltipTrigger asChild>
@@ -56,22 +53,6 @@ function ModuleRailImpl({ active, onSelect, onTrace, traceOpen }: ModuleRailProp
           </Tooltip>
         )
       })}
-      <div className="my-1 h-px w-6 bg-border" />
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant={traceOpen ? "secondary" : "ghost"}
-            size="icon"
-            className={cn("h-8 w-8", traceOpen && "text-primary")}
-            onClick={onTrace}
-            aria-label={t("sidebar.trace")}
-            aria-pressed={traceOpen}
-          >
-            <Activity className="h-4 w-4" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="right">{t("sidebar.trace")}</TooltipContent>
-      </Tooltip>
     </nav>
   )
 }

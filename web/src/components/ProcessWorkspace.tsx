@@ -1,11 +1,15 @@
-import { Activity, Boxes, Network, ScrollText, X } from "lucide-react"
+import { lazy, Suspense } from "react"
+import { Boxes, Network, ScrollText, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useI18n } from "@/i18n"
 import type { ProcessInfo } from "@/lib/types"
 
+const TracePanel = lazy(() =>
+  import("@/components/TracePanel").then((m) => ({ default: m.TracePanel })),
+)
+
 interface ProcessWorkspaceProps {
   process: ProcessInfo | null
-  onTrace: (process: ProcessInfo) => void
   onClearScope: () => void
   onOpenNetwork: () => void
 }
@@ -19,7 +23,7 @@ function Item({ label, value, mono = false }: { label: string; value: string; mo
   )
 }
 
-export function ProcessWorkspace({ process, onTrace, onClearScope, onOpenNetwork }: ProcessWorkspaceProps) {
+export function ProcessWorkspace({ process, onClearScope, onOpenNetwork }: ProcessWorkspaceProps) {
   const { t } = useI18n()
 
   return (
@@ -60,9 +64,6 @@ export function ProcessWorkspace({ process, onTrace, onClearScope, onOpenNetwork
                 </div>
               </div>
               <div className="flex flex-wrap gap-1.5">
-                <Button size="sm" className="h-8" onClick={() => onTrace(process)}>
-                  <Activity className="h-3.5 w-3.5" /> {t("process.trace")}
-                </Button>
                 <Button size="sm" variant="outline" className="h-8" onClick={onOpenNetwork}>
                   <Network className="h-3.5 w-3.5" /> {t("process.openNetwork")}
                 </Button>
@@ -79,6 +80,12 @@ export function ProcessWorkspace({ process, onTrace, onClearScope, onOpenNetwork
             <div className="sm:col-span-2">
               <Item label={t("process.cgroupPath")} value={process.cgroupPath || "—"} mono />
             </div>
+          </div>
+
+          <div className="min-h-[360px] overflow-hidden rounded-lg border bg-background/40">
+            <Suspense fallback={null}>
+              <TracePanel active initialPid={process.pid} />
+            </Suspense>
           </div>
 
           <div className="rounded-lg border bg-muted/20 p-3 text-2xs leading-relaxed text-muted-foreground">

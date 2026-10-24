@@ -11,7 +11,6 @@ import { PacketList } from "@/components/PacketList"
 import { ProcessWorkspace } from "@/components/ProcessWorkspace"
 import { Sidebar } from "@/components/Sidebar"
 import { StatusBar } from "@/components/StatusBar"
-import { TraceDialog } from "@/components/TraceDialog"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { useAuth } from "@/auth/context"
 import { useCapture } from "@/hooks/useCapture"
@@ -49,8 +48,6 @@ export default function App() {
   const [decryptOpen, setDecryptOpen] = useState(false)
   const [mitmOpen, setMitmOpen] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
-  const [traceOpen, setTraceOpen] = useState(false)
-  const [tracePid, setTracePid] = useState<number | undefined>(undefined)
   const [activeModule, setActiveModule] = useState<WorkspaceModule>("network")
   const [networkTab, setNetworkTab] = useState("capture")
 
@@ -255,26 +252,16 @@ export default function App() {
           onLogout={handleLogout}
           onToggleTheme={toggle}
           onOpenSidebar={() => setMobileSidebarOpen(true)}
-          onTrace={() => setTraceOpen(true)}
         />
 
         <div className="flex min-h-0 flex-1">
-          <ModuleRail
-            active={activeModule}
-            onSelect={setActiveModule}
-            onTrace={() => setTraceOpen(true)}
-            traceOpen={traceOpen}
-          />
+          <ModuleRail active={activeModule} onSelect={setActiveModule} />
           <Sidebar
             module={activeModule}
             activeTab={networkTab}
             onTabChange={setNetworkTab}
             onModuleChange={setActiveModule}
-            onTrace={() => setTraceOpen(true)}
-            onTraceProcess={(process) => {
-              setTracePid(process.pid)
-              setTraceOpen(true)
-            }}
+            onTraceProcess={() => setActiveModule("processes")}
             onOpenProcesses={() => setActiveModule("processes")}
             status={capture.status}
             filter={capture.filter}
@@ -366,10 +353,6 @@ export default function App() {
           ) : (
             <ProcessWorkspace
               process={cgroupFilter}
-              onTrace={(process) => {
-                setTracePid(process.pid)
-                setTraceOpen(true)
-              }}
               onClearScope={() => handleSelectCgroup(null)}
               onOpenNetwork={() => setActiveModule("network")}
             />
@@ -388,8 +371,6 @@ export default function App() {
 
       <MITMDialog open={mitmOpen} onOpenChange={setMitmOpen} />
 
-      <TraceDialog open={traceOpen} onOpenChange={setTraceOpen} initialPid={tracePid} />
-
       {mobileSidebarOpen && (
         <div className="fixed inset-0 z-50 flex md:hidden" role="dialog" aria-modal="true">
           <button
@@ -404,11 +385,7 @@ export default function App() {
               activeTab={networkTab}
               onTabChange={setNetworkTab}
               onModuleChange={setActiveModule}
-              onTrace={() => setTraceOpen(true)}
-              onTraceProcess={(process) => {
-                setTracePid(process.pid)
-                setTraceOpen(true)
-              }}
+              onTraceProcess={() => setActiveModule("processes")}
               onOpenProcesses={() => setActiveModule("processes")}
               status={capture.status}
               filter={capture.filter}

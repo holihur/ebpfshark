@@ -1,6 +1,5 @@
 import { memo, useEffect, useRef, useState } from "react"
 import {
-  Activity,
   ArrowLeftRight,
   Boxes,
   CircleAlert,
@@ -65,7 +64,6 @@ interface SidebarProps {
   onTabChange?: (tab: string) => void
   module?: "network" | "processes"
   onModuleChange?: (module: "network" | "processes") => void
-  onTrace?: () => void
   onTraceProcess?: (process: ProcessInfo) => void
   onOpenProcesses?: () => void
 }
@@ -630,9 +628,6 @@ function SidebarImpl(props: SidebarProps) {
             <Button variant={module === "processes" ? "secondary" : "ghost"} size="sm" className="h-7 px-2 text-2xs" onClick={() => props.onModuleChange?.("processes")}>
               {t("sidebar.processes")}
             </Button>
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => props.onTrace?.()} aria-label={t("sidebar.trace")}>
-              <Activity className="h-3.5 w-3.5" />
-            </Button>
             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={props.onClose} aria-label={t("app.closeSidebar")}>
               <X className="h-4 w-4" />
             </Button>
@@ -643,9 +638,12 @@ function SidebarImpl(props: SidebarProps) {
       {module === "network" ? (
         <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
           <div className="shrink-0 border-b p-2">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="capture">
                 <Gauge /> {t("sidebar.capture")}
+              </TabsTrigger>
+              <TabsTrigger value="processes">
+                <Boxes /> {t("sidebar.processes")}
               </TabsTrigger>
               <TabsTrigger value="protocols">
                 <Layers /> {t("sidebar.protocols")}
@@ -658,6 +656,16 @@ function SidebarImpl(props: SidebarProps) {
           <TabsContent value="capture" className="mt-0 min-h-0 flex-1">
             <ScrollArea className="h-full">
               <CapturePanel {...props} />
+            </ScrollArea>
+          </TabsContent>
+          <TabsContent value="processes" className="mt-0 min-h-0 flex-1">
+            <ScrollArea className="h-full">
+              <ProcessPanel
+                active={tab === "processes"}
+                selectedCgroupID={props.cgroupID}
+                onSelectCgroup={props.onSelectCgroup}
+                onTraceProcess={props.onTraceProcess}
+              />
             </ScrollArea>
           </TabsContent>
           <TabsContent value="protocols" className="mt-0 min-h-0 flex-1">
