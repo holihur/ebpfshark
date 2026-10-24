@@ -44,6 +44,7 @@ export default function App() {
   const [columnsOpen, setColumnsOpen] = useState(false)
   const [decryptOpen, setDecryptOpen] = useState(false)
   const [mitmOpen, setMitmOpen] = useState(false)
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
 
   const workRef = useRef<HTMLDivElement>(null)
   const initialized = useRef(false)
@@ -222,6 +223,14 @@ export default function App() {
     window.addEventListener("pointerup", up)
   }
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMobileSidebarOpen(false)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [])
+
   const running = capture.status?.capture.running ?? false
 
   return (
@@ -244,6 +253,7 @@ export default function App() {
           onEditColumns={() => setColumnsOpen(true)}
           onDecryption={() => setDecryptOpen(true)}
           onMITM={() => setMitmOpen(true)}
+          onOpenSidebar={() => setMobileSidebarOpen(true)}
         />
 
         <FilterBar
@@ -336,6 +346,43 @@ export default function App() {
       <DecryptionDialog open={decryptOpen} onOpenChange={setDecryptOpen} />
 
       <MITMDialog open={mitmOpen} onOpenChange={setMitmOpen} />
+
+      {mobileSidebarOpen && (
+        <div className="fixed inset-0 z-50 flex md:hidden" role="dialog" aria-modal="true">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/60 backdrop-blur-[2px]"
+            aria-label={t("app.closeSidebar")}
+            onClick={() => setMobileSidebarOpen(false)}
+          />
+          <div className="relative z-10 h-full animate-slide-in-right shadow-2xl">
+            <Sidebar
+              status={capture.status}
+              filter={capture.filter}
+              selectedIfaces={selectedIfaces}
+              snaplen={snaplen}
+              sampleRate={sampleRate}
+              clearOnStart={clearOnStart}
+              busy={busy}
+              onToggleIface={toggleIface}
+              onSelectAllIfaces={selectAllIfaces}
+              onClearIfaces={clearIfaces}
+              onSnaplenChange={setSnaplen}
+              onSampleRateChange={setSampleRate}
+              onClearOnStartChange={setClearOnStart}
+              onApplyFilter={handleApplyFilter}
+              onStart={handleStart}
+              onStop={handleStop}
+              onClear={handleClear}
+              onImport={handleImport}
+              cgroupID={activeCgroupID}
+              onSelectCgroup={handleSelectCgroup}
+              mobile
+              onClose={() => setMobileSidebarOpen(false)}
+            />
+          </div>
+        </div>
+      )}
 
       <Toaster
         theme={theme}

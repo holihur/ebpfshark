@@ -9,6 +9,7 @@ import {
   LogOut,
   Moon,
   MoreHorizontal,
+  PanelLeft,
   Play,
   Square,
   Sun,
@@ -54,6 +55,7 @@ interface HeaderProps {
   onEditColumns: () => void
   onDecryption: () => void
   onMITM: () => void
+  onOpenSidebar: () => void
 }
 
 function HeaderImpl({
@@ -73,6 +75,7 @@ function HeaderImpl({
   onEditColumns,
   onDecryption,
   onMITM,
+  onOpenSidebar,
 }: HeaderProps) {
   const { t, locale, setLocale } = useI18n()
   const running = status?.capture.running ?? false
@@ -81,6 +84,16 @@ function HeaderImpl({
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-2 border-b bg-panel/80 px-3 backdrop-blur">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 shrink-0 md:hidden"
+        onClick={onOpenSidebar}
+        aria-label={t("app.openSidebar")}
+      >
+        <PanelLeft />
+      </Button>
+
       <div className="flex items-center gap-2.5">
         <div className="relative grid h-7 w-7 place-items-center rounded-md bg-primary/15 ring-1 ring-primary/30">
           <Waves className="h-4 w-4 text-primary" />

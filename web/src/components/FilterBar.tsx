@@ -216,6 +216,29 @@ export function FilterBar({
         </div>
       </div>
 
+      <div className="flex items-center gap-1 overflow-x-auto px-3 pb-1.5 scrollbar-thin lg:hidden">
+        {QUICK_FILTERS.map((proto) => {
+          const isActive = active === proto
+          const count = protocols[proto.toUpperCase()] ?? 0
+          return (
+            <button
+              key={proto}
+              type="button"
+              onClick={() => apply(isActive ? "" : proto)}
+              className={cn(
+                "shrink-0 rounded-full border px-2 py-0.5 font-mono text-2xs transition-colors",
+                isActive
+                  ? "border-primary/40 bg-primary/15 text-primary"
+                  : "border-border bg-background/50 text-muted-foreground",
+              )}
+            >
+              {proto}
+              {count > 0 && <span className="ml-1 text-muted-foreground/70">{formatCount(count)}</span>}
+            </button>
+          )
+        })}
+      </div>
+
       <div className="flex min-h-[18px] items-center gap-2 px-3 pb-1.5 text-2xs">
         {error ? (
           <span className="flex items-center gap-1 text-destructive">

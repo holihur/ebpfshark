@@ -4,6 +4,7 @@ import {
   ArrowLeftRight,
   Boxes,
   CircleAlert,
+  X,
   Download,
   FileUp,
   Gauge,
@@ -57,6 +58,8 @@ interface SidebarProps {
   onImport: (file: File) => void
   cgroupID?: number
   onSelectCgroup: (process: ProcessInfo | null) => void
+  mobile?: boolean
+  onClose?: () => void
 }
 
 function Section({
@@ -555,7 +558,18 @@ function SidebarImpl(props: SidebarProps) {
   const running = props.status?.capture.running ?? false
 
   return (
-    <aside className="hidden w-[268px] shrink-0 flex-col border-r bg-panel/40 md:flex">
+    <aside className={cn(
+      "w-[268px] shrink-0 flex-col border-r bg-panel/40",
+      props.mobile ? "flex h-full" : "hidden md:flex",
+    )}>
+      {props.mobile && (
+        <div className="flex items-center justify-between border-b px-3 py-2">
+          <span className="text-xs font-semibold">ebpfshark</span>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={props.onClose} aria-label={t("app.closeSidebar")}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
       <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
         <div className="shrink-0 border-b p-2">
           <TabsList className="grid w-full grid-cols-5">
