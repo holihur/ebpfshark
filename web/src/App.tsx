@@ -8,6 +8,7 @@ import { ModuleRail, type WorkspaceModule } from "@/components/ModuleRail"
 import { FilterBar } from "@/components/FilterBar"
 import { Header } from "@/components/Header"
 import { PacketList } from "@/components/PacketList"
+import { ProcessWorkspace } from "@/components/ProcessWorkspace"
 import { Sidebar } from "@/components/Sidebar"
 import { StatusBar } from "@/components/StatusBar"
 import { TraceDialog } from "@/components/TraceDialog"
@@ -248,21 +249,11 @@ export default function App() {
       <div className="flex h-full flex-col overflow-hidden">
         <Header
           status={capture.status}
-          connected={capture.connected}
           theme={theme}
-          busy={busy}
-          filter={capture.filter}
           authEnabled={auth.enabled}
           username={auth.user}
           onLogout={handleLogout}
           onToggleTheme={toggle}
-          onStart={handleStart}
-          onStop={handleStop}
-          onClear={handleClear}
-          onImport={handleImport}
-          onEditColumns={() => setColumnsOpen(true)}
-          onDecryption={() => setDecryptOpen(true)}
-          onMITM={() => setMitmOpen(true)}
           onOpenSidebar={() => setMobileSidebarOpen(true)}
           onTrace={() => setTraceOpen(true)}
         />
@@ -274,7 +265,15 @@ export default function App() {
             status={capture.status}
             packetStore={capture.packetStore}
             loading={capture.loadingPackets}
+            connected={capture.connected}
+            running={running}
+            busy={busy}
             onApply={handleApplyFilter}
+            onStart={handleStart}
+            onStop={handleStop}
+            onEditColumns={() => setColumnsOpen(true)}
+            onDecryption={() => setDecryptOpen(true)}
+            onMITM={() => setMitmOpen(true)}
           />
         )}
 
@@ -295,6 +294,7 @@ export default function App() {
               setTracePid(process.pid)
               setTraceOpen(true)
             }}
+            onOpenProcesses={() => setActiveModule("processes")}
             status={capture.status}
             filter={capture.filter}
             selectedIfaces={selectedIfaces}
@@ -319,50 +319,64 @@ export default function App() {
             onSelectCgroup={handleSelectCgroup}
           />
 
-          <main className="flex min-w-0 flex-1 flex-col">
-            <div ref={workRef} className="flex min-h-0 flex-1 flex-col">
-              <div className="flex min-h-0 flex-1 flex-col">
-                <PacketList
-                  store={capture.packetStore}
-                  selectedId={selectedId}
-                  loading={capture.loadingPackets}
-                  filter={capture.filter}
-                  running={running}
-                  baseTime={
-                    capture.status?.store.firstPacket
-                      ? Date.parse(capture.status.store.firstPacket) * 1e6
-                      : undefined
-                  }
-                  columns={columns}
-                  onSelect={setSelectedId}
-                  onStart={handleStart}
+          {activeModule === "network" ? (
+            <main className="flex min-w-0 flex-1 flex-col">
+              <div ref={workRef} className="flex min-h-0 flex-1 flex-col">
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <PacketList
+                    store={capture.packetStore}
+                    selectedId={selectedId}
+                    loading={capture.loadingPackets}
+                    filter={capture.filter}
+                    running={running}
+                    baseTime={
+                      capture.status?.store.firstPacket
+                        ? Date.parse(capture.status.store.firstPacket) * 1e6
+                        : undefined
+                    }
+                    columns={columns}
+                    onSelect={setSelectedId}
+                    onStart={handleStart}
+                  />
+                </div>
+  
+                <div
+                  role="separator"
+                  aria-orientation="horizontal"
+                  onPointerDown={startDrag}
+                  className="group relative h-1.5 shrink-0 cursor-row-resize border-y border-border/60 bg-panel/60 transition-colors hover:bg-primary/25"
+                >
+                  <div className="absolute left-1/2 top-1/2 h-0.5 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full bg-border group-hover:bg-primary/60" />
+                </div>
+  
+                <div
+                  style={{ height: `${splitPct}%` }}
+                  className="flex min-h-0 shrink-0 flex-col overflow-hidden"
+                >
+                  <DetailPanel detail={detail} loading={detailLoading} />
+                </div>
+              </div>
+  
+              {showNetworkFilter && (
+                <StatusBar
+                  status={capture.status}
+                  packetStore={capture.packetStore}
+                  totalVisible={capture.status?.store.stored ?? 0}
+                  connected={capture.connected}
                 />
-              </div>
-
-              <div
-                role="separator"
-                aria-orientation="horizontal"
-                onPointerDown={startDrag}
-                className="group relative h-1.5 shrink-0 cursor-row-resize border-y border-border/60 bg-panel/60 transition-colors hover:bg-primary/25"
-              >
-                <div className="absolute left-1/2 top-1/2 h-0.5 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full bg-border group-hover:bg-primary/60" />
-              </div>
-
-              <div
-                style={{ height: `${splitPct}%` }}
-                className="flex min-h-0 shrink-0 flex-col overflow-hidden"
-              >
-                <DetailPanel detail={detail} loading={detailLoading} />
-              </div>
-            </div>
-
-            <StatusBar
-              status={capture.status}
-              packetStore={capture.packetStore}
-              totalVisible={capture.status?.store.stored ?? 0}
-              connected={capture.connected}
+              )}
+            </main>
+          ) : (
+            <ProcessWorkspace
+              process={cgroupFilter}
+              onTrace={(process) => {
+                setTracePid(process.pid)
+                setTraceOpen(true)
+              }}
+              onClearScope={() => handleSelectCgroup(null)}
+              onOpenNetwork={() => setActiveModule("network")}
             />
-          </main>
+          )}
         </div>
       </div>
 
@@ -398,6 +412,7 @@ export default function App() {
                 setTracePid(process.pid)
                 setTraceOpen(true)
               }}
+              onOpenProcesses={() => setActiveModule("processes")}
               status={capture.status}
               filter={capture.filter}
               selectedIfaces={selectedIfaces}

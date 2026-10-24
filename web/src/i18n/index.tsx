@@ -11,7 +11,7 @@ import {
 export type Locale = "en" | "zh"
 
 const en = {
-  "app.subtitle": "eBPF packet analyzer",
+  "app.subtitle": "eBPF analyzer",
   "app.live": "LIVE",
   "app.idle": "IDLE",
   "app.noCapture": "no active capture",
@@ -49,6 +49,7 @@ const en = {
   "filter.applyHint": "to apply the display filter",
   "filter.builder": "Filter builder",
   "filter.builderTip": "Build a display filter visually",
+  "filter.tools": "Network tools",
   "filter.history": "Filter history",
   "filter.historyTip": "Recent display filters",
   "filter.clearHistory": "Clear filter history",
@@ -235,6 +236,9 @@ const en = {
   "sidebar.conversations": "{count} conversations",
   "sidebar.flowsEmpty": "No conversations yet. Start a capture to see IP flows tracked by bytes and packets.",
   "sidebar.pkts": "{count} pkts",
+  "sidebar.cgroupScope": "cgroup scope",
+  "sidebar.cgroupOff": "off (all processes)",
+  "sidebar.chooseProcess": "Choose process",
   "sidebar.liveStatus": "live capture status:",
   "sidebar.running": "running",
   "sidebar.stopped": "stopped",
@@ -253,6 +257,16 @@ const en = {
   "process.emptySearch": "No process matches this search.",
   "process.hint": "Selecting a process scopes capture to its cgroup. If capture is running, the kernel filter is updated immediately; otherwise it applies on the next start.",
   "process.trace": "Trace this process",
+  "process.workspace": "Process analysis",
+  "process.workspaceHint": "Inspect a process, resolve its cgroup scope, and hand it to the function tracer.",
+  "process.noSelection": "Select a process",
+  "process.noSelectionHint": "Pick a process from the left list. It becomes the current network cgroup scope and can be sent to the function tracer.",
+  "process.openNetwork": "Back to network",
+  "process.pid": "PID",
+  "process.cgroupId": "cgroup ID",
+  "process.cgroupPath": "cgroup path",
+  "process.scopeHint": "Network scope",
+  "process.scopeHintBody": "The selected process's cgroup is kept as the network capture scope. Clear it here or in the Network module.",
 
   "status.capturing": "capturing {ifaces}",
   "status.idle": "idle",
@@ -278,7 +292,7 @@ const en = {
 
   "auth.checking": "Checking session…",
   "auth.title": "Sign in",
-  "auth.subtitle": "Authentication is required to access ebpfshark.",
+  "auth.subtitle": "Authentication is required to access eBPF Analyzer.",
   "auth.username": "Username",
   "auth.password": "Password",
   "auth.signIn": "Sign in",
@@ -319,7 +333,7 @@ const en = {
 export type MessageKey = keyof typeof en
 
 const zh: Record<MessageKey, string> = {
-  "app.subtitle": "eBPF 抓包分析器",
+  "app.subtitle": "eBPF 分析器",
   "app.live": "实时",
   "app.idle": "空闲",
   "app.noCapture": "未在抓包",
@@ -357,6 +371,7 @@ const zh: Record<MessageKey, string> = {
   "filter.applyHint": "应用显示过滤器",
   "filter.builder": "过滤器构造器",
   "filter.builderTip": "可视化构造显示过滤器",
+  "filter.tools": "网络工具",
   "filter.history": "过滤器历史",
   "filter.historyTip": "最近的显示过滤器",
   "filter.clearHistory": "清空过滤器历史",
@@ -543,6 +558,9 @@ const zh: Record<MessageKey, string> = {
   "sidebar.conversations": "{count} 个会话",
   "sidebar.flowsEmpty": "暂无会话。开始抓包后可按字节数和报文数查看 IP 会话。",
   "sidebar.pkts": "{count} 包",
+  "sidebar.cgroupScope": "cgroup 范围",
+  "sidebar.cgroupOff": "关闭（全部进程）",
+  "sidebar.chooseProcess": "选择进程",
   "sidebar.liveStatus": "实时抓包状态：",
   "sidebar.running": "运行中",
   "sidebar.stopped": "已停止",
@@ -561,6 +579,16 @@ const zh: Record<MessageKey, string> = {
   "process.emptySearch": "没有匹配的进程。",
   "process.hint": "选择进程后按它的 cgroup 过滤抓包。抓包运行中会立即更新内核过滤；未运行则在下次启动时生效。",
   "process.trace": "追踪此进程",
+  "process.workspace": "进程分析",
+  "process.workspaceHint": "查看进程、解析 cgroup 范围，并交给函数追踪器。",
+  "process.noSelection": "选择进程",
+  "process.noSelectionHint": "从左侧列表选择进程，它会成为当前网络 cgroup 范围，也可以直接进入函数追踪。",
+  "process.openNetwork": "返回网络",
+  "process.pid": "PID",
+  "process.cgroupId": "cgroup ID",
+  "process.cgroupPath": "cgroup 路径",
+  "process.scopeHint": "网络范围",
+  "process.scopeHintBody": "当前进程的 cgroup 会保留为网络抓包范围；可在这里或网络模块清除。",
 
   "status.capturing": "抓包中 {ifaces}",
   "status.idle": "空闲",
@@ -586,7 +614,7 @@ const zh: Record<MessageKey, string> = {
 
   "auth.checking": "正在检查登录状态…",
   "auth.title": "登录",
-  "auth.subtitle": "访问 ebpfshark 需要先登录。",
+  "auth.subtitle": "访问 eBPF Analyzer 需要先登录。",
   "auth.username": "用户名",
   "auth.password": "密码",
   "auth.signIn": "登录",
@@ -654,7 +682,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEY, locale)
     document.documentElement.lang = locale === "zh" ? "zh-CN" : "en"
     document.title =
-      locale === "zh" ? "ebpfshark — eBPF 抓包分析器" : "ebpfshark — eBPF packet analyzer"
+      locale === "zh" ? "eBPF Analyzer — Linux 分析器" : "eBPF Analyzer — Linux analyzer"
   }, [locale])
 
   const t = useCallback(

@@ -1,5 +1,19 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react"
-import { AlertCircle, Check, History, Search, SlidersHorizontal, Trash2, X } from "lucide-react"
+import {
+  AlertCircle,
+  Check,
+  Columns3,
+  Globe2,
+  History,
+  KeyRound,
+  Play,
+  Search,
+  Settings2,
+  SlidersHorizontal,
+  Square,
+  Trash2,
+  X,
+} from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { FilterHighlight } from "@/components/FilterHighlight"
 import {
@@ -22,7 +36,7 @@ import { usePacketVersion, type PacketStore } from "@/lib/packetStore"
 import { useI18n } from "@/i18n"
 import { cn } from "@/lib/utils"
 import type { StatusResponse } from "@/lib/types"
-import { formatCount } from "@/lib/format"
+import { formatCount, formatDuration } from "@/lib/format"
 import { useFilterHistory } from "@/lib/filterHistory"
 
 interface FilterBarProps {
@@ -31,7 +45,15 @@ interface FilterBarProps {
   status: StatusResponse | null
   packetStore: PacketStore
   loading: boolean
+  connected: boolean
+  running: boolean
+  busy: boolean
   onApply: (filter: string) => void
+  onStart: () => void
+  onStop: () => void
+  onEditColumns: () => void
+  onDecryption: () => void
+  onMITM: () => void
 }
 
 export function FilterBar({
@@ -40,7 +62,15 @@ export function FilterBar({
   status,
   packetStore,
   loading,
+  connected,
+  running,
+  busy,
   onApply,
+  onStart,
+  onStop,
+  onEditColumns,
+  onDecryption,
+  onMITM,
 }: FilterBarProps) {
   const { t } = useI18n()
   usePacketVersion()
@@ -78,6 +108,23 @@ export function FilterBar({
 
   return (
     <div className="shrink-0 border-b bg-background/40">
+      <div className="flex items-center gap-2 border-b px-3 py-1 text-2xs text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          <span className={cn("h-1.5 w-1.5 rounded-full", running ? "animate-pulse-dot bg-emerald-400" : "bg-muted-foreground/50")} />
+          <span className="font-medium text-foreground/70">{running ? t("app.live") : t("app.idle")}</span>
+        </span>
+        {running ? (
+          <>
+            <span className="truncate font-mono text-foreground/60">
+              {(status?.capture.interfaces ?? []).join(", ")}
+            </span>
+            <span>{formatDuration(status?.capture.uptimeSeconds ?? 0)}</span>
+          </>
+        ) : (
+          <span>{t("app.noCapture")}</span>
+        )}
+        {!connected && running && <span className="ml-auto text-destructive">{t("app.reconnecting")}</span>}
+      </div>
       <div className="flex items-center gap-2 px-3 py-2">
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -189,6 +236,58 @@ export function FilterBar({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        <DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" aria-label={t("filter.tools")}>
+                  <Settings2 className="h-3.5 w-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent>{t("filter.tools")}</TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={onEditColumns}>
+              <Columns3 />
+              {t("columns.title")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={onDecryption}>
+              <KeyRound />
+              {t("decrypt.title")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={onMITM}>
+              <Globe2 />
+              {t("mitm.title")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {running ? (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 shrink-0 gap-1.5 px-2"
+            onClick={onStop}
+            disabled={busy}
+            title={t("sidebar.stop")}
+          >
+            <Square className="h-3.5 w-3.5 fill-current" />
+            <span className="hidden sm:inline">{t("sidebar.stop")}</span>
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            className="h-8 shrink-0 gap-1.5 px-2"
+            onClick={onStart}
+            disabled={busy}
+            title={t("sidebar.start")}
+          >
+            <Play className="h-3.5 w-3.5 fill-current" />
+            <span className="hidden sm:inline">{t("sidebar.start")}</span>
+          </Button>
+        )}
 
         <div className="hidden items-center gap-1 lg:flex">
           {QUICK_FILTERS.map((proto) => {

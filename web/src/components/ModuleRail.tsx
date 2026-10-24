@@ -1,5 +1,5 @@
 import { memo } from "react"
-import { Activity, Network } from "lucide-react"
+import { Activity, Boxes, Network } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Tooltip,
@@ -25,6 +25,7 @@ const MODULES: Array<{
   label: MessageKey
 }> = [
   { id: "network", icon: Network, label: "sidebar.network" },
+  { id: "processes", icon: Boxes, label: "sidebar.processes" },
 ]
 
 function ModuleRailImpl({ active, onSelect, onTrace, traceOpen }: ModuleRailProps) {
