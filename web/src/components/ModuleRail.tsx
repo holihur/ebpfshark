@@ -1,5 +1,5 @@
 import { memo } from "react"
-import { Activity, ArrowLeftRight, Boxes, Gauge, Layers } from "lucide-react"
+import { Activity, Boxes, Network } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Tooltip,
@@ -9,26 +9,26 @@ import {
 import { cn } from "@/lib/utils"
 import { useI18n, type MessageKey } from "@/i18n"
 
-export type SidebarModule = "capture" | "processes" | "protocols" | "flows" | "trace"
+export type WorkspaceModule = "network" | "processes"
+export type SidebarModule = WorkspaceModule | "trace"
 
 interface ModuleRailProps {
-  active: SidebarModule
-  onSelect: (module: SidebarModule) => void
+  active: WorkspaceModule
+  onSelect: (module: WorkspaceModule) => void
   onTrace: () => void
+  traceOpen: boolean
 }
 
 const MODULES: Array<{
-  id: Exclude<SidebarModule, "trace">
-  icon: typeof Gauge
+  id: WorkspaceModule
+  icon: typeof Network
   label: MessageKey
 }> = [
-  { id: "capture", icon: Gauge, label: "sidebar.capture" },
+  { id: "network", icon: Network, label: "sidebar.network" },
   { id: "processes", icon: Boxes, label: "sidebar.processes" },
-  { id: "protocols", icon: Layers, label: "sidebar.protocols" },
-  { id: "flows", icon: ArrowLeftRight, label: "sidebar.flows" },
 ]
 
-function ModuleRailImpl({ active, onSelect, onTrace }: ModuleRailProps) {
+function ModuleRailImpl({ active, onSelect, onTrace, traceOpen }: ModuleRailProps) {
   const { t } = useI18n()
   return (
     <nav
@@ -37,7 +37,7 @@ function ModuleRailImpl({ active, onSelect, onTrace }: ModuleRailProps) {
     >
       {MODULES.map((module) => {
         const Icon = module.icon
-        const selected = active === module.id
+        const selected = active === module.id && !traceOpen
         return (
           <Tooltip key={module.id}>
             <TooltipTrigger asChild>
@@ -60,15 +60,12 @@ function ModuleRailImpl({ active, onSelect, onTrace }: ModuleRailProps) {
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
-            variant={active === "trace" ? "secondary" : "ghost"}
+            variant={traceOpen ? "secondary" : "ghost"}
             size="icon"
-            className={cn("h-8 w-8", active === "trace" && "text-primary")}
-            onClick={() => {
-              onSelect("trace")
-              onTrace()
-            }}
+            className={cn("h-8 w-8", traceOpen && "text-primary")}
+            onClick={onTrace}
             aria-label={t("sidebar.trace")}
-            aria-pressed={active === "trace"}
+            aria-pressed={traceOpen}
           >
             <Activity className="h-4 w-4" />
           </Button>

@@ -12,9 +12,9 @@ function duration(ns: number): string {
   return `${(ns / 1_000_000).toFixed(2)} ms`
 }
 
-export function TracePanel({ active }: { active: boolean }) {
+export function TracePanel({ active, initialPid }: { active: boolean; initialPid?: number }) {
   const { t } = useI18n()
-  const [pid, setPid] = useState("")
+  const [pid, setPid] = useState(initialPid ? String(initialPid) : "")
   const [functions, setFunctions] = useState("")
   const [status, setStatus] = useState<TraceStatus | null>(null)
   const [events, setEvents] = useState<TraceEvent[]>([])
@@ -28,6 +28,10 @@ export function TracePanel({ active }: { active: boolean }) {
   const [symbolPath, setSymbolPath] = useState("")
   const [symbolQuery, setSymbolQuery] = useState("")
   const [symbolLoading, setSymbolLoading] = useState(false)
+
+  useEffect(() => {
+    if (initialPid && active) setPid(String(initialPid))
+  }, [initialPid, active])
 
   useEffect(() => {
     if (!active) return

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
-import { Boxes, RefreshCw, Search, X } from "lucide-react"
+import { Activity, Boxes, RefreshCw, Search, X } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { api } from "@/lib/api"
 import { formatCount } from "@/lib/format"
@@ -11,9 +12,10 @@ interface ProcessPanelProps {
   active: boolean
   selectedCgroupID?: number
   onSelectCgroup: (process: ProcessInfo | null) => void
+  onTraceProcess?: (process: ProcessInfo) => void
 }
 
-export function ProcessPanel({ active, selectedCgroupID, onSelectCgroup }: ProcessPanelProps) {
+export function ProcessPanel({ active, selectedCgroupID, onSelectCgroup, onTraceProcess }: ProcessPanelProps) {
   const { t } = useI18n()
   const [query, setQuery] = useState("")
   const [processes, setProcesses] = useState<ProcessInfo[]>([])
@@ -131,6 +133,20 @@ export function ProcessPanel({ active, selectedCgroupID, onSelectCgroup }: Proce
             <X className="h-3 w-3" />
           </button>
         </div>
+      ) : null}
+
+      {selectedCgroupID && onTraceProcess ? (
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 w-full justify-start"
+          onClick={() => {
+            const selected = processes.find((p) => p.cgroupID === selectedCgroupID)
+            if (selected) onTraceProcess(selected)
+          }}
+        >
+          <Activity className="h-3.5 w-3.5" /> {t("process.trace")}
+        </Button>
       ) : null}
 
       {error && (

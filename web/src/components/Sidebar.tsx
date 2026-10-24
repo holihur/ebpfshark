@@ -1,8 +1,7 @@
-import { lazy, memo, Suspense, useEffect, useRef, useState } from "react"
+import { memo, useEffect, useRef, useState } from "react"
 import {
   Activity,
   ArrowLeftRight,
-  Boxes,
   CircleAlert,
   X,
   Download,
@@ -15,7 +14,6 @@ import {
   Trash2,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-const TracePanel = lazy(() => import("@/components/TracePanel").then((m) => ({ default: m.TracePanel })))
 import { ProcessPanel } from "@/components/ProcessPanel"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -64,6 +62,10 @@ interface SidebarProps {
   onClose?: () => void
   activeTab?: string
   onTabChange?: (tab: string) => void
+  module?: "network" | "processes"
+  onModuleChange?: (module: "network" | "processes") => void
+  onTrace?: () => void
+  onTraceProcess?: (process: ProcessInfo) => void
 }
 
 function Section({
@@ -589,6 +591,7 @@ function SidebarImpl(props: SidebarProps) {
     if (props.onTabChange) props.onTabChange(next)
     else setLocalTab(next)
   }
+  const module = props.module ?? "network"
   const running = props.status?.capture.running ?? false
 
   return (
@@ -597,73 +600,82 @@ function SidebarImpl(props: SidebarProps) {
       props.mobile ? "flex h-full" : "hidden md:flex",
     )}>
       {props.mobile && (
-        <div className="flex items-center justify-between border-b px-3 py-2">
-          <span className="text-xs font-semibold">ebpfshark</span>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={props.onClose} aria-label={t("app.closeSidebar")}>
-            <X className="h-4 w-4" />
-          </Button>
+        <div className="shrink-0 border-b px-2 py-2">
+          <div className="flex items-center gap-1.5">
+            <span className="mr-auto px-1 text-xs font-semibold">ebpfshark</span>
+            <Button variant={module === "network" ? "secondary" : "ghost"} size="sm" className="h-7 px-2 text-2xs" onClick={() => props.onModuleChange?.("network")}>
+              {t("sidebar.network")}
+            </Button>
+            <Button variant={module === "processes" ? "secondary" : "ghost"} size="sm" className="h-7 px-2 text-2xs" onClick={() => props.onModuleChange?.("processes")}>
+              {t("sidebar.processes")}
+            </Button>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => props.onTrace?.()} aria-label={t("sidebar.trace")}>
+              <Activity className="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={props.onClose} aria-label={t("app.closeSidebar")}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       )}
-      <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
-        <div className="shrink-0 border-b p-2">
-          <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="capture">
-              <Gauge /> {t("sidebar.capture")}
-            </TabsTrigger>
-            <TabsTrigger value="processes">
-              <Boxes /> {t("sidebar.processes")}
-            </TabsTrigger>
-            <TabsTrigger value="protocols">
-              <Layers /> {t("sidebar.protocols")}
-            </TabsTrigger>
-            <TabsTrigger value="flows">
-              <ArrowLeftRight /> {t("sidebar.flows")}
-            </TabsTrigger>
-            <TabsTrigger value="trace">
-              <Activity /> {t("sidebar.trace")}
-            </TabsTrigger>
-          </TabsList>
-        </div>
-        <TabsContent value="capture" className="mt-0 min-h-0 flex-1">
-          <ScrollArea className="h-full">
-            <CapturePanel {...props} />
-          </ScrollArea>
-        </TabsContent>
-        <TabsContent value="processes" className="mt-0 min-h-0 flex-1">
-          <ScrollArea className="h-full">
+
+      {module === "network" ? (
+        <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
+          <div className="shrink-0 border-b p-2">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="capture">
+                <Gauge /> {t("sidebar.capture")}
+              </TabsTrigger>
+              <TabsTrigger value="protocols">
+                <Layers /> {t("sidebar.protocols")}
+              </TabsTrigger>
+              <TabsTrigger value="flows">
+                <ArrowLeftRight /> {t("sidebar.flows")}
+              </TabsTrigger>
+            </TabsList>
+          </div>
+          <TabsContent value="capture" className="mt-0 min-h-0 flex-1">
+            <ScrollArea className="h-full">
+              <CapturePanel {...props} />
+            </ScrollArea>
+          </TabsContent>
+          <TabsContent value="protocols" className="mt-0 min-h-0 flex-1">
+            <ScrollArea className="h-full">
+              <ProtocolsPanel
+                status={props.status}
+                filter={props.filter}
+                onApplyFilter={props.onApplyFilter}
+              />
+            </ScrollArea>
+          </TabsContent>
+          <TabsContent value="flows" className="mt-0 min-h-0 flex-1">
+            <ScrollArea className="h-full">
+              <FlowsPanel
+                active={tab === "flows"}
+                filter={props.filter}
+                onApplyFilter={props.onApplyFilter}
+              />
+            </ScrollArea>
+          </TabsContent>
+        </Tabs>
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="shrink-0 border-b px-3 py-2">
+            <div className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground/70">
+              {t("sidebar.processes")}
+            </div>
+          </div>
+          <ScrollArea className="min-h-0 flex-1">
             <ProcessPanel
-              active={tab === "processes"}
+              active
               selectedCgroupID={props.cgroupID}
               onSelectCgroup={props.onSelectCgroup}
+              onTraceProcess={props.onTraceProcess}
             />
           </ScrollArea>
-        </TabsContent>
-        <TabsContent value="protocols" className="mt-0 min-h-0 flex-1">
-          <ScrollArea className="h-full">
-            <ProtocolsPanel
-              status={props.status}
-              filter={props.filter}
-              onApplyFilter={props.onApplyFilter}
-            />
-          </ScrollArea>
-        </TabsContent>
-        <TabsContent value="flows" className="mt-0 min-h-0 flex-1">
-          <ScrollArea className="h-full">
-            <FlowsPanel
-              active={tab === "flows"}
-              filter={props.filter}
-              onApplyFilter={props.onApplyFilter}
-            />
-          </ScrollArea>
-        </TabsContent>
-        <TabsContent value="trace" className="mt-0 min-h-0 flex-1">
-          <ScrollArea className="h-full">
-            <Suspense fallback={null}>
-              <TracePanel active={tab === "trace"} />
-            </Suspense>
-          </ScrollArea>
-        </TabsContent>
-      </Tabs>
+        </div>
+      )}
+
       <div className="shrink-0 border-t bg-panel/60 px-3 py-1.5 text-[10px] text-muted-foreground/50">
         {t("sidebar.liveStatus")}{" "}
         <span className={running ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}>

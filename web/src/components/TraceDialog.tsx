@@ -16,9 +16,10 @@ const TracePanel = lazy(() =>
 interface TraceDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  initialPid?: number
 }
 
-export function TraceDialog({ open, onOpenChange }: TraceDialogProps) {
+export function TraceDialog({ open, onOpenChange, initialPid }: TraceDialogProps) {
   const { t } = useI18n()
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -32,7 +33,7 @@ export function TraceDialog({ open, onOpenChange }: TraceDialogProps) {
         </DialogHeader>
         <div className="min-h-0 flex-1 overflow-auto scrollbar-thin">
           <Suspense fallback={null}>
-            <TracePanel active={open} />
+            <TracePanel active={open} initialPid={initialPid} />
           </Suspense>
         </div>
       </DialogContent>

@@ -171,8 +171,9 @@ const en = {
   "detail.follow": "Follow stream",
 
   "sidebar.modules": "Modules",
+  "sidebar.network": "Network",
   "sidebar.capture": "Capture",
-  "sidebar.processes": "Procs",
+  "sidebar.processes": "Processes",
   "sidebar.protocols": "Protocols",
   "sidebar.trace": "Trace",
   "trace.title": "Function trace",
@@ -251,6 +252,7 @@ const en = {
   "process.empty": "No processes found.",
   "process.emptySearch": "No process matches this search.",
   "process.hint": "Selecting a process scopes capture to its cgroup. If capture is running, the kernel filter is updated immediately; otherwise it applies on the next start.",
+  "process.trace": "Trace this process",
 
   "status.capturing": "capturing {ifaces}",
   "status.idle": "idle",
@@ -477,6 +479,7 @@ const zh: Record<MessageKey, string> = {
   "detail.follow": "追踪流",
 
   "sidebar.modules": "模块导航",
+  "sidebar.network": "网络",
   "sidebar.capture": "抓包",
   "sidebar.processes": "进程",
   "sidebar.protocols": "协议",
@@ -557,6 +560,7 @@ const zh: Record<MessageKey, string> = {
   "process.empty": "没有找到进程。",
   "process.emptySearch": "没有匹配的进程。",
   "process.hint": "选择进程后按它的 cgroup 过滤抓包。抓包运行中会立即更新内核过滤；未运行则在下次启动时生效。",
+  "process.trace": "追踪此进程",
 
   "status.capturing": "抓包中 {ifaces}",
   "status.idle": "空闲",

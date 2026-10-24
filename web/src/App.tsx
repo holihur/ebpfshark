@@ -4,7 +4,7 @@ import { ColumnSettingsDialog } from "@/components/ColumnSettingsDialog"
 import { DecryptionDialog } from "@/components/DecryptionDialog"
 import { DetailPanel } from "@/components/DetailPanel"
 import { MITMDialog } from "@/components/MITMDialog"
-import { ModuleRail, type SidebarModule } from "@/components/ModuleRail"
+import { ModuleRail, type WorkspaceModule } from "@/components/ModuleRail"
 import { FilterBar } from "@/components/FilterBar"
 import { Header } from "@/components/Header"
 import { PacketList } from "@/components/PacketList"
@@ -49,7 +49,9 @@ export default function App() {
   const [mitmOpen, setMitmOpen] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [traceOpen, setTraceOpen] = useState(false)
-  const [sidebarTab, setSidebarTab] = useState<SidebarModule>("capture")
+  const [tracePid, setTracePid] = useState<number | undefined>(undefined)
+  const [activeModule, setActiveModule] = useState<WorkspaceModule>("network")
+  const [networkTab, setNetworkTab] = useState("capture")
 
   const workRef = useRef<HTMLDivElement>(null)
   const initialized = useRef(false)
@@ -239,6 +241,7 @@ export default function App() {
   }, [])
 
   const running = capture.status?.capture.running ?? false
+  const showNetworkFilter = activeModule === "network"
 
   return (
     <TooltipProvider delayDuration={350}>
@@ -264,24 +267,34 @@ export default function App() {
           onTrace={() => setTraceOpen(true)}
         />
 
-        <FilterBar
-          filter={capture.filter}
-          error={capture.filterError}
-          status={capture.status}
-          packetStore={capture.packetStore}
-          loading={capture.loadingPackets}
-          onApply={handleApplyFilter}
-        />
+        {showNetworkFilter && (
+          <FilterBar
+            filter={capture.filter}
+            error={capture.filterError}
+            status={capture.status}
+            packetStore={capture.packetStore}
+            loading={capture.loadingPackets}
+            onApply={handleApplyFilter}
+          />
+        )}
 
         <div className="flex min-h-0 flex-1">
           <ModuleRail
-            active={sidebarTab}
-            onSelect={setSidebarTab}
+            active={activeModule}
+            onSelect={setActiveModule}
             onTrace={() => setTraceOpen(true)}
+            traceOpen={traceOpen}
           />
           <Sidebar
-            activeTab={sidebarTab}
-            onTabChange={(tab) => setSidebarTab(tab as SidebarModule)}
+            module={activeModule}
+            activeTab={networkTab}
+            onTabChange={setNetworkTab}
+            onModuleChange={setActiveModule}
+            onTrace={() => setTraceOpen(true)}
+            onTraceProcess={(process) => {
+              setTracePid(process.pid)
+              setTraceOpen(true)
+            }}
             status={capture.status}
             filter={capture.filter}
             selectedIfaces={selectedIfaces}
@@ -364,7 +377,7 @@ export default function App() {
 
       <MITMDialog open={mitmOpen} onOpenChange={setMitmOpen} />
 
-      <TraceDialog open={traceOpen} onOpenChange={setTraceOpen} />
+      <TraceDialog open={traceOpen} onOpenChange={setTraceOpen} initialPid={tracePid} />
 
       {mobileSidebarOpen && (
         <div className="fixed inset-0 z-50 flex md:hidden" role="dialog" aria-modal="true">
@@ -376,8 +389,15 @@ export default function App() {
           />
           <div className="relative z-10 h-full animate-slide-in-right shadow-2xl">
             <Sidebar
-              activeTab={sidebarTab}
-              onTabChange={(tab) => setSidebarTab(tab as SidebarModule)}
+              module={activeModule}
+              activeTab={networkTab}
+              onTabChange={setNetworkTab}
+              onModuleChange={setActiveModule}
+              onTrace={() => setTraceOpen(true)}
+              onTraceProcess={(process) => {
+                setTracePid(process.pid)
+                setTraceOpen(true)
+              }}
               status={capture.status}
               filter={capture.filter}
               selectedIfaces={selectedIfaces}
