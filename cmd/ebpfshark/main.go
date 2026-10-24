@@ -201,8 +201,15 @@ func main() {
 		if err != nil {
 			log.Error("initialize MITM proxy failed", "err", err)
 		} else if err := proxy.Start(); err != nil {
-			log.Warn("start MITM proxy failed; trying a random loopback port", "addr", *mitmAddr, "err", err)
-			if err := proxy.Reconfigure("127.0.0.1:0"); err != nil {
+			log.Warn("start MITM proxy failed; trying another loopback port", "addr", *mitmAddr, "err", err)
+			started := false
+			for port := 18081; port <= 18099; port++ {
+				if err := proxy.Reconfigure(fmt.Sprintf("127.0.0.1:%d", port)); err == nil {
+					started = true
+					break
+				}
+			}
+			if !started {
 				log.Error("start MITM proxy failed", "err", err)
 			} else {
 				mitmProxy = proxy
