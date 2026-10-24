@@ -3,6 +3,7 @@
 package capture
 
 import (
+	"encoding/binary"
 	"fmt"
 	"io"
 	"log/slog"
@@ -11,6 +12,8 @@ import (
 	"os/exec"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 
 	"ebpfshark/internal/filter"
 	"ebpfshark/internal/store"
@@ -62,23 +65,30 @@ func TestKernelCaptureFilter(t *testing.T) {
 	}
 	defer mgr.Stop()
 
+	// Inject an Ethernet/IPv4/UDP frame directly on the veth. This avoids
+	// flaky neighbour resolution while still exercising the TCX egress path.
 	send := func(port int) {
-		c, err := net.DialUDP("udp", nil, &net.UDPAddr{IP: net.ParseIP("10.255.0.2"), Port: port})
+		t.Helper()
+		fd, err := unix.Socket(unix.AF_PACKET, unix.SOCK_RAW, int(htons(unix.ETH_P_ALL)))
 		if err != nil {
-			t.Fatalf("dial: %v", err)
+			t.Fatalf("packet socket: %v", err)
 		}
-		_, _ = c.Write([]byte("ebpfshark-filter-test"))
-		_ = c.Close()
+		defer unix.Close(fd)
+		ifi, err := netInterface(name)
+		if err != nil {
+			t.Fatalf("interface %s: %v", name, err)
+		}
+		frame := udpFrame(uint16(port))
+		addr := &unix.SockaddrLinklayer{
+			Protocol: htons(unix.ETH_P_IP), Ifindex: ifi,
+			Halen: 6, Addr: [8]byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
+		}
+		if err := unix.Sendto(fd, frame, 0, addr); err != nil {
+			t.Fatalf("send raw frame: %v", err)
+		}
 	}
-	// Warm up neighbour resolution first: the matching UDP datagram must not be
-	// lost while the veth peer is still resolving ARP.
+	send(9999)
 	send(9998)
-	time.Sleep(300 * time.Millisecond)
-	for i := 0; i < 5; i++ {
-		send(9999)
-		send(9998)
-		time.Sleep(50 * time.Millisecond)
-	}
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
@@ -95,4 +105,48 @@ func TestKernelCaptureFilter(t *testing.T) {
 		time.Sleep(25 * time.Millisecond)
 	}
 	t.Fatalf("capture=%+v filtered=%d", st.Stats(), mgr.Status().KernelFiltered)
+}
+
+func netInterface(name string) (int, error) {
+	ifi, err := net.InterfaceByName(name)
+	if err != nil {
+		return 0, err
+	}
+	return ifi.Index, nil
+}
+
+func htons(v uint16) uint16 { return v<<8 | v>>8 }
+
+func udpFrame(dstPort uint16) []byte {
+	const ethLen, ipLen, udpLen = 14, 20, 8
+	payload := []byte("ebpfshark-filter-test")
+	frame := make([]byte, ethLen+ipLen+udpLen+len(payload))
+	copy(frame[0:6], []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff})
+	copy(frame[6:12], []byte{0x02, 0, 0, 0, 0, 1})
+	binary.BigEndian.PutUint16(frame[12:14], unix.ETH_P_IP)
+	ip := frame[ethLen:]
+	ip[0] = 0x45
+	binary.BigEndian.PutUint16(ip[2:4], uint16(ipLen+udpLen+len(payload)))
+	ip[8] = 64
+	ip[9] = unix.IPPROTO_UDP
+	copy(ip[12:16], []byte{10, 255, 0, 1})
+	copy(ip[16:20], []byte{10, 255, 0, 2})
+	binary.BigEndian.PutUint16(ip[10:12], checksum(ip[:ipLen]))
+	udp := ip[ipLen:]
+	binary.BigEndian.PutUint16(udp[0:2], 50000)
+	binary.BigEndian.PutUint16(udp[2:4], dstPort)
+	binary.BigEndian.PutUint16(udp[4:6], uint16(udpLen+len(payload)))
+	copy(udp[udpLen:], payload)
+	return frame
+}
+
+func checksum(b []byte) uint16 {
+	var sum uint32
+	for i := 0; i+1 < len(b); i += 2 {
+		sum += uint32(binary.BigEndian.Uint16(b[i : i+2]))
+	}
+	for sum>>16 != 0 {
+		sum = (sum & 0xffff) + (sum >> 16)
+	}
+	return ^uint16(sum)
 }
