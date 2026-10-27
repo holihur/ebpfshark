@@ -3,12 +3,12 @@
 # ebpfshark is a Linux/eBPF application. The build stage needs clang, bpftool
 # and host BTF to generate the CO-RE eBPF object; the runtime stage needs a
 # Linux kernel >= 6.6 and the capabilities documented in docs/DOCKER.md.
-ARG GO_VERSION=1.26
-ARG NODE_VERSION=24
+ARG GO_VERSION=1.27
+ARG NODE_VERSION=26
 
 FROM node:${NODE_VERSION}-bookworm-slim AS web-builder
 WORKDIR /src/web
-RUN npm install -g pnpm@12.4.1
+RUN npm install -g pnpm@12.15.0
 COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY web/ ./

@@ -1,6 +1,6 @@
 module ebpfshark
 
-go 1.26.0
+go 1.27
 
 require (
 	github.com/cilium/ebpf v0.22.0
